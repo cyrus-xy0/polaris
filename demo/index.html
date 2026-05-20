@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>北极星任务节点 Demo</title>
+    <link rel="stylesheet" href="/demo/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar" aria-label="应用导航">
+        <div class="brand">
+          <span class="brand-mark"></span>
+          <span>北极星</span>
+        </div>
+        <nav class="nav" aria-label="主导航">
+          <button class="nav-item is-active" data-view-button="today">今日</button>
+          <button class="nav-item" data-view-button="tree">目标树</button>
+          <button class="nav-item" data-view-button="methods">知识库</button>
+        </nav>
+      </header>
+
+      <section class="hero view is-active" id="today-view">
+        <div class="ambient ambient-a"></div>
+        <div class="ambient ambient-b"></div>
+
+        <section class="current-panel glass" aria-labelledby="current-title">
+          <div class="current-node-indicator" aria-label="当前任务节点" title="当前任务节点">
+            <span></span>
+          </div>
+          <h1 id="current-title"></h1>
+          <p class="current-summary" id="current-summary"></p>
+
+          <div class="node-chip-row">
+            <span class="node-chip" id="current-priority"></span>
+            <span class="node-chip muted" id="current-rank"></span>
+          </div>
+
+          <article class="action-plan">
+            <div class="action-plan-header">
+              <div>
+                <p class="panel-kicker">Suggest Action Plan</p>
+              </div>
+            </div>
+            <p class="plan-summary" id="action-plan-summary"></p>
+            <ol class="plan-steps" id="action-plan-steps"></ol>
+          </article>
+
+          <article class="prepared-result">
+            <div class="prepared-result-header">
+              <div>
+                <p class="panel-kicker">Draft Output</p>
+                <h2 id="prepared-result-title"></h2>
+              </div>
+            </div>
+            <p id="prepared-result-summary"></p>
+            <ul id="prepared-result-points"></ul>
+          </article>
+
+          <div class="completion-panel finish-dock" aria-label="当前任务完成方式">
+            <a class="ai-result-link" id="ai-result-link" href="#" target="_blank" rel="noreferrer">查看 AI 结果</a>
+            <input id="manual-result-url" type="url" placeholder="不满意就粘贴自己的 Doc / Base 链接" />
+            <button class="primary-action finish-action" id="complete-button">完成</button>
+          </div>
+        </section>
+
+        <aside class="queue-panel" aria-labelledby="queue-title">
+          <div class="queue-header">
+            <div>
+              <p class="panel-kicker">Task Queue</p>
+              <h2 id="queue-title">接下来要做</h2>
+            </div>
+          </div>
+
+          <div class="queue-chain" id="queue-chain"></div>
+        </aside>
+      </section>
+
+      <section class="workspace-page view" id="tree-view">
+        <section class="tree-canvas tree-only glass" aria-label="目标树">
+          <div class="tree-map" id="tree-map"></div>
+        </section>
+      </section>
+
+      <section class="workspace-page view" id="methods-view">
+        <div class="knowledge-layout knowledge-workbench">
+          <section class="knowledge-section current-result-section glass">
+            <div class="canvas-header">
+              <div>
+                <p class="panel-kicker">Current Output</p>
+                <h2>当前任务结果</h2>
+              </div>
+            </div>
+            <div class="knowledge-grid artifact-grid" id="intermediate-grid"></div>
+          </section>
+
+          <section class="knowledge-section skill-section glass">
+            <div class="canvas-header">
+              <div>
+                <p class="panel-kicker">Skill</p>
+                <h2>可调用能力</h2>
+              </div>
+            </div>
+            <div class="knowledge-grid" id="skill-grid"></div>
+          </section>
+
+          <section class="knowledge-section reusable-knowledge-section glass">
+            <div class="canvas-header">
+              <div>
+                <p class="panel-kicker">Knowledge</p>
+                <h2>可复用知识索引</h2>
+              </div>
+            </div>
+            <div class="knowledge-grid" id="knowledge-grid"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="markdown-editor" id="markdown-editor" hidden aria-label="Markdown 编辑器">
+        <div class="markdown-editor-panel glass">
+          <div class="markdown-editor-header">
+            <div>
+              <p class="panel-kicker">Web 内编辑</p>
+              <h2 id="markdown-editor-title"></h2>
+              <span id="markdown-editor-path"></span>
+            </div>
+            <button class="editor-close" id="markdown-editor-close" type="button" aria-label="关闭编辑器">×</button>
+          </div>
+          <textarea id="markdown-editor-textarea" spellcheck="false"></textarea>
+          <div class="editor-actions">
+            <button class="soft-action" id="markdown-editor-save" type="button">保存到服务器</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/demo/app.js"></script>
+  </body>
+</html>
