@@ -115,7 +115,7 @@ async function init() {
     await loadAppData();
     render();
   } catch (error) {
-    console.error("Failed to load Northstar data", error);
+    console.error("Failed to load Polaris data", error);
     renderFatalState(error);
   }
 }

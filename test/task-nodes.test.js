@@ -15,7 +15,7 @@ describe("task node structure v1", () => {
     const tree = buildTree(sampleNodes);
 
     assert.equal(tree.length, 1);
-    assert.equal(tree[0].id, "northstar");
+    assert.equal(tree[0].id, "polaris");
     assert.equal(tree[0].children[0].id, "find-scenario");
   });
 
@@ -28,7 +28,7 @@ describe("task node structure v1", () => {
 
     assert.ok(leafIds.includes("try-demo"));
     assert.ok(leafIds.includes("study-real-cases"));
-    assert.ok(!queueIds.includes("northstar"));
+    assert.ok(!queueIds.includes("polaris"));
     assert.deepEqual(queueIds.sort(), leafIds.sort());
   });
 

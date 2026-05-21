@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 
 export function resolveDataRoot({ argv = [], env = {}, cwd = process.cwd(), fallback } = {}) {
   const cliDataDir = readDataDirArg(argv);
-  const requestedDataDir = cliDataDir ?? env.NORTHSTAR_DATA_DIR ?? fallback;
+  const requestedDataDir = cliDataDir ?? env.POLARIS_DATA_DIR ?? fallback;
   if (!requestedDataDir) {
     throw new Error("A fallback data directory is required");
   }

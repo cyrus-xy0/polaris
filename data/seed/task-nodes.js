@@ -2,17 +2,17 @@ import { CREATED_FROM, TASK_STATES, TASK_TAGS, createNode } from "../../src/task
 
 export const sampleNodes = [
   createNode({
-    id: "northstar",
+    id: "polaris",
     title: "找到一个有 ToB 潜力的 AI 场景，设计一个有创造力、有代际差异的 AI 解决方案，并落地它",
     tag: TASK_TAGS.THINK,
-    description: "作为当前工作的北极星目标，持续约束场景选择、方案创造性和落地验证。",
+    description: "作为当前工作的 Polaris 目标，持续约束场景选择、方案创造性和落地验证。",
     aiActions: ["明确 ToB 潜力标准", "筛选高价值 AI 场景", "推进最小落地验证"],
     state: TASK_STATES.TODO,
     createdFrom: CREATED_FROM.USER,
   }),
   createNode({
     id: "find-scenario",
-    parentId: "northstar",
+    parentId: "polaris",
     title: "找场景",
     tag: TASK_TAGS.THINK,
     description: "从足够多的候选场景里收敛出值得做的 ToB AI 方向。",
@@ -22,7 +22,7 @@ export const sampleNodes = [
   }),
   createNode({
     id: "define-solution",
-    parentId: "northstar",
+    parentId: "polaris",
     title: "设计有代际差异的 AI 方案",
     tag: TASK_TAGS.THINK,
     description: "把场景判断转成一个明显不同于传统软件的 AI-native 解法。",
@@ -32,7 +32,7 @@ export const sampleNodes = [
   }),
   createNode({
     id: "validate-demand",
-    parentId: "northstar",
+    parentId: "polaris",
     title: "验证需求和产品感觉",
     tag: TASK_TAGS.VERIFY,
     description: "用 demo、真实材料和用户反馈判断这个方向是否值得继续。",
@@ -42,7 +42,7 @@ export const sampleNodes = [
   }),
   createNode({
     id: "land-solution",
-    parentId: "northstar",
+    parentId: "polaris",
     title: "落地最小可用闭环",
     tag: TASK_TAGS.EXECUTE,
     description: "把原型变成可以持续使用的 Web 和飞书 Bot 闭环。",

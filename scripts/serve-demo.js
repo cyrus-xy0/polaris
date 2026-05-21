@@ -65,7 +65,7 @@ function createDemoServer(port) {
   });
 
   server.listen(port, "127.0.0.1", () => {
-    console.log(`Northstar demo running at http://127.0.0.1:${port}`);
+    console.log(`Polaris demo running at http://127.0.0.1:${port}`);
     console.log(`Data directory: ${dataRoot}`);
   });
 }

@@ -1,7 +1,7 @@
 {
-  "name": "northstar",
+  "name": "polaris",
   "version": "0.1.0",
-  "description": "Northstar local demo for AI-native task-node workflows",
+  "description": "Polaris local demo for AI-native task-node workflows",
   "private": true,
   "type": "module",
   "engines": {
@@ -9,7 +9,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/cyrus-xy0/northstar.git"
+    "url": "https://github.com/cyrus-xy0/polaris.git"
   },
   "scripts": {
     "start": "node --no-warnings=ExperimentalWarning scripts/serve-demo.js",

@@ -10,11 +10,11 @@ describe("runtime configuration", () => {
     );
   });
 
-  it("allows NORTHSTAR_DATA_DIR to point at a local knowledge directory", () => {
+  it("allows POLARIS_DATA_DIR to point at a local knowledge directory", () => {
     assert.equal(
       resolveDataRoot({
         argv: [],
-        env: { NORTHSTAR_DATA_DIR: "../knowledge-base" },
+        env: { POLARIS_DATA_DIR: "../knowledge-base" },
         cwd: "/tmp/app",
         fallback: "data",
       }),
@@ -25,12 +25,12 @@ describe("runtime configuration", () => {
   it("lets --data-dir override the environment", () => {
     assert.equal(
       resolveDataRoot({
-        argv: ["--data-dir", "/opt/northstar"],
-        env: { NORTHSTAR_DATA_DIR: "/tmp/ignored" },
+        argv: ["--data-dir", "/opt/polaris"],
+        env: { POLARIS_DATA_DIR: "/tmp/ignored" },
         cwd: "/tmp/app",
         fallback: "data",
       }),
-      "/opt/northstar",
+      "/opt/polaris",
     );
   });
 

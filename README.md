@@ -1,6 +1,6 @@
-# Northstar
+# Polaris
 
-Northstar is a local demo for exploring an AI-native task-node workflow. It separates the task tree, reusable knowledge, skills, and output artifacts into a small data layer while keeping the browser UI lightweight.
+Polaris is a local demo for exploring an AI-native task-node workflow. It separates the task tree, reusable knowledge, skills, and output artifacts into a small data layer while keeping the browser UI lightweight.
 
 ## Run locally
 
@@ -21,37 +21,37 @@ The demo starts on `http://127.0.0.1:4173/`. If the port is already in use, the 
 
 ## Connect a local data plane
 
-Northstar is meant to run against a local data directory. That directory owns the SQLite runtime state, project source configuration, and editable markdown-backed knowledge and skills.
+Polaris is meant to run against a local data directory. That directory owns the SQLite runtime state, project source configuration, and editable markdown-backed knowledge and skills.
 
 Start with an empty directory:
 
 ```bash
-NORTHSTAR_DATA_DIR=/path/to/northstar-data npm start
+POLARIS_DATA_DIR=/path/to/polaris-data npm start
 ```
 
 You can also pass it as a CLI flag:
 
 ```bash
-npm start -- --data-dir /path/to/northstar-data
+npm start -- --data-dir /path/to/polaris-data
 ```
 
-On first run, Northstar creates this shape:
+On first run, Polaris creates this shape:
 
 ```text
-northstar-data/
-  northstar.project.json
-  northstar.db
+polaris-data/
+  polaris.project.json
+  polaris.db
   knowledge/
     *.md
   skills/
     *.md
 ```
 
-`northstar.project.json` owns the data sources:
+`polaris.project.json` owns the data sources:
 
 ```json
 {
-  "name": "Northstar",
+  "name": "Polaris",
   "sources": [
     {
       "id": "default-knowledge",
@@ -78,7 +78,7 @@ To connect your own folder, stop the server, add another source entry, and resta
   "id": "my-local-notes",
   "kind": "knowledge",
   "label": "My Local Notes",
-  "path": "/Users/me/Notes/northstar",
+  "path": "/Users/me/Notes/polaris",
   "defaultType": "个人知识"
 }
 ```
@@ -118,11 +118,11 @@ Use the actual port printed by `npm start` if it is not `4173`. A connected exte
 Data handoff checklist:
 
 - `npm start` launches the browser UI with no extra packages to install.
-- `NORTHSTAR_DATA_DIR` or `--data-dir` points the app at a deployer's own local state.
-- `northstar.project.json` lists every local data source that should be imported.
+- `POLARIS_DATA_DIR` or `--data-dir` points the app at a deployer's own local state.
+- `polaris.project.json` lists every local data source that should be imported.
 - New or renamed markdown files require a server restart so the source scan can rebuild the library index.
 - Existing markdown content can be edited from the browser and persists to disk.
-- Task-node state persists in `<data-dir>/northstar.db`.
+- Task-node state persists in `<data-dir>/polaris.db`.
 - Markdown-backed `knowledge` and `skills` are configurable through project sources; seeded output artifact links live in SQLite from `data/seed/library.js`.
 
 ## Test
@@ -136,8 +136,8 @@ npm test
 - Task-node seed data lives in `data/seed/task-nodes.js`.
 - Knowledge, skill, and artifact seed data lives in `data/seed/library.js`.
 - Bundled markdown knowledge and skills live in `data/knowledge/` and `data/skills/`.
-- Project source configuration lives at `<data-dir>/northstar.project.json`.
-- Runtime state is persisted to local SQLite at `<data-dir>/northstar.db`; this file is intentionally ignored by git when the default `data/` directory is used. Existing `<data-dir>/polaris.db` data is copied forward on first run.
+- Project source configuration lives at `<data-dir>/polaris.project.json`.
+- Runtime state is persisted to local SQLite at `<data-dir>/polaris.db`; this file is intentionally ignored by git when the default `data/` directory is used. Previous local database files are migrated automatically on first run.
 
 ## Project layout
 

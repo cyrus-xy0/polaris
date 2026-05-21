@@ -12,10 +12,10 @@ const defaultSources = [
   { id: "default-knowledge", kind: "knowledge", label: "Knowledge", path: "knowledge", defaultType: "本地知识" },
   { id: "default-skills", kind: "skills", label: "Skill", path: "skills", defaultType: "本地能力" },
 ];
-const projectFileName = "northstar.project.json";
+const projectFileName = "polaris.project.json";
 
 export const defaultDataRoot = join(repoRoot, "data");
-export const defaultDbPath = join(defaultDataRoot, "northstar.db");
+export const defaultDbPath = join(defaultDataRoot, "polaris.db");
 
 export function createRepository(options = {}) {
   const dataRoot = resolve(options.dataRoot ?? defaultDataRoot);
@@ -23,9 +23,8 @@ export function createRepository(options = {}) {
   mkdirSync(dataRoot, { recursive: true });
   ensureDataFiles(dataRoot, seedDataRoot);
   const project = loadProject(dataRoot);
-  const dbPath = resolve(options.dbPath ?? join(dataRoot, "northstar.db"));
+  const dbPath = resolve(options.dbPath ?? join(dataRoot, "polaris.db"));
   mkdirSync(dirname(dbPath), { recursive: true });
-  if (!options.dbPath) copyLegacyDatabase(dataRoot, dbPath);
 
   const db = new DatabaseSync(dbPath);
   db.exec("PRAGMA foreign_keys = ON");
@@ -205,13 +204,6 @@ function seedIfEmpty(repository, db) {
   }
 }
 
-function copyLegacyDatabase(dataRoot, dbPath) {
-  const legacyDbPath = resolve(dataRoot, "polaris.db");
-  if (legacyDbPath !== dbPath && existsSync(legacyDbPath) && !existsSync(dbPath)) {
-    copyFileSync(legacyDbPath, dbPath);
-  }
-}
-
 function ensureDataFiles(dataRoot, seedDataRoot) {
   for (const { path } of defaultSources) {
     copyMissingMarkdownFiles(join(seedDataRoot, path), join(dataRoot, path));
@@ -229,16 +221,23 @@ function loadProject(dataRoot) {
   }
 
   return {
-    name: typeof rawProject.name === "string" && rawProject.name.trim() ? rawProject.name.trim() : "Northstar",
+    name: normalizeProjectName(rawProject.name),
     sources: normalizeProjectSources(rawProject.sources, dataRoot),
   };
 }
 
 function createDefaultProject() {
   return {
-    name: "Northstar",
+    name: "Polaris",
     sources: defaultSources,
   };
+}
+
+function normalizeProjectName(name) {
+  if (typeof name === "string" && name.trim()) {
+    return name.trim();
+  }
+  return "Polaris";
 }
 
 function normalizeProjectSources(sources, dataRoot) {
