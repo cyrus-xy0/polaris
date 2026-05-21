@@ -1,11 +1,17 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, join, normalize, resolve } from "node:path";
+import { resolveDataRoot } from "../src/config.js";
 import { createRepository } from "../src/data/repository.js";
 
 const root = resolve(import.meta.dirname, "..");
 const preferredPort = 4173;
-const repository = createRepository();
+const dataRoot = resolveDataRoot({
+  argv: process.argv.slice(2),
+  env: process.env,
+  fallback: join(root, "data"),
+});
+const repository = createRepository({ dataRoot });
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -60,6 +66,7 @@ function createDemoServer(port) {
 
   server.listen(port, "127.0.0.1", () => {
     console.log(`Northstar demo running at http://127.0.0.1:${port}`);
+    console.log(`Data directory: ${dataRoot}`);
   });
 }
 

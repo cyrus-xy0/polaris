@@ -1,5 +1,6 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, join, normalize, relative, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { libraryItems } from "../../data/seed/library.js";
@@ -7,13 +8,19 @@ import { sampleNodes } from "../../data/seed/task-nodes.js";
 import { createNode, indexNodes } from "../task-nodes.js";
 
 const repoRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const markdownLibraries = [
+  { kind: "knowledge", folder: "knowledge", defaultType: "本地知识" },
+  { kind: "skills", folder: "skills", defaultType: "本地能力" },
+];
 
 export const defaultDataRoot = join(repoRoot, "data");
 export const defaultDbPath = join(defaultDataRoot, "northstar.db");
 
 export function createRepository(options = {}) {
   const dataRoot = resolve(options.dataRoot ?? defaultDataRoot);
+  const seedDataRoot = resolve(options.seedDataRoot ?? defaultDataRoot);
   mkdirSync(dataRoot, { recursive: true });
+  ensureDataFiles(dataRoot, seedDataRoot);
   const dbPath = resolve(options.dbPath ?? join(dataRoot, "northstar.db"));
   mkdirSync(dirname(dbPath), { recursive: true });
   if (!options.dbPath) copyLegacyDatabase(dataRoot, dbPath);
@@ -125,6 +132,7 @@ export function createRepository(options = {}) {
   };
 
   seedIfEmpty(repository, db);
+  syncLocalMarkdownItems(db, dataRoot);
   return repository;
 }
 
@@ -194,6 +202,204 @@ function copyLegacyDatabase(dataRoot, dbPath) {
   if (legacyDbPath !== dbPath && existsSync(legacyDbPath) && !existsSync(dbPath)) {
     copyFileSync(legacyDbPath, dbPath);
   }
+}
+
+function ensureDataFiles(dataRoot, seedDataRoot) {
+  for (const { folder } of markdownLibraries) {
+    copyMissingMarkdownFiles(join(seedDataRoot, folder), join(dataRoot, folder));
+  }
+}
+
+function copyMissingMarkdownFiles(sourceDir, targetDir) {
+  if (!existsSync(sourceDir)) return;
+
+  for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
+    const sourcePath = join(sourceDir, entry.name);
+    const targetPath = join(targetDir, entry.name);
+    if (entry.isDirectory()) {
+      copyMissingMarkdownFiles(sourcePath, targetPath);
+      continue;
+    }
+    if (!entry.isFile() || extname(entry.name) !== ".md" || existsSync(targetPath)) continue;
+
+    mkdirSync(dirname(targetPath), { recursive: true });
+    copyFileSync(sourcePath, targetPath);
+  }
+}
+
+function syncLocalMarkdownItems(db, dataRoot) {
+  for (const library of markdownLibraries) {
+    const rootDir = join(dataRoot, library.folder);
+    if (!existsSync(rootDir)) continue;
+
+    let nextPosition = db
+      .prepare("SELECT COALESCE(MAX(position), -1) + 1 AS position FROM library_items WHERE kind = ?")
+      .get(library.kind).position;
+
+    for (const filePath of listMarkdownFiles(rootDir)) {
+      const path = toLibraryPath(dataRoot, filePath);
+      const metadata = readMarkdownMetadata(filePath, library, rootDir);
+      const existing = db
+        .prepare("SELECT id FROM library_items WHERE kind = ? AND source = 'md' AND path = ?")
+        .get(library.kind, path);
+
+      if (existing) {
+        if (existing.id.startsWith(`local-${library.kind}-`)) {
+          updateLocalMarkdownItem(db, existing.id, metadata);
+        }
+        continue;
+      }
+
+      insertLocalMarkdownItem(db, {
+        id: createUniqueLibraryId(db, createLocalLibraryId(library.kind, path)),
+        kind: library.kind,
+        path,
+        position: nextPosition,
+        ...metadata,
+      });
+      nextPosition += 1;
+    }
+  }
+}
+
+function listMarkdownFiles(rootDir) {
+  const files = [];
+  for (const entry of readdirSync(rootDir, { withFileTypes: true })) {
+    const filePath = join(rootDir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...listMarkdownFiles(filePath));
+    } else if (entry.isFile() && extname(entry.name) === ".md") {
+      files.push(filePath);
+    }
+  }
+  return files.sort((a, b) => a.localeCompare(b));
+}
+
+function toLibraryPath(dataRoot, filePath) {
+  return `/${relative(dataRoot, filePath).split(sep).join("/")}`;
+}
+
+function readMarkdownMetadata(filePath, library, rootDir) {
+  const markdown = readFileSync(filePath, "utf8");
+  const { attributes, content } = splitFrontmatter(markdown);
+  const relativeFolder = relative(rootDir, dirname(filePath));
+  const title = attributes.title ?? findFirstHeading(content) ?? humanizeFileName(filePath);
+  const description = attributes.description ?? findFirstParagraph(content) ?? "";
+
+  return {
+    relatedNodeIds: parseFrontmatterList(attributes.relatedNodeIds ?? attributes.relatedNodes ?? ""),
+    type: attributes.type ?? (relativeFolder && relativeFolder !== "." ? relativeFolder.split(sep).at(-1) : library.defaultType),
+    title: truncateText(title, 64),
+    description: truncateText(description, 140),
+    usage: attributes.usage ?? null,
+  };
+}
+
+function splitFrontmatter(markdown) {
+  if (!markdown.startsWith("---\n")) {
+    return { attributes: {}, content: markdown };
+  }
+
+  const endIndex = markdown.indexOf("\n---", 4);
+  if (endIndex === -1) {
+    return { attributes: {}, content: markdown };
+  }
+
+  const rawAttributes = markdown.slice(4, endIndex);
+  const content = markdown.slice(endIndex + 4).replace(/^\s+/, "");
+  const attributes = {};
+
+  for (const line of rawAttributes.split(/\r?\n/)) {
+    const match = line.match(/^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$/);
+    if (!match) continue;
+    attributes[match[1]] = match[2].replace(/^["']|["']$/g, "").trim();
+  }
+
+  return { attributes, content };
+}
+
+function findFirstHeading(markdown) {
+  const match = markdown.match(/^#\s+(.+)$/m);
+  return match?.[1]?.trim() ?? null;
+}
+
+function findFirstParagraph(markdown) {
+  const paragraph = markdown
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .find((block) => block && !block.startsWith("#") && !block.startsWith("```"));
+  return paragraph ? paragraph.replace(/\s+/g, " ") : null;
+}
+
+function humanizeFileName(filePath) {
+  return basename(filePath, extname(filePath)).replace(/[-_]+/g, " ");
+}
+
+function truncateText(text, maxLength) {
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 1)}…`;
+}
+
+function parseFrontmatterList(value) {
+  if (!value) return [];
+  return value
+    .replace(/^\[|\]$/g, "")
+    .split(",")
+    .map((item) => item.trim().replace(/^["']|["']$/g, ""))
+    .filter(Boolean);
+}
+
+function createLocalLibraryId(kind, path) {
+  const slug = path
+    .replace(/\.md$/i, "")
+    .replace(/[^A-Za-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+  const hash = createHash("sha1").update(`${kind}:${path}`).digest("hex").slice(0, 8);
+  return `local-${kind}-${slug || "markdown"}-${hash}`;
+}
+
+function createUniqueLibraryId(db, preferredId) {
+  let id = preferredId;
+  let index = 2;
+  while (db.prepare("SELECT 1 FROM library_items WHERE id = ?").get(id)) {
+    id = `${preferredId}-${index}`;
+    index += 1;
+  }
+  return id;
+}
+
+function insertLocalMarkdownItem(db, item) {
+  db.prepare(
+    `INSERT INTO library_items (
+      id, kind, source, path, doc_type, url, related_node_ids, type, title, description, usage, position
+    ) VALUES (?, ?, 'md', ?, NULL, NULL, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    item.id,
+    item.kind,
+    item.path,
+    JSON.stringify(item.relatedNodeIds),
+    item.type,
+    item.title,
+    item.description,
+    item.usage,
+    item.position,
+  );
+}
+
+function updateLocalMarkdownItem(db, id, metadata) {
+  db.prepare(
+    `UPDATE library_items
+     SET related_node_ids = ?, type = ?, title = ?, description = ?, usage = ?
+     WHERE id = ?`,
+  ).run(
+    JSON.stringify(metadata.relatedNodeIds),
+    metadata.type,
+    metadata.title,
+    metadata.description,
+    metadata.usage,
+    id,
+  );
 }
 
 function replaceTaskNodes(db, nodes) {

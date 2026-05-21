@@ -4,6 +4,9 @@
   "description": "Northstar local demo for AI-native task-node workflows",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.5"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/cyrus-xy0/northstar.git"

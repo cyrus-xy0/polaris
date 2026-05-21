@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -45,6 +45,54 @@ describe("local data repository", () => {
 
       assert.equal(item.markdown, "# Custom Skill\n");
       assert.equal(readFileSync(join(dataRoot, "skills/find-main-contradiction.md"), "utf8"), "# Custom Skill\n");
+    } finally {
+      repository.close();
+      rmSync(dataRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("copies bundled markdown files into a configured data directory", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "northstar-data-"));
+    const repository = createRepository({ dataRoot, dbPath: join(dataRoot, "northstar.db") });
+
+    try {
+      const item = repository.getLibrary().knowledge.find((entry) => entry.id === "tob-agent-trends");
+
+      assert.ok(existsSync(join(dataRoot, "knowledge/tob-agent-trends.md")));
+      assert.match(item.markdown, /ToB Agent 落地趋势/);
+    } finally {
+      repository.close();
+      rmSync(dataRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("imports local markdown knowledge from the configured data directory", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "northstar-data-"));
+    const knowledgeDir = join(dataRoot, "knowledge/行业判断");
+    mkdirSync(knowledgeDir, { recursive: true });
+    writeFileSync(
+      join(knowledgeDir, "custom-market-signal.md"),
+      [
+        "---",
+        "title: 自定义市场信号",
+        "description: 来自本地知识库的判断摘要。",
+        "relatedNodeIds: find-scenario, define-solution",
+        "---",
+        "# 自定义市场信号",
+        "",
+        "这是一条部署者自己的本地知识。",
+      ].join("\n"),
+    );
+
+    const repository = createRepository({ dataRoot, dbPath: join(dataRoot, "northstar.db") });
+
+    try {
+      const item = repository.getLibrary().knowledge.find((entry) => entry.title === "自定义市场信号");
+
+      assert.equal(item.type, "行业判断");
+      assert.equal(item.description, "来自本地知识库的判断摘要。");
+      assert.deepEqual(item.relatedNodeIds, ["find-scenario", "define-solution"]);
+      assert.match(item.markdown, /部署者自己的本地知识/);
     } finally {
       repository.close();
       rmSync(dataRoot, { recursive: true, force: true });
