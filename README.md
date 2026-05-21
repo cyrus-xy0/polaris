@@ -30,6 +30,7 @@ Northstar expects this shape:
 
 ```text
 northstar-data/
+  northstar.project.json
   northstar.db
   knowledge/
     *.md
@@ -37,7 +38,43 @@ northstar-data/
     *.md
 ```
 
-Markdown files under `knowledge/` and `skills/` are imported automatically. Files may use optional front matter:
+`northstar.project.json` owns the project sources. It is created automatically on first run:
+
+```json
+{
+  "name": "Northstar",
+  "sources": [
+    {
+      "id": "default-knowledge",
+      "kind": "knowledge",
+      "label": "Knowledge",
+      "path": "knowledge",
+      "defaultType": "本地知识"
+    },
+    {
+      "id": "default-skills",
+      "kind": "skills",
+      "label": "Skill",
+      "path": "skills",
+      "defaultType": "本地能力"
+    }
+  ]
+}
+```
+
+Add another local source by adding a source entry. `path` may be relative to the data directory or an absolute local path:
+
+```json
+{
+  "id": "my-local-notes",
+  "kind": "knowledge",
+  "label": "My Local Notes",
+  "path": "/Users/me/Notes/northstar",
+  "defaultType": "个人知识"
+}
+```
+
+Markdown files from configured `knowledge` and `skills` sources are imported automatically. Files may use optional front matter:
 
 ```markdown
 ---
@@ -63,6 +100,7 @@ npm test
 - Task-node seed data lives in `data/seed/task-nodes.js`.
 - Knowledge, skill, and artifact seed data lives in `data/seed/library.js`.
 - Bundled markdown knowledge and skills live in `data/knowledge/` and `data/skills/`.
+- Project source configuration lives at `<data-dir>/northstar.project.json`.
 - Runtime state is persisted to local SQLite at `<data-dir>/northstar.db`; this file is intentionally ignored by git when the default `data/` directory is used. Existing `<data-dir>/polaris.db` data is copied forward on first run.
 
 ## Project layout

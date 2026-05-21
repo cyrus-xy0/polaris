@@ -66,6 +66,81 @@ describe("local data repository", () => {
     }
   });
 
+  it("creates and exposes project sources", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "northstar-data-"));
+    const repository = createRepository({ dataRoot, dbPath: join(dataRoot, "northstar.db") });
+
+    try {
+      const project = repository.getBootstrap().project;
+
+      assert.equal(project.name, "Northstar");
+      assert.ok(existsSync(join(dataRoot, "northstar.project.json")));
+      assert.deepEqual(
+        project.sources.map((source) => [source.id, source.kind, source.path]),
+        [
+          ["default-knowledge", "knowledge", "knowledge"],
+          ["default-skills", "skills", "skills"],
+        ],
+      );
+    } finally {
+      repository.close();
+      rmSync(dataRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("imports markdown from project sources outside the data directory", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "northstar-data-"));
+    const sourceRoot = mkdtempSync(join(tmpdir(), "northstar-source-"));
+    writeFileSync(
+      join(dataRoot, "northstar.project.json"),
+      JSON.stringify(
+        {
+          name: "Client Project",
+          sources: [
+            {
+              id: "client-knowledge",
+              kind: "knowledge",
+              label: "Client Knowledge",
+              path: sourceRoot,
+              defaultType: "客户知识",
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+    writeFileSync(
+      join(sourceRoot, "client-note.md"),
+      [
+        "---",
+        "title: 外部客户知识",
+        "description: 来自外部 source 的知识。",
+        "---",
+        "# 外部客户知识",
+        "",
+        "这条知识不在 Northstar data dir 内。",
+      ].join("\n"),
+    );
+
+    const repository = createRepository({ dataRoot, dbPath: join(dataRoot, "northstar.db") });
+
+    try {
+      const bootstrap = repository.getBootstrap();
+      const item = bootstrap.library.knowledge.find((entry) => entry.title === "外部客户知识");
+
+      assert.equal(bootstrap.project.name, "Client Project");
+      assert.equal(bootstrap.project.sources[0].id, "client-knowledge");
+      assert.equal(item.path, "/sources/client-knowledge/client-note.md");
+      assert.equal(item.type, "客户知识");
+      assert.match(item.markdown, /不在 Northstar data dir 内/);
+    } finally {
+      repository.close();
+      rmSync(dataRoot, { recursive: true, force: true });
+      rmSync(sourceRoot, { recursive: true, force: true });
+    }
+  });
+
   it("imports local markdown knowledge from the configured data directory", () => {
     const dataRoot = mkdtempSync(join(tmpdir(), "northstar-data-"));
     const knowledgeDir = join(dataRoot, "knowledge/行业判断");

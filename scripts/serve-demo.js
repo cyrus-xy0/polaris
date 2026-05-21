@@ -82,6 +82,11 @@ async function handleApiRequest(request, response) {
       return true;
     }
 
+    if (request.method === "GET" && url.pathname === "/api/project") {
+      sendJson(response, 200, { project: repository.getProject() });
+      return true;
+    }
+
     if (request.method === "GET" && url.pathname === "/api/task-nodes") {
       sendJson(response, 200, { nodes: repository.listTaskNodes() });
       return true;

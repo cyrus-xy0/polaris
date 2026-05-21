@@ -8,10 +8,11 @@ import { sampleNodes } from "../../data/seed/task-nodes.js";
 import { createNode, indexNodes } from "../task-nodes.js";
 
 const repoRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const markdownLibraries = [
-  { kind: "knowledge", folder: "knowledge", defaultType: "本地知识" },
-  { kind: "skills", folder: "skills", defaultType: "本地能力" },
+const defaultSources = [
+  { id: "default-knowledge", kind: "knowledge", label: "Knowledge", path: "knowledge", defaultType: "本地知识" },
+  { id: "default-skills", kind: "skills", label: "Skill", path: "skills", defaultType: "本地能力" },
 ];
+const projectFileName = "northstar.project.json";
 
 export const defaultDataRoot = join(repoRoot, "data");
 export const defaultDbPath = join(defaultDataRoot, "northstar.db");
@@ -21,6 +22,7 @@ export function createRepository(options = {}) {
   const seedDataRoot = resolve(options.seedDataRoot ?? defaultDataRoot);
   mkdirSync(dataRoot, { recursive: true });
   ensureDataFiles(dataRoot, seedDataRoot);
+  const project = loadProject(dataRoot);
   const dbPath = resolve(options.dbPath ?? join(dataRoot, "northstar.db"));
   mkdirSync(dirname(dbPath), { recursive: true });
   if (!options.dbPath) copyLegacyDatabase(dataRoot, dbPath);
@@ -36,9 +38,14 @@ export function createRepository(options = {}) {
 
     getBootstrap() {
       return {
+        project: this.getProject(),
         nodes: this.listTaskNodes(),
         library: this.getLibrary(),
       };
+    },
+
+    getProject() {
+      return serializeProject(project);
     },
 
     listTaskNodes() {
@@ -99,7 +106,7 @@ export function createRepository(options = {}) {
         if (row.doc_type) item.docType = row.doc_type;
         if (row.url) item.url = row.url;
         if (row.source === "md" && row.path) {
-          item.markdown = readMarkdownFile(dataRoot, row.path);
+          item.markdown = readMarkdownFile(dataRoot, project, row.path);
         }
 
         library[row.kind].push(item);
@@ -124,7 +131,7 @@ export function createRepository(options = {}) {
         throw createHttpError(400, `Library item is not markdown-backed: ${kind}/${id}`);
       }
 
-      const markdownPath = resolveDataPath(dataRoot, row.path);
+      const markdownPath = resolveLibraryItemPath(dataRoot, project, row.path);
       mkdirSync(dirname(markdownPath), { recursive: true });
       writeFileSync(markdownPath, markdown, "utf8");
       return this.getLibrary()[kind].find((item) => item.id === id);
@@ -132,7 +139,7 @@ export function createRepository(options = {}) {
   };
 
   seedIfEmpty(repository, db);
-  syncLocalMarkdownItems(db, dataRoot);
+  syncProjectSources(db, dataRoot, project);
   return repository;
 }
 
@@ -205,9 +212,76 @@ function copyLegacyDatabase(dataRoot, dbPath) {
 }
 
 function ensureDataFiles(dataRoot, seedDataRoot) {
-  for (const { folder } of markdownLibraries) {
-    copyMissingMarkdownFiles(join(seedDataRoot, folder), join(dataRoot, folder));
+  for (const { path } of defaultSources) {
+    copyMissingMarkdownFiles(join(seedDataRoot, path), join(dataRoot, path));
   }
+}
+
+function loadProject(dataRoot) {
+  const projectPath = join(dataRoot, projectFileName);
+  let rawProject = {};
+  if (existsSync(projectPath)) {
+    rawProject = parseJson(readFileSync(projectPath, "utf8"), {});
+  } else {
+    rawProject = createDefaultProject();
+    writeFileSync(projectPath, `${JSON.stringify(rawProject, null, 2)}\n`, "utf8");
+  }
+
+  return {
+    name: typeof rawProject.name === "string" && rawProject.name.trim() ? rawProject.name.trim() : "Northstar",
+    sources: normalizeProjectSources(rawProject.sources, dataRoot),
+  };
+}
+
+function createDefaultProject() {
+  return {
+    name: "Northstar",
+    sources: defaultSources,
+  };
+}
+
+function normalizeProjectSources(sources, dataRoot) {
+  const normalizedSources = [];
+  const sourceInputs = Array.isArray(sources) && sources.length > 0 ? sources : defaultSources;
+
+  for (const [position, source] of sourceInputs.entries()) {
+    if (!["knowledge", "skills"].includes(source.kind)) continue;
+    const sourcePath = typeof source.path === "string" && source.path.trim() ? source.path.trim() : source.kind;
+    const rootPath = resolve(dataRoot, sourcePath);
+    normalizedSources.push({
+      id: source.id || createSourceId(source.kind, sourcePath),
+      kind: source.kind,
+      label: source.label || source.kind,
+      path: sourcePath,
+      rootPath,
+      defaultType: source.defaultType || (source.kind === "knowledge" ? "本地知识" : "本地能力"),
+      position,
+    });
+  }
+
+  return normalizedSources;
+}
+
+function createSourceId(kind, sourcePath) {
+  const slug = sourcePath
+    .replace(/[^A-Za-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+  const hash = createHash("sha1").update(`${kind}:${sourcePath}`).digest("hex").slice(0, 8);
+  return `${kind}-${slug || "source"}-${hash}`;
+}
+
+function serializeProject(project) {
+  return {
+    name: project.name,
+    sources: project.sources.map(({ id, kind, label, path, defaultType }) => ({
+      id,
+      kind,
+      label,
+      path,
+      defaultType,
+    })),
+  };
 }
 
 function copyMissingMarkdownFiles(sourceDir, targetDir) {
@@ -227,32 +301,32 @@ function copyMissingMarkdownFiles(sourceDir, targetDir) {
   }
 }
 
-function syncLocalMarkdownItems(db, dataRoot) {
-  for (const library of markdownLibraries) {
-    const rootDir = join(dataRoot, library.folder);
+function syncProjectSources(db, dataRoot, project) {
+  for (const source of project.sources) {
+    const rootDir = source.rootPath;
     if (!existsSync(rootDir)) continue;
 
     let nextPosition = db
       .prepare("SELECT COALESCE(MAX(position), -1) + 1 AS position FROM library_items WHERE kind = ?")
-      .get(library.kind).position;
+      .get(source.kind).position;
 
     for (const filePath of listMarkdownFiles(rootDir)) {
-      const path = toLibraryPath(dataRoot, filePath);
-      const metadata = readMarkdownMetadata(filePath, library, rootDir);
+      const path = toLibraryPath(dataRoot, source, filePath);
+      const metadata = readMarkdownMetadata(filePath, source, rootDir);
       const existing = db
         .prepare("SELECT id FROM library_items WHERE kind = ? AND source = 'md' AND path = ?")
-        .get(library.kind, path);
+        .get(source.kind, path);
 
       if (existing) {
-        if (existing.id.startsWith(`local-${library.kind}-`)) {
+        if (existing.id.startsWith(`local-${source.kind}-`)) {
           updateLocalMarkdownItem(db, existing.id, metadata);
         }
         continue;
       }
 
       insertLocalMarkdownItem(db, {
-        id: createUniqueLibraryId(db, createLocalLibraryId(library.kind, path)),
-        kind: library.kind,
+        id: createUniqueLibraryId(db, createLocalLibraryId(source.kind, path)),
+        kind: source.kind,
         path,
         position: nextPosition,
         ...metadata,
@@ -275,8 +349,11 @@ function listMarkdownFiles(rootDir) {
   return files.sort((a, b) => a.localeCompare(b));
 }
 
-function toLibraryPath(dataRoot, filePath) {
-  return `/${relative(dataRoot, filePath).split(sep).join("/")}`;
+function toLibraryPath(dataRoot, source, filePath) {
+  if (isPathInside(dataRoot, filePath)) {
+    return `/${relative(dataRoot, filePath).split(sep).join("/")}`;
+  }
+  return `/sources/${source.id}/${relative(source.rootPath, filePath).split(sep).join("/")}`;
 }
 
 function readMarkdownMetadata(filePath, library, rootDir) {
@@ -504,20 +581,54 @@ function insertMissingLibraryItems(db, itemsByKind) {
   }
 }
 
-function readMarkdownFile(dataRoot, markdownPath) {
-  const absolutePath = resolveDataPath(dataRoot, markdownPath);
+function readMarkdownFile(dataRoot, project, markdownPath) {
+  let absolutePath;
+  try {
+    absolutePath = resolveLibraryItemPath(dataRoot, project, markdownPath);
+  } catch {
+    return "";
+  }
   if (!existsSync(absolutePath)) return "";
   return readFileSync(absolutePath, "utf8");
 }
 
+function resolveLibraryItemPath(dataRoot, project, requestPath) {
+  const sourceMatch = requestPath.match(/^\/sources\/([^/]+)\/(.+)$/);
+  if (sourceMatch) {
+    const source = project.sources.find((item) => item.id === sourceMatch[1]);
+    if (!source) {
+      throw createHttpError(400, `Unknown project source: ${sourceMatch[1]}`);
+    }
+    return resolveBoundedPath(source.rootPath, sourceMatch[2], requestPath);
+  }
+
+  return resolveDataPath(dataRoot, requestPath);
+}
+
 function resolveDataPath(dataRoot, requestPath) {
+  return resolveBoundedPath(dataRoot, requestPath, requestPath);
+}
+
+function resolveBoundedPath(rootPath, requestPath, displayPath) {
   const normalizedPath = normalize(requestPath).replace(/^[/\\]+/, "");
-  const absolutePath = resolve(dataRoot, normalizedPath);
-  const relativePath = relative(dataRoot, absolutePath);
-  if (relativePath === ".." || relativePath.startsWith("../") || relativePath.startsWith("..\\") || isAbsolute(relativePath)) {
-    throw createHttpError(400, `Invalid data path: ${requestPath}`);
+  const absolutePath = resolve(rootPath, normalizedPath);
+  if (!isPathInside(rootPath, absolutePath)) {
+    throw createHttpError(400, `Invalid data path: ${displayPath}`);
   }
   return absolutePath;
+}
+
+function isPathInside(rootPath, filePath) {
+  const relativePath = relative(rootPath, filePath);
+  if (
+    relativePath === ".." ||
+    relativePath.startsWith("../") ||
+    relativePath.startsWith("..\\") ||
+    isAbsolute(relativePath)
+  ) {
+    return false;
+  }
+  return true;
 }
 
 function parseJson(value, fallback) {
