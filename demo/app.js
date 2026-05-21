@@ -30,6 +30,7 @@ let editingMarkdownItem = null;
 let currentPreparedArtifact = null;
 const expandedKnowledgeGroups = new Set();
 let nodeEditorFeedback = null;
+let isNodeEditorOpen = false;
 const suggestedActionPlanCache = new Map();
 
 const elements = {
@@ -53,6 +54,7 @@ const elements = {
   completeButton: document.querySelector("#complete-button"),
   manualResultUrl: document.querySelector("#manual-result-url"),
   treeMap: document.querySelector("#tree-map"),
+  nodeEditorDrawer: document.querySelector("#node-editor-drawer"),
   nodeEditorForm: document.querySelector("#node-editor-form"),
   nodeEditorHeading: document.querySelector("#node-editor-heading"),
   nodeEditorMeta: document.querySelector("#node-editor-meta"),
@@ -64,6 +66,7 @@ const elements = {
   nodeEditorDependencies: document.querySelector("#node-editor-dependencies"),
   nodeEditorReset: document.querySelector("#node-editor-reset"),
   nodeEditorStatus: document.querySelector("#node-editor-status"),
+  nodeEditorClose: document.querySelector("#node-editor-close"),
   knowledgeGrid: document.querySelector("#knowledge-grid"),
   skillGrid: document.querySelector("#skill-grid"),
   intermediateGrid: document.querySelector("#intermediate-grid"),
@@ -462,6 +465,7 @@ function renderTree() {
 
 function renderNodeEditor(focus) {
   const selected = focus.selectedId ? focus.index.byId.get(focus.selectedId) : null;
+  elements.nodeEditorDrawer.hidden = !isNodeEditorOpen || activeView !== "tree";
   const fields = [
     elements.nodeEditorTitle,
     elements.nodeEditorDescription,
@@ -472,7 +476,7 @@ function renderNodeEditor(focus) {
     elements.nodeEditorReset,
   ];
 
-  if (!selected) {
+  if (!isNodeEditorOpen || !selected) {
     elements.nodeEditorHeading.textContent = "未选择节点";
     elements.nodeEditorMeta.textContent = "";
     fields.forEach((field) => {
@@ -530,6 +534,19 @@ function renderDependencyOptions(selected) {
     });
 
   elements.nodeEditorDependencies.replaceChildren(...options);
+}
+
+function openNodeEditor(nodeId) {
+  selectedTreeNodeId = nodeId;
+  isNodeEditorOpen = true;
+  nodeEditorFeedback = null;
+  render();
+}
+
+function closeNodeEditor() {
+  isNodeEditorOpen = false;
+  nodeEditorFeedback = null;
+  render();
 }
 
 function restoreTreeScrollAfterRender(scrollContainer, scrollLeft, scrollTop) {
@@ -759,6 +776,7 @@ function createTreeNode(node, focus, depth) {
 
   const actions = document.createElement("div");
   actions.className = "tree-node-actions";
+  actions.append(createTreeActionButton("✎", "编辑节点", () => openNodeEditor(node.id)));
   actions.append(createTreeActionButton("+", "添加子节点", () => addChildNode(node.id)));
   if (node.parentId) {
     actions.append(createTreeActionButton("−", "删除节点", () => deleteTreeNode(node.id), "danger"));
@@ -939,6 +957,10 @@ function showNodeEditorStatus(nodeId, message, tone = "success") {
   nodeEditorFeedback = { nodeId, message, tone };
   elements.nodeEditorStatus.textContent = message;
   elements.nodeEditorStatus.className = `node-editor-status ${tone === "error" ? "is-error" : ""}`;
+}
+
+function closeNodeEditorFromBackdrop(event) {
+  if (event.target === elements.nodeEditorDrawer) closeNodeEditor();
 }
 
 function renderMethods() {
@@ -1209,6 +1231,8 @@ elements.viewButtons.forEach((button) => {
 elements.completeButton.addEventListener("click", completeSelectedTask);
 elements.nodeEditorForm.addEventListener("submit", saveNodeEditor);
 elements.nodeEditorReset.addEventListener("click", resetNodeEditor);
+elements.nodeEditorClose.addEventListener("click", closeNodeEditor);
+elements.nodeEditorDrawer.addEventListener("click", closeNodeEditorFromBackdrop);
 elements.manualResultUrl.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();

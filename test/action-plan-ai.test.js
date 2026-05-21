@@ -17,6 +17,8 @@ describe("action plan AI", () => {
       node: createTestNode(),
       serviceRoot,
       dataRoot: serviceRoot,
+      env: { PATH: "" },
+      includePath: false,
     });
 
     assert.deepEqual(plan, { summary: "", steps: [], provider: null });
@@ -50,6 +52,48 @@ describe("action plan AI", () => {
     assert.equal(plan.provider, "openclaw");
     assert.equal(plan.summary, "先收敛输入，再执行验证");
     assert.deepEqual(plan.steps, ["收集上下文", "生成行动计划", "记录判断"]);
+  });
+
+  it("runs hermes in oneshot mode so the output is generated text", async () => {
+    const serviceRoot = mkdtempSync(join(tmpdir(), "polaris-hermes-"));
+    const commandPath = join(serviceRoot, "hermes");
+    writeFileSync(
+      commandPath,
+      [
+        "#!/usr/bin/env node",
+        "if (process.argv[2] !== '--oneshot') process.exit(3);",
+        "if (!process.argv[3].includes('测试节点')) process.exit(4);",
+        "console.log(JSON.stringify({ summary: 'Hermes 已生成建议', steps: ['读取节点上下文', '生成建议步骤', '返回结构化结果'] }));",
+      ].join("\n"),
+    );
+    chmodSync(commandPath, 0o755);
+
+    const plan = await generateSuggestedActionPlan({
+      node: createTestNode(),
+      serviceRoot,
+      dataRoot: serviceRoot,
+    });
+
+    assert.equal(plan.provider, "hermes");
+    assert.equal(plan.summary, "Hermes 已生成建议");
+    assert.deepEqual(plan.steps, ["读取节点上下文", "生成建议步骤", "返回结构化结果"]);
+  });
+
+  it("can discover a local hermes executable from PATH after service-local locations", () => {
+    const serviceRoot = mkdtempSync(join(tmpdir(), "polaris-path-service-"));
+    const pathRoot = mkdtempSync(join(tmpdir(), "polaris-path-bin-"));
+    const commandPath = join(pathRoot, "hermes");
+    writeFileSync(commandPath, "#!/bin/sh\nexit 0\n");
+    chmodSync(commandPath, 0o755);
+
+    const generator = findLocalActionPlanGenerator({
+      serviceRoot,
+      dataRoot: serviceRoot,
+      env: { PATH: pathRoot },
+    });
+
+    assert.equal(generator.name, "hermes");
+    assert.equal(generator.commandPath, commandPath);
   });
 
   it("parses plain text generator output as ordered action steps", () => {

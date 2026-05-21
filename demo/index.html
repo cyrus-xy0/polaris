@@ -77,12 +77,15 @@
       </section>
 
       <section class="workspace-page view" id="tree-view">
-        <div class="tree-workbench">
-          <section class="tree-canvas tree-only glass" aria-label="目标树">
-            <div class="tree-map" id="tree-map"></div>
-          </section>
+        <section class="tree-canvas tree-only glass" aria-label="目标树">
+          <div class="tree-map" id="tree-map"></div>
+        </section>
+      </section>
 
-          <aside class="tree-editor glass" aria-labelledby="node-editor-heading">
+      <section class="node-editor-drawer" id="node-editor-drawer" hidden aria-label="节点编辑抽屉">
+        <aside class="tree-editor glass" aria-labelledby="node-editor-heading">
+          <div class="node-editor-shell">
+            <button class="editor-close" id="node-editor-close" type="button" aria-label="关闭节点编辑器">×</button>
             <form class="node-editor-form" id="node-editor-form">
               <div class="node-editor-header">
                 <p class="panel-kicker">Node Editor</p>
@@ -128,8 +131,8 @@
               </div>
               <p class="node-editor-status" id="node-editor-status" role="status"></p>
             </form>
-          </aside>
-        </div>
+          </div>
+        </aside>
       </section>
 
       <section class="workspace-page view" id="methods-view">

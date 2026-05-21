@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process";
 import { accessSync, constants, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 
 const generatorNames = ["openclaw", "hermes"];
 const maxSteps = 8;
+const defaultEnv = process.env;
 
 export async function generateSuggestedActionPlan({
   node,
@@ -11,14 +12,16 @@ export async function generateSuggestedActionPlan({
   relatedRecords = [],
   serviceRoot = process.cwd(),
   dataRoot = null,
-  timeoutMs = 30_000,
+  timeoutMs = 120_000,
+  env = defaultEnv,
+  includePath = true,
 } = {}) {
-  const generator = findLocalActionPlanGenerator({ serviceRoot, dataRoot });
+  const generator = findLocalActionPlanGenerator({ serviceRoot, dataRoot, env, includePath });
   if (!generator || !node) return createBlankActionPlan();
 
   try {
     const prompt = buildSuggestedActionPlanPrompt({ node, reason, relatedRecords });
-    const output = await runGenerator(generator, prompt, { cwd: serviceRoot, timeoutMs });
+    const output = await runGenerator(generator, prompt, { cwd: serviceRoot, timeoutMs, env });
     return {
       ...parseActionPlanOutput(output),
       provider: generator.name,
@@ -32,12 +35,20 @@ export async function generateSuggestedActionPlan({
   }
 }
 
-export function findLocalActionPlanGenerator({ serviceRoot = process.cwd(), dataRoot = null } = {}) {
+export function findLocalActionPlanGenerator({
+  serviceRoot = process.cwd(),
+  dataRoot = null,
+  env = defaultEnv,
+  includePath = true,
+} = {}) {
   const roots = [serviceRoot, dataRoot]
     .filter((root) => typeof root === "string" && root.trim())
     .map((root) => resolve(root));
   const candidateDirs = uniqueValues(
-    roots.flatMap((root) => [root, join(root, "bin"), join(root, "node_modules", ".bin")]),
+    [
+      ...roots.flatMap((root) => [root, join(root, "bin"), join(root, "node_modules", ".bin")]),
+      ...(includePath && typeof env.PATH === "string" ? env.PATH.split(delimiter).filter(Boolean) : []),
+    ].map((dir) => resolve(dir)),
   );
 
   for (const name of generatorNames) {
@@ -97,13 +108,14 @@ export function parseActionPlanOutput(output) {
   });
 }
 
-function runGenerator(generator, prompt, { cwd, timeoutMs }) {
+function runGenerator(generator, prompt, { cwd, timeoutMs, env }) {
   return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(generator.commandPath, [], {
+    const invocation = buildGeneratorInvocation(generator, prompt);
+    const child = spawn(generator.commandPath, invocation.args, {
       cwd,
-      stdio: ["pipe", "pipe", "pipe"],
+      stdio: [invocation.stdin ? "pipe" : "ignore", "pipe", "pipe"],
       env: {
-        ...process.env,
+        ...env,
         POLARIS_ACTION_PLAN_PROVIDER: generator.name,
       },
     });
@@ -143,8 +155,22 @@ function runGenerator(generator, prompt, { cwd, timeoutMs }) {
       resolvePromise(stdout);
     });
 
-    child.stdin.end(prompt);
+    if (invocation.stdin) child.stdin.end(invocation.stdin);
   });
+}
+
+function buildGeneratorInvocation(generator, prompt) {
+  if (generator.name === "hermes") {
+    return {
+      args: ["--oneshot", prompt],
+      stdin: null,
+    };
+  }
+
+  return {
+    args: [],
+    stdin: prompt,
+  };
 }
 
 function parseJsonPayload(text) {
