@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
@@ -9,13 +9,14 @@ import { createNode, indexNodes } from "../task-nodes.js";
 const repoRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 export const defaultDataRoot = join(repoRoot, "data");
-export const defaultDbPath = join(defaultDataRoot, "polaris.db");
+export const defaultDbPath = join(defaultDataRoot, "northstar.db");
 
 export function createRepository(options = {}) {
   const dataRoot = resolve(options.dataRoot ?? defaultDataRoot);
-  const dbPath = resolve(options.dbPath ?? join(dataRoot, "polaris.db"));
-  mkdirSync(dirname(dbPath), { recursive: true });
   mkdirSync(dataRoot, { recursive: true });
+  const dbPath = resolve(options.dbPath ?? join(dataRoot, "northstar.db"));
+  mkdirSync(dirname(dbPath), { recursive: true });
+  if (!options.dbPath) copyLegacyDatabase(dataRoot, dbPath);
 
   const db = new DatabaseSync(dbPath);
   db.exec("PRAGMA foreign_keys = ON");
@@ -185,6 +186,13 @@ function seedIfEmpty(repository, db) {
     replaceLibraryItems(db, libraryItems);
   } else {
     insertMissingLibraryItems(db, libraryItems);
+  }
+}
+
+function copyLegacyDatabase(dataRoot, dbPath) {
+  const legacyDbPath = resolve(dataRoot, "polaris.db");
+  if (legacyDbPath !== dbPath && existsSync(legacyDbPath) && !existsSync(dbPath)) {
+    copyFileSync(legacyDbPath, dbPath);
   }
 }
 

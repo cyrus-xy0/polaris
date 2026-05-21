@@ -1,12 +1,12 @@
 {
-  "name": "northstar-task-node-structure",
+  "name": "northstar",
   "version": "0.1.0",
-  "description": "Polaris local demo for AI-native task-node workflows",
+  "description": "Northstar local demo for AI-native task-node workflows",
   "private": true,
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "https://github.com/cyrus-xy0/northstar-task-node-structure.git"
+    "url": "https://github.com/cyrus-xy0/northstar.git"
   },
   "scripts": {
     "start": "node --no-warnings=ExperimentalWarning scripts/serve-demo.js",

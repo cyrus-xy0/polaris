@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -8,8 +8,8 @@ import { createRepository } from "../src/data/repository.js";
 
 describe("local data repository", () => {
   it("seeds and persists task nodes in sqlite", () => {
-    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
-    const dbPath = join(dataRoot, "polaris.db");
+    const dataRoot = mkdtempSync(join(tmpdir(), "northstar-data-"));
+    const dbPath = join(dataRoot, "northstar.db");
 
     try {
       const repository = createRepository({ dataRoot, dbPath });
@@ -37,8 +37,8 @@ describe("local data repository", () => {
   });
 
   it("writes markdown-backed library items to local files", () => {
-    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
-    const repository = createRepository({ dataRoot, dbPath: join(dataRoot, "polaris.db") });
+    const dataRoot = mkdtempSync(join(tmpdir(), "northstar-data-"));
+    const repository = createRepository({ dataRoot, dbPath: join(dataRoot, "northstar.db") });
 
     try {
       const item = repository.updateMarkdown("skills", "find-main-contradiction", "# Custom Skill\n");
@@ -52,8 +52,8 @@ describe("local data repository", () => {
   });
 
   it("fills in missing seed library items for existing sqlite data", () => {
-    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
-    const dbPath = join(dataRoot, "polaris.db");
+    const dataRoot = mkdtempSync(join(tmpdir(), "northstar-data-"));
+    const dbPath = join(dataRoot, "northstar.db");
 
     try {
       const repository = createRepository({ dataRoot, dbPath });
@@ -78,6 +78,20 @@ describe("local data repository", () => {
       assert.ok(thinkingSkills.includes("反证优先"));
       assert.equal(thinkingSkills.length, 3);
       reopenedRepository.close();
+    } finally {
+      rmSync(dataRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("copies a legacy local sqlite database into the northstar path", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "northstar-data-"));
+
+    try {
+      writeFileSync(join(dataRoot, "polaris.db"), "");
+      const repository = createRepository({ dataRoot });
+      repository.close();
+
+      assert.ok(existsSync(join(dataRoot, "northstar.db")));
     } finally {
       rmSync(dataRoot, { recursive: true, force: true });
     }

@@ -1,6 +1,6 @@
-# Polaris
+# Northstar
 
-Polaris is a local demo for exploring an AI-native task-node workflow. It separates the task tree, reusable knowledge, skills, and output artifacts into a small data layer while keeping the browser UI lightweight.
+Northstar is a local demo for exploring an AI-native task-node workflow. It separates the task tree, reusable knowledge, skills, and output artifacts into a small data layer while keeping the browser UI lightweight.
 
 ## Run locally
 
@@ -21,7 +21,7 @@ npm test
 - Task-node seed data lives in `data/seed/task-nodes.js`.
 - Knowledge, skill, and artifact seed data lives in `data/seed/library.js`.
 - Markdown-backed knowledge and skills live in `data/knowledge/` and `data/skills/`.
-- Runtime state is persisted to local SQLite at `data/polaris.db`; this file is intentionally ignored by git.
+- Runtime state is persisted to local SQLite at `data/northstar.db`; this file is intentionally ignored by git. Existing `data/polaris.db` data is copied forward on first run.
 
 ## Project layout
 
