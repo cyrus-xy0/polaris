@@ -134,6 +134,7 @@ export function createRepository(options = {}) {
       const markdownPath = resolveLibraryItemPath(dataRoot, project, row.path);
       mkdirSync(dirname(markdownPath), { recursive: true });
       writeFileSync(markdownPath, markdown, "utf8");
+      refreshLocalMarkdownMetadata(db, project, row, markdownPath);
       return this.getLibrary()[kind].find((item) => item.id === id);
     },
   };
@@ -477,6 +478,24 @@ function updateLocalMarkdownItem(db, id, metadata) {
     metadata.usage,
     id,
   );
+}
+
+function refreshLocalMarkdownMetadata(db, project, row, markdownPath) {
+  if (!row.id.startsWith(`local-${row.kind}-`)) return;
+
+  const source = findMarkdownSource(project, row.kind, row.path, markdownPath);
+  if (!source) return;
+
+  updateLocalMarkdownItem(db, row.id, readMarkdownMetadata(markdownPath, source, source.rootPath));
+}
+
+function findMarkdownSource(project, kind, libraryPath, markdownPath) {
+  const sourceMatch = libraryPath.match(/^\/sources\/([^/]+)\//);
+  if (sourceMatch) {
+    return project.sources.find((source) => source.kind === kind && source.id === sourceMatch[1]) ?? null;
+  }
+
+  return project.sources.find((source) => source.kind === kind && isPathInside(source.rootPath, markdownPath)) ?? null;
 }
 
 function replaceTaskNodes(db, nodes) {

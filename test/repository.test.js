@@ -134,6 +134,26 @@ describe("local data repository", () => {
       assert.equal(item.path, "/sources/client-knowledge/client-note.md");
       assert.equal(item.type, "客户知识");
       assert.match(item.markdown, /不在 Northstar data dir 内/);
+
+      const updated = repository.updateMarkdown(
+        "knowledge",
+        item.id,
+        [
+          "---",
+          "title: 外部客户知识 v2",
+          "description: 已通过编辑器写回外部 source。",
+          "relatedNodeIds: scope-mvp",
+          "---",
+          "# 外部客户知识 v2",
+          "",
+          "这条知识已经写回部署者自己的目录。",
+        ].join("\n"),
+      );
+
+      assert.equal(updated.title, "外部客户知识 v2");
+      assert.equal(updated.description, "已通过编辑器写回外部 source。");
+      assert.deepEqual(updated.relatedNodeIds, ["scope-mvp"]);
+      assert.match(readFileSync(join(sourceRoot, "client-note.md"), "utf8"), /写回部署者自己的目录/);
     } finally {
       repository.close();
       rmSync(dataRoot, { recursive: true, force: true });

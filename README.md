@@ -6,15 +6,24 @@ Northstar is a local demo for exploring an AI-native task-node workflow. It sepa
 
 Requires Node.js 22.5 or newer.
 
+If you use `nvm`, this repo includes an `.nvmrc`:
+
+```bash
+nvm use
+node --version
+```
+
 ```bash
 npm start
 ```
 
 The demo starts on `http://127.0.0.1:4173/`. If the port is already in use, the server automatically tries the next available port.
 
-## Use a local knowledge directory
+## Connect a local data plane
 
-All writable local filesystem state can live under one configured directory:
+Northstar is meant to run against a local data directory. That directory owns the SQLite runtime state, project source configuration, and editable markdown-backed knowledge and skills.
+
+Start with an empty directory:
 
 ```bash
 NORTHSTAR_DATA_DIR=/path/to/northstar-data npm start
@@ -26,7 +35,7 @@ You can also pass it as a CLI flag:
 npm start -- --data-dir /path/to/northstar-data
 ```
 
-Northstar expects this shape:
+On first run, Northstar creates this shape:
 
 ```text
 northstar-data/
@@ -38,7 +47,7 @@ northstar-data/
     *.md
 ```
 
-`northstar.project.json` owns the project sources. It is created automatically on first run:
+`northstar.project.json` owns the data sources:
 
 ```json
 {
@@ -62,7 +71,7 @@ northstar-data/
 }
 ```
 
-Add another local source by adding a source entry. `path` may be relative to the data directory or an absolute local path:
+To connect your own folder, stop the server, add another source entry, and restart. `path` may be relative to the data directory or an absolute local path:
 
 ```json
 {
@@ -74,7 +83,7 @@ Add another local source by adding a source entry. `path` may be relative to the
 }
 ```
 
-Markdown files from configured `knowledge` and `skills` sources are imported automatically. Files may use optional front matter:
+Markdown files from configured `knowledge` and `skills` sources are imported on server start. Files may use optional front matter:
 
 ```markdown
 ---
@@ -88,6 +97,33 @@ relatedNodeIds: find-scenario, define-solution
 
 正文内容。
 ```
+
+Front matter fields:
+
+- `title`: display title. Falls back to the first `# Heading`, then the file name.
+- `description`: card summary. Falls back to the first paragraph.
+- `type`: grouping label. Falls back to the nearest folder name, then the source `defaultType`.
+- `relatedNodeIds`: comma-separated task node ids that should use this item.
+- `usage`: optional note about when to apply this knowledge or skill.
+
+Verify the data plane after restart:
+
+```bash
+curl http://127.0.0.1:4173/api/project
+curl http://127.0.0.1:4173/api/library
+```
+
+Use the actual port printed by `npm start` if it is not `4173`. A connected external markdown file appears in `/api/library` with a path like `/sources/my-local-notes/file-name.md`, and it is visible in the Knowledge or Skill view. Editing a markdown-backed source item in the browser writes back to the source `.md` file and refreshes its title, description, type, usage, and related node ids from front matter.
+
+Data handoff checklist:
+
+- `npm start` launches the browser UI with no extra packages to install.
+- `NORTHSTAR_DATA_DIR` or `--data-dir` points the app at a deployer's own local state.
+- `northstar.project.json` lists every local data source that should be imported.
+- New or renamed markdown files require a server restart so the source scan can rebuild the library index.
+- Existing markdown content can be edited from the browser and persists to disk.
+- Task-node state persists in `<data-dir>/northstar.db`.
+- Markdown-backed `knowledge` and `skills` are configurable through project sources; seeded output artifact links live in SQLite from `data/seed/library.js`.
 
 ## Test
 
