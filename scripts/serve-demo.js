@@ -1,6 +1,8 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, join, normalize, resolve } from "node:path";
+import { generateSuggestedActionPlan } from "../src/action-plan-ai.js";
+import { buildActiveQueue, getRecordsForNode } from "../src/app-logic.js";
 import { resolveDataRoot } from "../src/config.js";
 import { createRepository } from "../src/data/repository.js";
 
@@ -95,6 +97,30 @@ async function handleApiRequest(request, response) {
     if (request.method === "PUT" && url.pathname === "/api/task-nodes") {
       const body = await readJsonBody(request);
       sendJson(response, 200, { nodes: repository.saveTaskNodes(body.nodes) });
+      return true;
+    }
+
+    const suggestedActionPlanMatch = url.pathname.match(/^\/api\/task-nodes\/([^/]+)\/suggested-action-plan$/);
+    if (request.method === "POST" && suggestedActionPlanMatch) {
+      const nodeId = decodeURIComponent(suggestedActionPlanMatch[1]);
+      const nodes = repository.listTaskNodes();
+      const node = nodes.find((candidate) => candidate.id === nodeId);
+      if (!node) {
+        sendJson(response, 404, { error: `Task node not found: ${nodeId}` });
+        return true;
+      }
+
+      const queue = buildActiveQueue(nodes);
+      const queueItem = queue.available.find((item) => item.node.id === nodeId);
+      const library = repository.getLibrary();
+      const plan = await generateSuggestedActionPlan({
+        node,
+        reason: queueItem?.reason ?? "",
+        relatedRecords: getRecordsForNode(library, nodeId),
+        serviceRoot: root,
+        dataRoot,
+      });
+      sendJson(response, 200, { plan });
       return true;
     }
 

@@ -8,7 +8,6 @@ import {
   indexNodes,
 } from "/src/task-nodes.js";
 import {
-  buildActionPlanSummary,
   buildActiveQueue,
   buildDraftOutputPoints,
   buildPreparedResult,
@@ -31,6 +30,7 @@ let editingMarkdownItem = null;
 let currentPreparedArtifact = null;
 const expandedKnowledgeGroups = new Set();
 let nodeEditorFeedback = null;
+const suggestedActionPlanCache = new Map();
 
 const elements = {
   viewButtons: [...document.querySelectorAll("[data-view-button]")],
@@ -261,9 +261,75 @@ function renderCurrent(item, queue) {
   elements.currentPriority.textContent = getPriorityLabel(node.id, queue);
   elements.currentPriority.className = `node-chip ${getPriorityClass(node.id, queue)}`;
   elements.currentRank.textContent = getQueueRankLabel(node.id, queue);
-  elements.actionPlanSummary.textContent = buildActionPlanSummary(node, reason);
-  elements.actionPlanSteps.replaceChildren(...node.aiActions.map(createActionItem));
+  renderSuggestedActionPlan(node, reason);
   renderPreparedResult(node);
+}
+
+function renderSuggestedActionPlan(node, reason) {
+  const signature = getSuggestedActionPlanSignature(node, reason);
+  const cached = suggestedActionPlanCache.get(node.id);
+
+  if (cached?.signature === signature && cached.status === "ready") {
+    renderActionPlan(cached.plan);
+    return;
+  }
+
+  renderActionPlan({ summary: "", steps: [] });
+  if (cached?.signature === signature && cached.status === "loading") return;
+  requestSuggestedActionPlan(node, signature);
+}
+
+async function requestSuggestedActionPlan(node, signature) {
+  suggestedActionPlanCache.set(node.id, { status: "loading", signature });
+
+  try {
+    const payload = await requestJson(`/api/task-nodes/${encodeURIComponent(node.id)}/suggested-action-plan`, {
+      method: "POST",
+    });
+    suggestedActionPlanCache.set(node.id, {
+      status: "ready",
+      signature,
+      plan: normalizeSuggestedActionPlan(payload.plan),
+    });
+  } catch (error) {
+    console.error("Failed to generate suggested action plan", error);
+    suggestedActionPlanCache.set(node.id, {
+      status: "ready",
+      signature,
+      plan: { summary: "", steps: [] },
+    });
+  }
+
+  render();
+}
+
+function renderActionPlan(plan) {
+  elements.actionPlanSummary.textContent = plan.summary;
+  elements.actionPlanSteps.replaceChildren(...plan.steps.map(createActionItem));
+}
+
+function normalizeSuggestedActionPlan(plan = {}) {
+  const normalizedPlan = plan ?? {};
+  const steps = Array.isArray(normalizedPlan.steps)
+    ? normalizedPlan.steps.map((step) => (typeof step === "string" ? step.trim() : "")).filter(Boolean)
+    : [];
+
+  return {
+    summary: typeof normalizedPlan.summary === "string" ? normalizedPlan.summary.trim() : "",
+    steps,
+  };
+}
+
+function getSuggestedActionPlanSignature(node, reason) {
+  return JSON.stringify({
+    id: node.id,
+    title: node.title,
+    tag: node.tag,
+    description: node.description,
+    dependencies: node.dependencies,
+    state: node.state,
+    reason,
+  });
 }
 
 function getPriorityLabel(nodeId, queue) {
@@ -840,6 +906,7 @@ async function saveNodeEditor(event) {
       dependencies,
     });
     nodes = nodes.map((node) => (node.id === selected.id ? nextNode : node));
+    suggestedActionPlanCache.delete(selected.id);
     nodeEditorFeedback = { nodeId: selected.id, tone: "success", message: "正在保存..." };
     render();
     const saved = await saveNodes();

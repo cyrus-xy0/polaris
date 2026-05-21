@@ -184,6 +184,7 @@ button {
   z-index: 2;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(260px, 0.72fr);
+  align-items: start;
   align-content: start;
   column-gap: 22px;
   min-height: 0;
@@ -300,6 +301,7 @@ button {
 
 .action-plan {
   grid-column: 1;
+  align-self: start;
   margin-top: 30px;
   padding: 24px;
   border: 1px solid rgba(32, 43, 50, 0.07);
@@ -379,7 +381,8 @@ button {
 .prepared-result {
   grid-column: 2;
   align-self: start;
-  margin-top: 72px;
+  width: 100%;
+  margin-top: 30px;
   padding: 22px;
   border: 1px solid rgba(47, 128, 117, 0.12);
   border-radius: 28px;

@@ -102,11 +102,6 @@ export function buildPreparedResult(node) {
   };
 }
 
-export function buildActionPlanSummary(node, reason) {
-  const action = actionTextFor(node);
-  return `${reason} ${action}`;
-}
-
 export function completeTask(nodes, nodeId, result) {
   return nodes.map((node) =>
     node.id === nodeId
@@ -180,16 +175,4 @@ export function deleteTaskNode(nodes, nodeId) {
     parentId: node.parentId,
     deletedIds,
   };
-}
-
-function actionTextFor(node) {
-  if (node.id === "study-real-cases") {
-    return "先找真实落地案例，把客户、流程、效果拆出来。";
-  }
-
-  if (node.id === "try-demo") {
-    return "用最小 demo 验证 pitchdeck 管理场景是否有产品感觉。";
-  }
-
-  return node.description;
 }

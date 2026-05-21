@@ -125,6 +125,27 @@ Data handoff checklist:
 - Task-node state persists in `<data-dir>/polaris.db`.
 - Markdown-backed `knowledge` and `skills` are configurable through project sources; seeded output artifact links live in SQLite from `data/seed/library.js`.
 
+## Local action-plan generation
+
+The Suggest Action Plan panel is generated through a service-local AI executable when one is available. Polaris looks for `openclaw` first, then `hermes`, in these local locations:
+
+- the service root
+- `<service-root>/bin`
+- `<service-root>/node_modules/.bin`
+- the configured data directory
+- `<data-dir>/bin`
+
+The executable receives the task-node prompt on stdin and should print either JSON or a plain text list. Preferred JSON shape:
+
+```json
+{
+  "summary": "一句话说明推荐逻辑",
+  "steps": ["具体步骤 1", "具体步骤 2", "具体步骤 3"]
+}
+```
+
+If neither `openclaw` nor `hermes` exists locally, the Suggest Action Plan remains blank.
+
 ## Test
 
 ```bash
