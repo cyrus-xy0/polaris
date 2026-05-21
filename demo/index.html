@@ -77,9 +77,59 @@
       </section>
 
       <section class="workspace-page view" id="tree-view">
-        <section class="tree-canvas tree-only glass" aria-label="目标树">
-          <div class="tree-map" id="tree-map"></div>
-        </section>
+        <div class="tree-workbench">
+          <section class="tree-canvas tree-only glass" aria-label="目标树">
+            <div class="tree-map" id="tree-map"></div>
+          </section>
+
+          <aside class="tree-editor glass" aria-labelledby="node-editor-heading">
+            <form class="node-editor-form" id="node-editor-form">
+              <div class="node-editor-header">
+                <p class="panel-kicker">Node Editor</p>
+                <h2 id="node-editor-heading">编辑节点</h2>
+                <span id="node-editor-meta"></span>
+              </div>
+
+              <label class="node-editor-field">
+                <span>标题</span>
+                <input id="node-editor-title" name="title" type="text" autocomplete="off" />
+              </label>
+
+              <label class="node-editor-field">
+                <span>描述</span>
+                <textarea id="node-editor-description" name="description"></textarea>
+              </label>
+
+              <div class="node-editor-grid">
+                <label class="node-editor-field">
+                  <span>标签</span>
+                  <select id="node-editor-tag" name="tag"></select>
+                </label>
+
+                <label class="node-editor-field">
+                  <span>状态</span>
+                  <select id="node-editor-state" name="state"></select>
+                </label>
+              </div>
+
+              <label class="node-editor-field">
+                <span>行动列表</span>
+                <textarea id="node-editor-actions" name="aiActions"></textarea>
+              </label>
+
+              <label class="node-editor-field">
+                <span>依赖节点</span>
+                <select id="node-editor-dependencies" name="dependencies" multiple></select>
+              </label>
+
+              <div class="node-editor-actions">
+                <button class="soft-action" id="node-editor-reset" type="button">重置</button>
+                <button class="primary-action" type="submit">保存节点</button>
+              </div>
+              <p class="node-editor-status" id="node-editor-status" role="status"></p>
+            </form>
+          </aside>
+        </div>
       </section>
 
       <section class="workspace-page view" id="methods-view">

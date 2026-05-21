@@ -14,7 +14,9 @@ import {
   buildPreparedResult,
   completeTask,
   deleteTaskNode,
+  getAncestorIds,
   getArtifactDisplayType,
+  getNodeAndDescendantIds,
   migrateTaskNodes,
   resolvePreparedArtifact,
   toggleTaskNodeState,
@@ -28,6 +30,7 @@ let activeView = "today";
 let editingMarkdownItem = null;
 let currentPreparedArtifact = null;
 const expandedKnowledgeGroups = new Set();
+let nodeEditorFeedback = null;
 
 const elements = {
   viewButtons: [...document.querySelectorAll("[data-view-button]")],
@@ -50,6 +53,17 @@ const elements = {
   completeButton: document.querySelector("#complete-button"),
   manualResultUrl: document.querySelector("#manual-result-url"),
   treeMap: document.querySelector("#tree-map"),
+  nodeEditorForm: document.querySelector("#node-editor-form"),
+  nodeEditorHeading: document.querySelector("#node-editor-heading"),
+  nodeEditorMeta: document.querySelector("#node-editor-meta"),
+  nodeEditorTitle: document.querySelector("#node-editor-title"),
+  nodeEditorDescription: document.querySelector("#node-editor-description"),
+  nodeEditorTag: document.querySelector("#node-editor-tag"),
+  nodeEditorState: document.querySelector("#node-editor-state"),
+  nodeEditorActions: document.querySelector("#node-editor-actions"),
+  nodeEditorDependencies: document.querySelector("#node-editor-dependencies"),
+  nodeEditorReset: document.querySelector("#node-editor-reset"),
+  nodeEditorStatus: document.querySelector("#node-editor-status"),
   knowledgeGrid: document.querySelector("#knowledge-grid"),
   skillGrid: document.querySelector("#skill-grid"),
   intermediateGrid: document.querySelector("#intermediate-grid"),
@@ -86,8 +100,10 @@ async function saveNodes() {
       method: "PUT",
       body: JSON.stringify({ nodes }),
     });
+    return true;
   } catch (error) {
     console.error("Failed to persist task nodes", error);
+    return false;
   }
 }
 
@@ -372,9 +388,82 @@ function renderTree() {
   const focus = getTreeFocus();
   const tree = buildFocusedTree(focus);
   elements.treeMap.replaceChildren(...tree.map((node) => createTreeNode(node, focus, 0)));
+  renderNodeEditor(focus);
 
   restoreTreeScrollAfterRender(scrollContainer, scrollLeft, scrollTop);
   animateTreeRender(previousCardRects);
+}
+
+function renderNodeEditor(focus) {
+  const selected = focus.selectedId ? focus.index.byId.get(focus.selectedId) : null;
+  const fields = [
+    elements.nodeEditorTitle,
+    elements.nodeEditorDescription,
+    elements.nodeEditorTag,
+    elements.nodeEditorState,
+    elements.nodeEditorActions,
+    elements.nodeEditorDependencies,
+    elements.nodeEditorReset,
+  ];
+
+  if (!selected) {
+    elements.nodeEditorHeading.textContent = "未选择节点";
+    elements.nodeEditorMeta.textContent = "";
+    fields.forEach((field) => {
+      field.disabled = true;
+    });
+    elements.nodeEditorStatus.textContent = "";
+    return;
+  }
+
+  fields.forEach((field) => {
+    field.disabled = false;
+  });
+
+  elements.nodeEditorHeading.textContent = selected.title;
+  elements.nodeEditorMeta.textContent = selected.parentId ? `ID · ${selected.id}` : "根节点";
+  elements.nodeEditorTitle.value = selected.title;
+  elements.nodeEditorDescription.value = selected.description;
+  renderSelectOptions(elements.nodeEditorTag, Object.values(TASK_TAGS), selected.tag);
+  renderSelectOptions(elements.nodeEditorState, Object.values(TASK_STATES), selected.state);
+  elements.nodeEditorActions.value = selected.aiActions.join("\n");
+  renderDependencyOptions(selected);
+
+  const feedback = nodeEditorFeedback?.nodeId === selected.id ? nodeEditorFeedback : null;
+  elements.nodeEditorStatus.textContent = feedback?.message ?? "";
+  elements.nodeEditorStatus.className = `node-editor-status ${feedback?.tone === "error" ? "is-error" : ""}`;
+}
+
+function renderSelectOptions(select, values, selectedValue) {
+  select.replaceChildren(
+    ...values.map((value) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = value;
+      option.selected = value === selectedValue;
+      return option;
+    }),
+  );
+}
+
+function renderDependencyOptions(selected) {
+  const blockedIds = new Set([
+    selected.id,
+    ...getAncestorIds(nodes, selected.id),
+    ...getNodeAndDescendantIds(nodes, selected.id),
+  ]);
+  const selectedDependencies = new Set(selected.dependencies);
+  const options = nodes
+    .filter((node) => !blockedIds.has(node.id))
+    .map((node) => {
+      const option = document.createElement("option");
+      option.value = node.id;
+      option.textContent = node.title;
+      option.selected = selectedDependencies.has(node.id);
+      return option;
+    });
+
+  elements.nodeEditorDependencies.replaceChildren(...options);
 }
 
 function restoreTreeScrollAfterRender(scrollContainer, scrollLeft, scrollTop) {
@@ -612,6 +701,7 @@ function createTreeNode(node, focus, depth) {
   card.append(content, actions);
   card.addEventListener("click", () => {
     runTreeTransition(() => {
+      if (selectedTreeNodeId !== node.id) nodeEditorFeedback = null;
       selectedTreeNodeId = node.id;
     });
   });
@@ -619,6 +709,7 @@ function createTreeNode(node, focus, depth) {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       runTreeTransition(() => {
+        if (selectedTreeNodeId !== node.id) nodeEditorFeedback = null;
         selectedTreeNodeId = node.id;
       });
     }
@@ -698,6 +789,7 @@ function addChildNode(parentId) {
     nodes = [...nodes, child];
     selectedTreeNodeId = child.id;
     selectedNodeId = null;
+    nodeEditorFeedback = { nodeId: child.id, tone: "success", message: "已添加子节点" };
     saveNodes();
   });
 }
@@ -709,11 +801,77 @@ function deleteTreeNode(nodeId) {
   runTreeTransition(() => {
     nodes = update.nodes;
     selectedTreeNodeId = update.parentId;
+    nodeEditorFeedback = { nodeId: update.parentId, tone: "success", message: "已删除节点" };
     if (selectedNodeId && update.deletedIds.has(selectedNodeId)) {
       selectedNodeId = null;
     }
     saveNodes();
   });
+}
+
+async function saveNodeEditor(event) {
+  event.preventDefault();
+  const selectedId = selectedTreeNodeId;
+  const selected = selectedId ? indexNodes(nodes).byId.get(selectedId) : null;
+  if (!selected) return;
+
+  const title = elements.nodeEditorTitle.value.trim();
+  const aiActions = parseActionLines(elements.nodeEditorActions.value);
+  const dependencies = [...elements.nodeEditorDependencies.selectedOptions].map((option) => option.value);
+
+  if (!title) {
+    showNodeEditorStatus(selected.id, "标题不能为空", "error");
+    return;
+  }
+
+  if (aiActions.length === 0) {
+    showNodeEditorStatus(selected.id, "行动列表不能为空", "error");
+    return;
+  }
+
+  try {
+    const nextNode = createNode({
+      ...selected,
+      title,
+      description: elements.nodeEditorDescription.value.trim(),
+      tag: elements.nodeEditorTag.value,
+      state: elements.nodeEditorState.value,
+      aiActions,
+      dependencies,
+    });
+    nodes = nodes.map((node) => (node.id === selected.id ? nextNode : node));
+    nodeEditorFeedback = { nodeId: selected.id, tone: "success", message: "正在保存..." };
+    render();
+    const saved = await saveNodes();
+    nodeEditorFeedback = {
+      nodeId: selected.id,
+      tone: saved ? "success" : "error",
+      message: saved ? "已保存到本地数据层" : "保存失败，请查看终端日志",
+    };
+    render();
+  } catch (error) {
+    showNodeEditorStatus(selected.id, error.message, "error");
+  }
+}
+
+function parseActionLines(value) {
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function resetNodeEditor() {
+  nodeEditorFeedback = selectedTreeNodeId
+    ? { nodeId: selectedTreeNodeId, tone: "success", message: "已重置表单" }
+    : null;
+  renderTree();
+}
+
+function showNodeEditorStatus(nodeId, message, tone = "success") {
+  nodeEditorFeedback = { nodeId, message, tone };
+  elements.nodeEditorStatus.textContent = message;
+  elements.nodeEditorStatus.className = `node-editor-status ${tone === "error" ? "is-error" : ""}`;
 }
 
 function renderMethods() {
@@ -982,6 +1140,8 @@ elements.viewButtons.forEach((button) => {
   });
 });
 elements.completeButton.addEventListener("click", completeSelectedTask);
+elements.nodeEditorForm.addEventListener("submit", saveNodeEditor);
+elements.nodeEditorReset.addEventListener("click", resetNodeEditor);
 elements.manualResultUrl.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();

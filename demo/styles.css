@@ -977,10 +977,144 @@ button {
   padding-top: 28px;
 }
 
+.tree-workbench {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 390px);
+  gap: 18px;
+  align-items: start;
+}
+
 .tree-only {
   min-height: calc(100vh - 126px);
   padding: 16px;
   overflow: auto;
+}
+
+.tree-editor {
+  position: sticky;
+  top: 102px;
+  max-height: calc(100vh - 126px);
+  padding: 22px;
+  border-radius: 30px;
+  overflow: auto;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(247, 251, 249, 0.76)),
+    linear-gradient(145deg, rgba(47, 128, 117, 0.075), transparent 58%, rgba(92, 120, 155, 0.035));
+  box-shadow:
+    0 30px 78px rgba(47, 128, 117, 0.12),
+    0 12px 28px rgba(66, 61, 48, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88);
+}
+
+.node-editor-form {
+  display: grid;
+  gap: 14px;
+}
+
+.node-editor-header {
+  min-width: 0;
+  padding-bottom: 4px;
+}
+
+.node-editor-header h2 {
+  margin: 0;
+  color: #111820;
+  font-size: 24px;
+  font-weight: 740;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.node-editor-header span {
+  display: block;
+  margin-top: 8px;
+  color: rgba(21, 25, 29, 0.5);
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.node-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.node-editor-field {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.node-editor-field > span {
+  color: rgba(21, 25, 29, 0.62);
+  font-size: 12px;
+  font-weight: 740;
+}
+
+.node-editor-field input,
+.node-editor-field select,
+.node-editor-field textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(21, 25, 29, 0.085);
+  border-radius: 16px;
+  color: rgba(17, 24, 32, 0.86);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(255, 253, 247, 0.54));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  outline: none;
+}
+
+.node-editor-field input,
+.node-editor-field select {
+  min-height: 40px;
+  padding: 0 12px;
+}
+
+.node-editor-field textarea {
+  resize: vertical;
+  min-height: 82px;
+  padding: 11px 12px;
+}
+
+#node-editor-actions {
+  min-height: 126px;
+}
+
+#node-editor-dependencies {
+  min-height: 128px;
+  padding: 8px;
+}
+
+.node-editor-field input:focus,
+.node-editor-field select:focus,
+.node-editor-field textarea:focus {
+  border-color: rgba(47, 128, 117, 0.34);
+  box-shadow:
+    0 0 0 4px rgba(47, 128, 117, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.node-editor-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr);
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.node-editor-status {
+  min-height: 20px;
+  margin: 0;
+  color: rgba(36, 95, 86, 0.82);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.node-editor-status.is-error {
+  color: rgba(134, 58, 48, 0.92);
 }
 
 .tree-map {
@@ -2529,6 +2663,19 @@ a.tree-record-chip:focus-visible {
     padding-top: 30px;
   }
 
+  #tree-view {
+    width: calc(100vw - 44px);
+  }
+
+  .tree-workbench {
+    grid-template-columns: 1fr;
+  }
+
+  .tree-editor {
+    position: static;
+    max-height: none;
+  }
+
   .knowledge-layout {
     grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
     grid-template-rows: auto auto;
@@ -2537,6 +2684,7 @@ a.tree-record-chip:focus-visible {
   }
 
   .tree-only {
+    min-height: 560px;
     padding: 22px;
   }
 
@@ -2615,6 +2763,15 @@ a.tree-record-chip:focus-visible {
 
   #methods-view {
     padding-top: 18px;
+  }
+
+  #tree-view {
+    width: calc(100vw - 36px);
+  }
+
+  .node-editor-grid,
+  .node-editor-actions {
+    grid-template-columns: 1fr;
   }
 
   .knowledge-layout {
