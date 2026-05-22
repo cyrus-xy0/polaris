@@ -28,7 +28,9 @@ let editingMarkdownItem = null;
 let currentPreparedArtifact = null;
 let autoFilledResultUrl = "";
 const expandedKnowledgeGroups = new Set();
+const collapsedKnowledgeGroups = new Set();
 let nodeEditorFeedback = null;
+let nodeEditorDraft = null;
 let isNodeEditorOpen = false;
 const suggestedActionPlanCache = new Map();
 const draftOutputCache = new Map();
@@ -419,6 +421,8 @@ function getSuggestedActionPlanSignature(node, reason) {
 function renderDraftOutput(node, reason) {
   const artifact = resolvePreparedArtifact(node, library.artifacts);
   const signature = getDraftOutputSignature(node, artifact, reason);
+  const suggestedSignature = getSuggestedActionPlanSignature(node, reason);
+  const suggested = suggestedActionPlanCache.get(node.id);
   const cached = draftOutputCache.get(node.id);
   currentPreparedArtifact = null;
 
@@ -433,8 +437,20 @@ function renderDraftOutput(node, reason) {
     return;
   }
 
+  if (suggested?.signature === suggestedSignature && suggested.status === "error") {
+    const errorState = {
+      status: "error",
+      signature,
+      error: suggested.error || "需要先生成 Suggest Action Plan。",
+    };
+    renderDraftOutputContent(createAiErrorDraftOutput(errorState.error));
+    renderAiResultLink(node, artifact, reason, errorState);
+    return;
+  }
+
   renderDraftOutputContent(createAiPendingDraftOutput());
   renderAiResultLink(node, artifact, reason, { status: "loading", signature });
+  if (suggested?.signature !== suggestedSignature || suggested.status !== "ready") return;
   if (cached?.signature === signature && cached.status === "loading") return;
   requestDraftOutput(node, signature);
 }
@@ -852,6 +868,7 @@ function renderNodeEditor(focus) {
     fields.forEach((field) => {
       field.disabled = true;
     });
+    nodeEditorDraft = null;
     renderDependencyOptions(null);
     elements.nodeEditorStatus.textContent = "";
     return;
@@ -861,11 +878,13 @@ function renderNodeEditor(focus) {
     field.disabled = false;
   });
 
-  elements.nodeEditorHeading.textContent = selected.title;
+  const draft = ensureNodeEditorDraft(selected);
+
+  elements.nodeEditorHeading.textContent = draft.title.trim() || selected.title;
   elements.nodeEditorMeta.textContent = selected.parentId ? `ID · ${selected.id}` : "根节点";
-  elements.nodeEditorTitle.value = selected.title;
-  elements.nodeEditorDescription.value = selected.description;
-  renderSelectOptions(elements.nodeEditorTag, Object.values(TASK_TAGS), selected.tag);
+  syncNodeEditorField(elements.nodeEditorTitle, draft.title);
+  syncNodeEditorField(elements.nodeEditorDescription, draft.description);
+  renderSelectOptions(elements.nodeEditorTag, Object.values(TASK_TAGS), draft.tag);
   renderDependencyOptions(selected);
 
   const feedback = nodeEditorFeedback?.nodeId === selected.id ? nodeEditorFeedback : null;
@@ -873,16 +892,52 @@ function renderNodeEditor(focus) {
   elements.nodeEditorStatus.className = `node-editor-status ${feedback?.tone === "error" ? "is-error" : ""}`;
 }
 
+function ensureNodeEditorDraft(selected) {
+  if (nodeEditorDraft?.nodeId === selected.id) return nodeEditorDraft;
+  nodeEditorDraft = {
+    nodeId: selected.id,
+    title: selected.title,
+    description: selected.description,
+    tag: selected.tag,
+  };
+  return nodeEditorDraft;
+}
+
+function updateNodeEditorDraftFromFields() {
+  if (!isNodeEditorOpen || !selectedTreeNodeId) return;
+  nodeEditorDraft = {
+    nodeId: selectedTreeNodeId,
+    title: elements.nodeEditorTitle.value,
+    description: elements.nodeEditorDescription.value,
+    tag: elements.nodeEditorTag.value,
+  };
+}
+
+function syncNodeEditorField(field, value) {
+  const nextValue = value ?? "";
+  if (document.activeElement === field) return;
+  if (field.value !== nextValue) field.value = nextValue;
+}
+
 function renderSelectOptions(select, values, selectedValue) {
-  select.replaceChildren(
-    ...values.map((value) => {
-      const option = document.createElement("option");
-      option.value = value;
-      option.textContent = value;
-      option.selected = value === selectedValue;
-      return option;
-    }),
-  );
+  const shouldRebuild =
+    select.options.length !== values.length ||
+    values.some((value, index) => select.options[index]?.value !== value);
+
+  if (shouldRebuild) {
+    select.replaceChildren(
+      ...values.map((value) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = value;
+        return option;
+      }),
+    );
+  }
+
+  if (document.activeElement !== select && select.value !== selectedValue) {
+    select.value = selectedValue;
+  }
 }
 
 function renderDependencyOptions(selected) {
@@ -900,7 +955,7 @@ function renderDependencyOptions(selected) {
 
   ensureDependencyDraft(selected);
   elements.nodeEditorDependencySearch.disabled = false;
-  elements.nodeEditorDependencySearch.value = nodeEditorDependencyQuery;
+  syncNodeEditorField(elements.nodeEditorDependencySearch, nodeEditorDependencyQuery);
   elements.nodeEditorDependencies.ariaDisabled = "false";
   const blockedIds = new Set([
     selected.id,
@@ -993,6 +1048,7 @@ function openNodeEditor(nodeId) {
   selectedTreeNodeId = nodeId;
   isNodeEditorOpen = true;
   nodeEditorFeedback = null;
+  nodeEditorDraft = null;
   nodeEditorDependencyNodeId = null;
   render();
 }
@@ -1000,6 +1056,7 @@ function openNodeEditor(nodeId) {
 function closeNodeEditor() {
   isNodeEditorOpen = false;
   nodeEditorFeedback = null;
+  nodeEditorDraft = null;
   nodeEditorDependencyNodeId = null;
   render();
 }
@@ -1383,6 +1440,7 @@ function deleteTreeNode(nodeId) {
 
 async function saveNodeEditor(event) {
   event.preventDefault();
+  updateNodeEditorDraftFromFields();
   const selectedId = selectedTreeNodeId;
   const selected = selectedId ? indexNodes(nodes).byId.get(selectedId) : null;
   if (!selected) return;
@@ -1409,6 +1467,7 @@ async function saveNodeEditor(event) {
     suggestedActionPlanCache.delete(selected.id);
     draftOutputCache.delete(selected.id);
     aiResultCache.delete(selected.id);
+    nodeEditorDraft = { nodeId: selected.id, title, description, tag: nextNode.tag };
     nodeEditorFeedback = { nodeId: selected.id, tone: "success", message: "正在保存..." };
     render();
     const saveResult = await saveNodes();
@@ -1594,14 +1653,98 @@ function groupItemsByType(items) {
 }
 
 function createKnowledgeGroupCard(group) {
-  return createCatalogGroupCard(group, {
-    groupClassName: "knowledge-catalog-group",
-    label: group.type,
-    summaryMode: true,
-    expanded: expandedKnowledgeGroups.has(group.type),
-    onToggle: () => toggleKnowledgeGroup(group.type),
-    createItem: (item) => createKnowledgeCard(item),
+  const isCollapsed = collapsedKnowledgeGroups.has(group.type);
+  const isExpanded = expandedKnowledgeGroups.has(group.type);
+  const visibleLimit = 6;
+  const visibleItems = isCollapsed ? [] : isExpanded ? group.items : group.items.slice(0, visibleLimit);
+  const hiddenCount = Math.max(0, group.items.length - visibleItems.length);
+
+  const cluster = document.createElement("article");
+  cluster.className = `knowledge-cluster ${isExpanded ? "is-open" : ""} ${isCollapsed ? "is-collapsed" : ""}`;
+
+  const header = document.createElement("div");
+  header.className = "knowledge-cluster-header";
+  header.setAttribute("role", "button");
+  header.tabIndex = 0;
+  header.setAttribute("aria-expanded", String(!isCollapsed));
+  header.addEventListener("click", (event) => {
+    if (event.target.closest("button")) return;
+    toggleKnowledgeGroupCollapsed(group.type);
   });
+  header.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    toggleKnowledgeGroupCollapsed(group.type);
+  });
+
+  const heading = document.createElement("div");
+  heading.className = "knowledge-cluster-heading";
+
+  const label = document.createElement("span");
+  label.className = "knowledge-cluster-label";
+  label.textContent = group.type;
+
+  const title = document.createElement("h3");
+  title.textContent = getKnowledgeGroupTitle(group);
+
+  heading.append(label, title);
+
+  const summary = document.createElement("p");
+  summary.className = "knowledge-cluster-summary";
+  summary.textContent = getKnowledgeGroupSummary(group);
+
+  const meta = document.createElement("div");
+  meta.className = "knowledge-cluster-meta";
+
+  const count = document.createElement("span");
+  count.className = "knowledge-cluster-count";
+  count.textContent = `${group.items.length} 条`;
+  meta.append(count);
+
+  const collapseToggle = document.createElement("button");
+  collapseToggle.className = "knowledge-cluster-collapse";
+  collapseToggle.type = "button";
+  const collapseLabel = isCollapsed ? `展开 ${group.type}` : `收起 ${group.type}`;
+  collapseToggle.setAttribute("aria-label", collapseLabel);
+  collapseToggle.title = collapseLabel;
+  collapseToggle.setAttribute("aria-expanded", String(!isCollapsed));
+  collapseToggle.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleKnowledgeGroupCollapsed(group.type);
+  });
+  meta.append(collapseToggle);
+
+  if (!isCollapsed && group.items.length > visibleLimit) {
+    const toggle = document.createElement("button");
+    toggle.className = "knowledge-cluster-toggle";
+    toggle.type = "button";
+    toggle.textContent = isExpanded ? "收起" : `展开 ${hiddenCount} 条`;
+    toggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleKnowledgeGroup(group.type);
+    });
+    meta.append(toggle);
+  }
+
+  header.append(heading, summary, meta);
+
+  const list = document.createElement("div");
+  list.className = "knowledge-entry-list";
+  list.hidden = isCollapsed;
+  list.replaceChildren(...visibleItems.map((item) => createKnowledgeCard(item)));
+
+  cluster.append(header, list);
+  return cluster;
+}
+
+function getKnowledgeGroupTitle(group) {
+  return group.items[0]?.sourceDescription || `${group.type} 知识条目`;
+}
+
+function getKnowledgeGroupSummary(group) {
+  const datedCount = group.items.filter((item) => item.date).length;
+  const paths = new Set(group.items.map((item) => item.path).filter(Boolean));
+  return `${datedCount || group.items.length} 条可复用判断 · ${paths.size || 1} 个来源`;
 }
 
 function createCatalogGroupCard(group, options) {
@@ -1673,11 +1816,44 @@ function toggleKnowledgeGroup(groupType) {
   renderMethods();
 }
 
+function toggleKnowledgeGroupCollapsed(groupType) {
+  if (collapsedKnowledgeGroups.has(groupType)) {
+    collapsedKnowledgeGroups.delete(groupType);
+  } else {
+    collapsedKnowledgeGroups.add(groupType);
+  }
+  renderMethods();
+}
+
 function createKnowledgeCard(item, options = {}) {
-  return createEditableIndexCard(item, "knowledge-card", {
-    ...options,
-    metaText: (entry) => entry.date || entry.type,
+  const card = document.createElement("article");
+  card.className = "knowledge-row method-card is-md-file";
+  card.role = "button";
+  card.tabIndex = 0;
+
+  const date = document.createElement("small");
+  date.className = "knowledge-row-date";
+  date.textContent = item.date || item.type;
+
+  const body = document.createElement("div");
+  body.className = "knowledge-row-body";
+
+  const title = document.createElement("h3");
+  title.textContent = item.brief || item.title;
+
+  const description = document.createElement("p");
+  description.textContent = item.description;
+
+  body.append(title, description);
+  card.append(date, body);
+  card.addEventListener("click", () => openMarkdownEditor(item));
+  card.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openMarkdownEditor(item);
+    }
   });
+  return card;
 }
 
 function createEditableIndexCard(item, className, options = {}) {
@@ -1713,11 +1889,52 @@ function createEditableIndexCard(item, className, options = {}) {
 
 function openMarkdownEditor(item) {
   editingMarkdownItem = item;
-  elements.markdownEditorTitle.textContent = item.title;
-  elements.markdownEditorPath.textContent = item.path;
+  elements.markdownEditorTitle.textContent = item.brief || item.title;
+  elements.markdownEditorPath.textContent = formatMarkdownEditorPath(item);
   elements.markdownEditorTextarea.value = item.markdown;
   elements.markdownEditor.hidden = false;
+  requestAnimationFrame(() => focusMarkdownEntry(item));
+}
+
+function formatMarkdownEditorPath(item) {
+  return [item.type, item.date, item.path].filter(Boolean).join(" · ");
+}
+
+function focusMarkdownEntry(item) {
+  const range = findMarkdownEntryHeadingRange(item.markdown, item);
   elements.markdownEditorTextarea.focus();
+  if (!range) return;
+
+  elements.markdownEditorTextarea.setSelectionRange(range.start, range.end);
+  const lineNumber = item.markdown.slice(0, range.start).split(/\r?\n/).length;
+  const lineHeight = Number.parseFloat(getComputedStyle(elements.markdownEditorTextarea).lineHeight) || 22;
+  elements.markdownEditorTextarea.scrollTop = Math.max(0, (lineNumber - 4) * lineHeight);
+}
+
+function findMarkdownEntryHeadingRange(markdown, item) {
+  if (typeof markdown !== "string" || !markdown) return null;
+  const headings = [...markdown.matchAll(/^##\s+(.+)$/gm)];
+  if (headings.length === 0) return null;
+
+  const entryIndex = getMarkdownEntryIndex(item);
+  const match = Number.isInteger(entryIndex) ? headings[entryIndex] : findMarkdownHeadingByDate(headings, item.date);
+  if (!match) return null;
+
+  return {
+    start: match.index,
+    end: match.index + match[0].length,
+  };
+}
+
+function getMarkdownEntryIndex(item) {
+  const match = String(item.id ?? "").match(/-(\d+)-[a-f0-9]{8}$/);
+  if (!match) return null;
+  return Number(match[1]) - 1;
+}
+
+function findMarkdownHeadingByDate(headings, date) {
+  if (!date) return null;
+  return headings.find((match) => match[1].trim() === date) ?? null;
 }
 
 function closeMarkdownEditor() {
@@ -1754,6 +1971,9 @@ elements.viewButtons.forEach((button) => {
 });
 elements.completeButton.addEventListener("click", completeSelectedTask);
 elements.nodeEditorForm.addEventListener("submit", saveNodeEditor);
+elements.nodeEditorTitle.addEventListener("input", updateNodeEditorDraftFromFields);
+elements.nodeEditorDescription.addEventListener("input", updateNodeEditorDraftFromFields);
+elements.nodeEditorTag.addEventListener("change", updateNodeEditorDraftFromFields);
 elements.nodeEditorDependencySearch.addEventListener("input", () => {
   nodeEditorDependencyQuery = elements.nodeEditorDependencySearch.value;
   const selected = selectedTreeNodeId ? indexNodes(nodes).byId.get(selectedTreeNodeId) : null;

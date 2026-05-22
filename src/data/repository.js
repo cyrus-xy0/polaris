@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
@@ -27,8 +27,9 @@ export function createRepository(options = {}) {
   const dataRoot = resolve(options.dataRoot ?? defaultDataRoot);
   const seedDataRoot = resolve(options.seedDataRoot ?? defaultDataRoot);
   const seedTaskNodes = options.seedTaskNodes === true;
+  const seedMarkdownLibrary = options.seedMarkdownLibrary === true || seedTaskNodes;
   mkdirSync(dataRoot, { recursive: true });
-  ensureDataFiles(dataRoot, seedDataRoot);
+  ensureDataFiles(dataRoot, seedDataRoot, { seedMarkdownLibrary });
   const project = loadProject(dataRoot);
   const dbPath = resolve(options.dbPath ?? join(dataRoot, "polaris.db"));
   mkdirSync(dirname(dbPath), { recursive: true });
@@ -278,8 +279,13 @@ function seedIfEmpty(repository, db, { seedTaskNodes = false } = {}) {
     repository.saveTaskNodes(sampleNodes);
   }
 
-  const libraryCount = db.prepare("SELECT COUNT(*) AS count FROM library_items").get().count;
   const systemLibraryItems = { artifacts: libraryItems.artifacts ?? [] };
+  if (!seedTaskNodes) {
+    removeBundledLibraryItems(db, systemLibraryItems);
+    return;
+  }
+
+  const libraryCount = db.prepare("SELECT COUNT(*) AS count FROM library_items").get().count;
   if (libraryCount === 0) {
     replaceLibraryItems(db, systemLibraryItems);
   } else {
@@ -287,9 +293,16 @@ function seedIfEmpty(repository, db, { seedTaskNodes = false } = {}) {
   }
 }
 
-function ensureDataFiles(dataRoot, seedDataRoot) {
+function ensureDataFiles(dataRoot, seedDataRoot, { seedMarkdownLibrary = false } = {}) {
   for (const { path } of defaultSources) {
-    copyMissingMarkdownFiles(join(seedDataRoot, path), join(dataRoot, path));
+    const sourceDir = join(seedDataRoot, path);
+    const targetDir = join(dataRoot, path);
+    mkdirSync(targetDir, { recursive: true });
+    if (seedMarkdownLibrary) {
+      copyMissingMarkdownFiles(sourceDir, targetDir);
+    } else {
+      removeUnmodifiedSeedMarkdownFiles(sourceDir, targetDir);
+    }
   }
 }
 
@@ -381,6 +394,27 @@ function copyMissingMarkdownFiles(sourceDir, targetDir) {
 
     mkdirSync(dirname(targetPath), { recursive: true });
     copyFileSync(sourcePath, targetPath);
+  }
+}
+
+function removeUnmodifiedSeedMarkdownFiles(sourceDir, targetDir) {
+  if (!existsSync(sourceDir) || !existsSync(targetDir)) return;
+  if (resolve(sourceDir) === resolve(targetDir)) return;
+
+  for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
+    const sourcePath = join(sourceDir, entry.name);
+    const targetPath = join(targetDir, entry.name);
+    if (!existsSync(targetPath)) continue;
+
+    if (entry.isDirectory()) {
+      removeUnmodifiedSeedMarkdownFiles(sourcePath, targetPath);
+      continue;
+    }
+
+    if (!entry.isFile() || extname(entry.name) !== ".md") continue;
+    if (readFileSync(sourcePath, "utf8") === readFileSync(targetPath, "utf8")) {
+      rmSync(targetPath, { force: true });
+    }
   }
 }
 
@@ -883,6 +917,50 @@ function insertMissingLibraryItems(db, itemsByKind) {
     db.exec("ROLLBACK");
     throw error;
   }
+}
+
+function removeBundledLibraryItems(db, itemsByKind) {
+  const select = db.prepare(`
+    SELECT id, kind, source, path, doc_type, url, related_node_ids, type, title, description, usage,
+           brief, date, source_description
+    FROM library_items
+    WHERE kind = ? AND id = ?
+  `);
+  const deleteItem = db.prepare("DELETE FROM library_items WHERE kind = ? AND id = ?");
+
+  db.exec("BEGIN");
+  try {
+    for (const [kind, items] of Object.entries(itemsByKind)) {
+      for (const item of items) {
+        const row = select.get(kind, item.id);
+        if (row && matchesBundledLibraryItem(row, kind, item)) {
+          deleteItem.run(kind, item.id);
+        }
+      }
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function matchesBundledLibraryItem(row, kind, item) {
+  return (
+    row.kind === kind &&
+    row.source === item.source &&
+    row.path === (item.path ?? null) &&
+    row.doc_type === (item.docType ?? null) &&
+    row.url === (item.url ?? null) &&
+    row.related_node_ids === JSON.stringify(item.relatedNodeIds ?? []) &&
+    row.type === item.type &&
+    row.title === item.title &&
+    row.description === item.description &&
+    row.usage === (item.usage ?? null) &&
+    row.brief === (item.brief ?? null) &&
+    row.date === (item.date ?? null) &&
+    row.source_description === (item.sourceDescription ?? null)
+  );
 }
 
 function readMarkdownFile(dataRoot, project, markdownPath) {

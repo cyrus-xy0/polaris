@@ -38,6 +38,7 @@ if (!hasDataRootOverride({ argv: process.argv.slice(2), env: process.env })) {
   migrateLegacyDefaultData({ from: bundledDataRoot, to: dataRoot });
 }
 const repository = createRepository({ dataRoot, seedDataRoot: bundledDataRoot, seedTaskNodes: seedDemoData });
+const inFlightAiJobs = new Map();
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -293,31 +294,49 @@ async function handleApiRequest(request, response) {
         return true;
       }
 
-      const output = await generateDraftOutput({
-        node,
-        artifact,
-        relatedRecords: getRecordsForNode(library, nodeId),
-        aiContext,
-        actionPlan: suggested.plan,
-        serviceRoot: root,
-        dataRoot,
+      const draft = await runSharedAiJob(`draft-output:${nodeId}:${signature}`, async () => {
+        const latestSaved = readAiResult({ dataRoot, kind: "draft-output", nodeId, signature });
+        if (latestSaved?.output && hasDraftOutputContent(latestSaved.output)) {
+          return {
+            output: latestSaved.output,
+            persistedAt: latestSaved.updatedAt,
+          };
+        }
+
+        const output = await generateDraftOutput({
+          node,
+          artifact,
+          relatedRecords: getRecordsForNode(library, nodeId),
+          aiContext,
+          actionPlan: suggested.plan,
+          serviceRoot: root,
+          dataRoot,
+        });
+        if (!hasDraftOutputContent(output)) {
+          return { error: output.error || "AI 没有返回可用的 Draft Output。", output };
+        }
+
+        const persisted = writeAiResult({
+          dataRoot,
+          kind: "draft-output",
+          nodeId,
+          signature,
+          payload: { output },
+        });
+        return {
+          output: persisted.output,
+          persistedAt: persisted.updatedAt,
+        };
       });
-      if (!hasDraftOutputContent(output)) {
-        const error = output.error || "AI 没有返回可用的 Draft Output。";
-        sendJson(response, 200, { output: { ...output, error }, status: "error", error });
+      if (!draft.output || !hasDraftOutputContent(draft.output)) {
+        const error = draft.error || draft.output?.error || "AI 没有返回可用的 Draft Output。";
+        sendJson(response, 200, { output: { ...(draft.output ?? {}), error }, status: "error", error });
         return true;
       }
 
-      const persisted = writeAiResult({
-        dataRoot,
-        kind: "draft-output",
-        nodeId,
-        signature,
-        payload: { output },
-      });
       sendJson(response, 200, {
-        output: persisted.output,
-        persistedAt: persisted.updatedAt,
+        output: draft.output,
+        persistedAt: draft.persistedAt,
         source: "filesystem",
       });
       return true;
@@ -427,29 +446,52 @@ async function readOrCreateSuggestedActionPlan({ nodeId, node, library, reason, 
     };
   }
 
-  const plan = await generateSuggestedActionPlan({
-    node,
-    reason,
-    relatedRecords: getRecordsForNode(library, nodeId),
-    aiContext,
-    serviceRoot: root,
-    dataRoot,
-  });
-  if (!hasSuggestedActionPlanContent(plan)) {
-    return { error: plan.error || "AI 没有返回可用的 Suggest Action Plan。" };
-  }
+  return runSharedAiJob(`suggested-action-plan:${nodeId}:${signature}`, async () => {
+    const latestSaved = readAiResult({ dataRoot, kind: "suggested-action-plan", nodeId, signature });
+    if (latestSaved?.plan && hasSuggestedActionPlanContent(latestSaved.plan)) {
+      return {
+        plan: latestSaved.plan,
+        persistedAt: latestSaved.updatedAt,
+      };
+    }
 
-  const persisted = writeAiResult({
-    dataRoot,
-    kind: "suggested-action-plan",
-    nodeId,
-    signature,
-    payload: { plan },
+    const plan = await generateSuggestedActionPlan({
+      node,
+      reason,
+      relatedRecords: getRecordsForNode(library, nodeId),
+      aiContext,
+      serviceRoot: root,
+      dataRoot,
+    });
+    if (!hasSuggestedActionPlanContent(plan)) {
+      return { error: plan.error || "AI 没有返回可用的 Suggest Action Plan。" };
+    }
+
+    const persisted = writeAiResult({
+      dataRoot,
+      kind: "suggested-action-plan",
+      nodeId,
+      signature,
+      payload: { plan },
+    });
+    return {
+      plan: persisted.plan,
+      persistedAt: persisted.updatedAt,
+    };
   });
-  return {
-    plan: persisted.plan,
-    persistedAt: persisted.updatedAt,
-  };
+}
+
+function runSharedAiJob(key, createJob) {
+  const existing = inFlightAiJobs.get(key);
+  if (existing) return existing;
+
+  const job = Promise.resolve()
+    .then(createJob)
+    .finally(() => {
+      inFlightAiJobs.delete(key);
+    });
+  inFlightAiJobs.set(key, job);
+  return job;
 }
 
 function createFallbackTaskNodeSplit(node) {
@@ -554,27 +596,32 @@ async function readOrCreateAiResultOutput({
   const saved = readAiResult({ dataRoot, kind: "ai-result-output", nodeId, signature });
   if (saved?.output && hasAiResultOutputContent(saved.output)) return { output: saved.output };
 
-  const output = await generateAiResultOutput({
-    node,
-    artifact,
-    relatedRecords: getRecordsForNode(library, nodeId),
-    aiContext,
-    actionPlan,
-    serviceRoot: root,
-    dataRoot,
-  });
-  if (!hasAiResultOutputContent(output)) {
-    return { error: output.error || "AI 没有返回可用的实际结果内容。" };
-  }
+  return runSharedAiJob(`ai-result-output:${nodeId}:${signature}`, async () => {
+    const latestSaved = readAiResult({ dataRoot, kind: "ai-result-output", nodeId, signature });
+    if (latestSaved?.output && hasAiResultOutputContent(latestSaved.output)) return { output: latestSaved.output };
 
-  const persisted = writeAiResult({
-    dataRoot,
-    kind: "ai-result-output",
-    nodeId,
-    signature,
-    payload: { output },
+    const output = await generateAiResultOutput({
+      node,
+      artifact,
+      relatedRecords: getRecordsForNode(library, nodeId),
+      aiContext,
+      actionPlan,
+      serviceRoot: root,
+      dataRoot,
+    });
+    if (!hasAiResultOutputContent(output)) {
+      return { error: output.error || "AI 没有返回可用的实际结果内容。" };
+    }
+
+    const persisted = writeAiResult({
+      dataRoot,
+      kind: "ai-result-output",
+      nodeId,
+      signature,
+      payload: { output },
+    });
+    return { output: persisted.output };
   });
-  return { output: persisted.output };
 }
 
 async function readOrCreateDraftOutput({
@@ -591,27 +638,32 @@ async function readOrCreateDraftOutput({
   const saved = readAiResult({ dataRoot, kind: "draft-output", nodeId, signature });
   if (saved?.output && hasDraftOutputContent(saved.output)) return { output: saved.output };
 
-  const output = await generateDraftOutput({
-    node,
-    artifact,
-    relatedRecords: getRecordsForNode(library, nodeId),
-    aiContext,
-    actionPlan,
-    serviceRoot: root,
-    dataRoot,
-  });
-  if (!hasDraftOutputContent(output)) {
-    return { error: output.error || "AI 没有返回可用的 Draft Output。" };
-  }
+  return runSharedAiJob(`draft-output:${nodeId}:${signature}`, async () => {
+    const latestSaved = readAiResult({ dataRoot, kind: "draft-output", nodeId, signature });
+    if (latestSaved?.output && hasDraftOutputContent(latestSaved.output)) return { output: latestSaved.output };
 
-  const persisted = writeAiResult({
-    dataRoot,
-    kind: "draft-output",
-    nodeId,
-    signature,
-    payload: { output },
+    const output = await generateDraftOutput({
+      node,
+      artifact,
+      relatedRecords: getRecordsForNode(library, nodeId),
+      aiContext,
+      actionPlan,
+      serviceRoot: root,
+      dataRoot,
+    });
+    if (!hasDraftOutputContent(output)) {
+      return { error: output.error || "AI 没有返回可用的 Draft Output。" };
+    }
+
+    const persisted = writeAiResult({
+      dataRoot,
+      kind: "draft-output",
+      nodeId,
+      signature,
+      payload: { output },
+    });
+    return { output: persisted.output };
   });
-  return { output: persisted.output };
 }
 
 async function readJsonBody(request) {

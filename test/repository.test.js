@@ -14,7 +14,12 @@ describe("local data repository", () => {
       const repository = createRepository({ dataRoot, dbPath: join(dataRoot, "polaris.db") });
 
       assert.deepEqual(repository.listTaskNodes(), []);
+      assert.deepEqual(repository.getLibrary().knowledge, []);
+      assert.deepEqual(repository.getLibrary().skills, []);
+      assert.deepEqual(repository.getLibrary().artifacts, []);
       assert.equal(existsSync(join(dataRoot, "task-nodes.json")), false);
+      assert.equal(existsSync(join(dataRoot, "knowledge/agent-application.md")), false);
+      assert.equal(existsSync(join(dataRoot, "skills/抓主要矛盾.md")), false);
       repository.close();
     } finally {
       rmSync(dataRoot, { recursive: true, force: true });
@@ -105,7 +110,7 @@ describe("local data repository", () => {
       repository.close();
       rmSync(snapshotPath, { force: true });
 
-      const reopenedRepository = createRepository({ dataRoot, dbPath });
+      const reopenedRepository = createRepository({ dataRoot, dbPath, seedTaskNodes: true });
       reopenedRepository.close();
 
       const snapshot = JSON.parse(readFileSync(snapshotPath, "utf8"));
@@ -117,36 +122,71 @@ describe("local data repository", () => {
 
   it("writes markdown-backed library items to local files", () => {
     const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
+    const skillDir = join(dataRoot, "skills");
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(
+      join(skillDir, "自定义能力.md"),
+      ["---", "description: Initial Skill", "---", "", "## 具体内容", "", "旧内容。", ""].join("\n"),
+    );
     const repository = createRepository({ dataRoot, dbPath: join(dataRoot, "polaris.db") });
 
     try {
-      const skill = repository.getLibrary().skills.find((entry) => entry.title === "抓主要矛盾");
+      const skill = repository.getLibrary().skills.find((entry) => entry.title === "自定义能力");
       const item = repository.updateMarkdown(
         "skills",
         skill.id,
         ["---", "description: Custom Skill", "---", "", "## 具体内容", "", "新内容。", ""].join("\n"),
       );
 
-      assert.equal(item.title, "抓主要矛盾");
+      assert.equal(item.title, "自定义能力");
       assert.equal(item.description, "Custom Skill");
-      assert.match(readFileSync(join(dataRoot, "skills/抓主要矛盾.md"), "utf8"), /新内容/);
+      assert.match(readFileSync(join(dataRoot, "skills/自定义能力.md"), "utf8"), /新内容/);
     } finally {
       repository.close();
       rmSync(dataRoot, { recursive: true, force: true });
     }
   });
 
-  it("copies bundled markdown files into a configured data directory", () => {
+  it("seeds bundled library files only when demo seed is requested", () => {
     const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
-    const repository = createRepository({ dataRoot, dbPath: join(dataRoot, "polaris.db") });
+    const repository = createRepository({ dataRoot, dbPath: join(dataRoot, "polaris.db"), seedTaskNodes: true });
 
     try {
-      const item = repository.getLibrary().knowledge.find((entry) => entry.brief === "现阶段用 workflow，不要用 agentic");
+      const library = repository.getLibrary();
+      const item = library.knowledge.find((entry) => entry.brief === "现阶段用 workflow，不要用 agentic");
 
       assert.ok(existsSync(join(dataRoot, "knowledge/agent-application.md")));
       assert.equal(item.type, "agent-application");
       assert.equal(item.date, "2025-08-27");
       assert.match(item.markdown, /# TAG: agent-application/);
+      assert.ok(library.artifacts.some((entry) => entry.id === "scenario-filter"));
+    } finally {
+      repository.close();
+      rmSync(dataRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("removes unmodified bundled library data that older versions copied into user data", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
+    const dbPath = join(dataRoot, "polaris.db");
+    const knowledgeDir = join(dataRoot, "knowledge");
+    const skillDir = join(dataRoot, "skills");
+
+    const seededRepository = createRepository({ dataRoot, dbPath, seedTaskNodes: true });
+    seededRepository.close();
+    writeFileSync(join(skillDir, "用户自己的能力.md"), "---\ndescription: Mine\n---\n\n自己的内容。\n");
+
+    const repository = createRepository({ dataRoot, dbPath });
+
+    try {
+      const library = repository.getLibrary();
+
+      assert.equal(existsSync(join(knowledgeDir, "agent-application.md")), false);
+      assert.equal(existsSync(join(skillDir, "抓主要矛盾.md")), false);
+      assert.equal(existsSync(join(skillDir, "用户自己的能力.md")), true);
+      assert.equal(library.knowledge.some((entry) => entry.type === "agent-application"), false);
+      assert.ok(library.skills.some((entry) => entry.title === "用户自己的能力"));
+      assert.deepEqual(library.artifacts, []);
     } finally {
       repository.close();
       rmSync(dataRoot, { recursive: true, force: true });
@@ -293,14 +333,14 @@ describe("local data repository", () => {
     const dbPath = join(dataRoot, "polaris.db");
 
     try {
-      const repository = createRepository({ dataRoot, dbPath });
+      const repository = createRepository({ dataRoot, dbPath, seedTaskNodes: true });
       repository.close();
 
       const db = new DatabaseSync(dbPath);
       db.prepare("DELETE FROM library_items WHERE kind = ? AND source = ?").run("knowledge", "md");
       db.close();
 
-      const reopenedRepository = createRepository({ dataRoot, dbPath });
+      const reopenedRepository = createRepository({ dataRoot, dbPath, seedTaskNodes: true });
       const agentKnowledge = reopenedRepository
         .getLibrary()
         .knowledge.filter((item) => item.type === "agent-application")

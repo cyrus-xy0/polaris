@@ -29,9 +29,9 @@ By default, the demo keeps that data outside the git checkout:
 - Windows: `%APPDATA%\Polaris`
 - Linux: `${XDG_DATA_HOME:-~/.local/share}/polaris`
 
-The repo's `data/` directory is only the bundled seed/template data. On first run, Polaris copies missing seed knowledge and skills into the user data directory. If an older checkout already has runtime data in `data/`, the default startup path migrates those files once into the user data directory.
+The repo's `data/` directory is only bundled seed/template data. On first run, Polaris creates empty user-owned knowledge and skill directories; it does not copy bundled demo markdown unless demo seeding is explicitly enabled. If an older checkout already has runtime data in `data/`, the default startup path migrates those files once into the user data directory.
 
-First deployment starts with no goal tree. Create the root Polaris goal in the UI; from that point on, task nodes, card state, conclusions, and completion links are user data. To load the bundled demo goal tree deliberately, start with:
+First deployment starts with no goal tree, knowledge, skills, or demo output artifacts. Create the root Polaris goal and add reusable material in the UI; from that point on, task nodes, card state, conclusions, completion links, knowledge, skills, and output artifacts are user data. To load the bundled demo goal tree, demo markdown, and demo artifacts deliberately, start with:
 
 ```bash
 npm start -- --seed-demo
@@ -172,7 +172,7 @@ Data handoff checklist:
 - `npm start` launches the browser UI with no extra packages to install.
 - `POLARIS_DATA_DIR` or `--data-dir` points the app at a deployer's own local state.
 - Without an override, Polaris uses the OS user data directory, not the git checkout.
-- First deployment does not import the bundled demo goal tree unless `--seed-demo` or `POLARIS_SEED_DEMO=1` is set.
+- First deployment does not import the bundled demo goal tree, knowledge, skills, or output artifacts unless `--seed-demo` or `POLARIS_SEED_DEMO=1` is set.
 - `polaris.project.json` lists every local data source that should be imported.
 - New or renamed markdown files require a server restart so the source scan can rebuild the library index.
 - Existing markdown content can be edited from the browser and persists to disk.
@@ -238,8 +238,9 @@ npm test
 ## Data model
 
 - Optional demo task-node seed data lives in `data/seed/task-nodes.js`; it is only imported when demo seeding is explicitly enabled.
-- System-maintained output artifact seed data lives in `data/seed/library.js`.
-- The repo's `data/knowledge/` and `data/skills/` are bundled seeds; user-maintained markdown knowledge and skills live in the configured data directory or external project sources.
+- Optional demo output artifact seed data lives in `data/seed/library.js`; it is only imported when demo seeding is explicitly enabled.
+- The repo's `data/knowledge/` and `data/skills/` are bundled demo markdown; they are only copied when demo seeding is explicitly enabled.
+- User-maintained markdown knowledge and skills live in the configured data directory or external project sources.
 - Project source configuration lives at `<data-dir>/polaris.project.json`.
 - Task tree structure, card state, conclusions, and completion result links live in `<data-dir>/task-nodes.json`.
 - Local SQLite at `<data-dir>/polaris.db` is a runtime mirror/index, not the only copy of user state.
