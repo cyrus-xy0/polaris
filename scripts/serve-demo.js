@@ -1,12 +1,18 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, join, normalize, resolve } from "node:path";
-import { generateDraftOutput, generateSuggestedActionPlan, generateTaskNodeSplit } from "../src/action-plan-ai.js";
+import {
+  generateAiResultOutput,
+  generateDraftOutput,
+  generateSuggestedActionPlan,
+  generateTaskNodeSplit,
+} from "../src/action-plan-ai.js";
 import {
   createAiResultSignature,
   createAiContextDigest,
   createDraftOutputSignature,
   createSuggestedActionPlanSignature,
+  hasAiResultOutputContent,
   hasDraftOutputContent,
   hasSuggestedActionPlanContent,
   readAiResult,
@@ -308,7 +314,7 @@ async function handleApiRequest(request, response) {
         return true;
       }
 
-      const draft = await readOrCreateDraftOutput({
+      const generatedResult = await readOrCreateAiResultOutput({
         nodeId,
         node,
         library,
@@ -318,15 +324,15 @@ async function handleApiRequest(request, response) {
         actionPlan: suggested.plan,
         actionPlanDigest,
       });
-      if (!draft.output) {
-        const error = draft.error || "AI 没有返回可用的结果内容。";
+      if (!generatedResult.output) {
+        const error = generatedResult.error || "AI 没有返回可用的实际结果内容。";
         sendJson(response, 200, { result: { error }, status: "error", error });
         return true;
       }
 
       const result = await publishAiResult({
         node,
-        output: draft.output,
+        output: generatedResult.output,
         artifact,
         actionPlan: suggested.plan,
         signature,
@@ -336,7 +342,7 @@ async function handleApiRequest(request, response) {
         kind: "ai-result",
         nodeId,
         signature,
-        payload: { result },
+        payload: { result, output: generatedResult.output },
       });
       sendJson(response, 200, {
         result: persisted.result,
@@ -488,6 +494,43 @@ async function publishAiResult({ node, output, artifact, actionPlan, signature }
       actionPlan,
     });
   }
+}
+
+async function readOrCreateAiResultOutput({
+  nodeId,
+  node,
+  library,
+  artifact,
+  aiContext,
+  contextDigest,
+  actionPlan,
+  actionPlanDigest,
+}) {
+  const signature = createAiResultSignature({ node, artifact, contextDigest, actionPlanDigest });
+  const saved = readAiResult({ dataRoot, kind: "ai-result-output", nodeId, signature });
+  if (saved?.output && hasAiResultOutputContent(saved.output)) return { output: saved.output };
+
+  const output = await generateAiResultOutput({
+    node,
+    artifact,
+    relatedRecords: getRecordsForNode(library, nodeId),
+    aiContext,
+    actionPlan,
+    serviceRoot: root,
+    dataRoot,
+  });
+  if (!hasAiResultOutputContent(output)) {
+    return { error: output.error || "AI 没有返回可用的实际结果内容。" };
+  }
+
+  const persisted = writeAiResult({
+    dataRoot,
+    kind: "ai-result-output",
+    nodeId,
+    signature,
+    payload: { output },
+  });
+  return { output: persisted.output };
 }
 
 async function readOrCreateDraftOutput({

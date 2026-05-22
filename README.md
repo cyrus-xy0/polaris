@@ -83,28 +83,55 @@ To connect your own folder, stop the server, add another source entry, and resta
 }
 ```
 
-Markdown files from configured `knowledge` and `skills` sources are imported on server start. Files may use optional front matter:
+Markdown files from configured `knowledge` and `skills` sources are imported on server start. The three library areas now follow these ownership rules:
+
+### Current Output
+
+Current Output stays system-maintained. Seeded output artifact links live in SQLite from `data/seed/library.js`, and task completion can bind AI or manual result links back to the current node.
+
+### Skills
+
+Each skill is one `.md` file. The file name is the displayed title, and the file should include a `description` plus the concrete content:
 
 ```markdown
 ---
-type: 行业判断
-title: 自定义市场信号
-description: 来自本地知识库的判断摘要。
-relatedNodeIds: find-scenario, define-solution
+description: 判断当前节点最关键的阻塞点，避免平均用力。
+relatedNodeIds: analyze-gtm-ops, write-judgement
 ---
 
-# 自定义市场信号
+## 具体内容
 
-正文内容。
+生成 action plan 前，先收敛这个任务真正要解决的问题。
 ```
 
-Front matter fields:
+The web UI shows the skill title and description. Editing the card writes back to that `.md` file.
 
-- `title`: display title. Falls back to the first `# Heading`, then the file name.
-- `description`: card summary. Falls back to the first paragraph.
-- `type`: grouping label. Falls back to the nearest folder name, then the source `defaultType`.
-- `relatedNodeIds`: comma-separated task node ids that should use this item.
-- `usage`: optional note about when to apply this knowledge or skill.
+### Knowledge
+
+Each knowledge `.md` file represents one type/tag and can contain multiple knowledge entries. The web UI groups entries by `TAG` and shows each entry's `Brief`.
+
+```markdown
+# TAG: agent-application
+
+> Agent 落地产品、场景设计、ToB 应用认知。
+
+---
+
+## 2025-08-27
+
+**Brief**：现阶段用 workflow，不要用 agentic
+
+自主行动（Act）效果普遍差，RAG 还行。类 workflow 的有限次推理比完全自主的 Agent 更可控、效果更稳。
+```
+
+Knowledge parser fields:
+
+- `# TAG: ...`: grouping tag shown in the web UI.
+- First blockquote after the tag: type description shown on the group card.
+- `## YYYY-MM-DD`: entry date.
+- `**Brief**：...`: entry brief shown in the index.
+- Body below the brief: entry description and AI context content.
+- Optional front matter `relatedNodeIds`: comma-separated task node ids that should use every entry in the file.
 
 Verify the data plane after restart:
 
@@ -113,7 +140,7 @@ curl http://127.0.0.1:4173/api/project
 curl http://127.0.0.1:4173/api/library
 ```
 
-Use the actual port printed by `npm start` if it is not `4173`. A connected external markdown file appears in `/api/library` with a path like `/sources/my-local-notes/file-name.md`, and it is visible in the Knowledge or Skill view. Editing a markdown-backed source item in the browser writes back to the source `.md` file and refreshes its title, description, type, usage, and related node ids from front matter.
+Use the actual port printed by `npm start` if it is not `4173`. A connected external markdown file appears in `/api/library` with a path like `/sources/my-local-notes/file-name.md`, and it is visible in the Knowledge or Skill view. Editing a markdown-backed source item in the browser writes back to the source `.md` file and rebuilds its library index.
 
 Data handoff checklist:
 
@@ -123,7 +150,7 @@ Data handoff checklist:
 - New or renamed markdown files require a server restart so the source scan can rebuild the library index.
 - Existing markdown content can be edited from the browser and persists to disk.
 - Task-node state persists in `<data-dir>/polaris.db`.
-- Markdown-backed `knowledge` and `skills` are configurable through project sources; seeded output artifact links live in SQLite from `data/seed/library.js`.
+- Markdown-backed `knowledge` and `skills` are user-maintained through project sources; seeded output artifact links live in SQLite from `data/seed/library.js`.
 
 ## Local action-plan generation
 
@@ -164,7 +191,7 @@ POLARIS_OPENCLAW_AGENT=qa npm start
 
 If neither `openclaw` nor `hermes` exists locally, the panel reports that local AI generation is unavailable.
 
-Generated Suggest Action Plan and Draft Output payloads are persisted to `<data-dir>/ai-results/` before the browser updates the panel. The `查看 AI 结果` flow creates a Feishu document with `lark-cli docs +create --api-version v2 --as user`, persists the returned URL, and fills the completion link input after analysis finishes. If Feishu creation fails locally, Polaris writes a local HTML result page under `<data-dir>/ai-results/documents/` so the result link still resolves. While generation is in progress, the UI shows `AI 正在分析`.
+Generated Suggest Action Plan, Draft Output, and executed AI Result payloads are persisted to `<data-dir>/ai-results/` before the browser updates the panel. Draft Output remains the preview card, while the `查看 AI 结果` flow runs a separate execution prompt that produces the actual result body, such as an analysis table, findings, and follow-up actions. Polaris then creates a Feishu document with `lark-cli docs +create --api-version v2 --as user`, persists the returned URL, and fills the completion link input after analysis finishes. If Feishu creation fails locally, Polaris writes a local HTML result page under `<data-dir>/ai-results/documents/` so the result link still resolves. While generation is in progress, the UI shows `AI 正在分析`.
 
 AI prompts are built from the current task plus its upstream task chain, dependency results, related and global knowhow, skills, artifacts, and prior task results. The persisted cache key includes this context digest, so changed knowledge or accumulated results trigger regeneration.
 
@@ -183,8 +210,8 @@ npm test
 ## Data model
 
 - Task-node seed data lives in `data/seed/task-nodes.js`.
-- Knowledge, skill, and artifact seed data lives in `data/seed/library.js`.
-- Bundled markdown knowledge and skills live in `data/knowledge/` and `data/skills/`.
+- System-maintained output artifact seed data lives in `data/seed/library.js`.
+- User-maintained markdown knowledge and skills live in `data/knowledge/` and `data/skills/`.
 - Project source configuration lives at `<data-dir>/polaris.project.json`.
 - Runtime state is persisted to local SQLite at `<data-dir>/polaris.db`; this file is intentionally ignored by git when the default `data/` directory is used. Previous local database files are migrated automatically on first run.
 

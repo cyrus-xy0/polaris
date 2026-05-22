@@ -41,10 +41,16 @@ describe("local data repository", () => {
     const repository = createRepository({ dataRoot, dbPath: join(dataRoot, "polaris.db") });
 
     try {
-      const item = repository.updateMarkdown("skills", "find-main-contradiction", "# Custom Skill\n");
+      const skill = repository.getLibrary().skills.find((entry) => entry.title === "抓主要矛盾");
+      const item = repository.updateMarkdown(
+        "skills",
+        skill.id,
+        ["---", "description: Custom Skill", "---", "", "## 具体内容", "", "新内容。", ""].join("\n"),
+      );
 
-      assert.equal(item.markdown, "# Custom Skill\n");
-      assert.equal(readFileSync(join(dataRoot, "skills/find-main-contradiction.md"), "utf8"), "# Custom Skill\n");
+      assert.equal(item.title, "抓主要矛盾");
+      assert.equal(item.description, "Custom Skill");
+      assert.match(readFileSync(join(dataRoot, "skills/抓主要矛盾.md"), "utf8"), /新内容/);
     } finally {
       repository.close();
       rmSync(dataRoot, { recursive: true, force: true });
@@ -56,10 +62,12 @@ describe("local data repository", () => {
     const repository = createRepository({ dataRoot, dbPath: join(dataRoot, "polaris.db") });
 
     try {
-      const item = repository.getLibrary().knowledge.find((entry) => entry.id === "tob-agent-trends");
+      const item = repository.getLibrary().knowledge.find((entry) => entry.brief === "现阶段用 workflow，不要用 agentic");
 
-      assert.ok(existsSync(join(dataRoot, "knowledge/tob-agent-trends.md")));
-      assert.match(item.markdown, /ToB Agent 落地趋势/);
+      assert.ok(existsSync(join(dataRoot, "knowledge/agent-application.md")));
+      assert.equal(item.type, "agent-application");
+      assert.equal(item.date, "2025-08-27");
+      assert.match(item.markdown, /# TAG: agent-application/);
     } finally {
       repository.close();
       rmSync(dataRoot, { recursive: true, force: true });
@@ -88,7 +96,7 @@ describe("local data repository", () => {
     }
   });
 
-  it("imports markdown from project sources outside the data directory", () => {
+  it("imports knowledge tag files from project sources outside the data directory", () => {
     const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
     const sourceRoot = mkdtempSync(join(tmpdir(), "polaris-source-"));
     writeFileSync(
@@ -113,11 +121,15 @@ describe("local data repository", () => {
     writeFileSync(
       join(sourceRoot, "client-note.md"),
       [
+        "# TAG: client-signal",
+        "",
+        "> 来自外部 source 的知识。",
+        "",
         "---",
-        "title: 外部客户知识",
-        "description: 来自外部 source 的知识。",
-        "---",
-        "# 外部客户知识",
+        "",
+        "## 2026-05-22",
+        "",
+        "**Brief**：外部客户知识",
         "",
         "这条知识不在 Polaris data dir 内。",
       ].join("\n"),
@@ -127,32 +139,33 @@ describe("local data repository", () => {
 
     try {
       const bootstrap = repository.getBootstrap();
-      const item = bootstrap.library.knowledge.find((entry) => entry.title === "外部客户知识");
+      const item = bootstrap.library.knowledge.find((entry) => entry.brief === "外部客户知识");
 
       assert.equal(bootstrap.project.name, "Client Project");
       assert.equal(bootstrap.project.sources[0].id, "client-knowledge");
       assert.equal(item.path, "/sources/client-knowledge/client-note.md");
-      assert.equal(item.type, "客户知识");
+      assert.equal(item.type, "client-signal");
+      assert.equal(item.sourceDescription, "来自外部 source 的知识。");
       assert.match(item.markdown, /不在 Polaris data dir 内/);
 
       const updated = repository.updateMarkdown(
         "knowledge",
         item.id,
         [
-          "---",
-          "title: 外部客户知识 v2",
-          "description: 已通过编辑器写回外部 source。",
-          "relatedNodeIds: scope-mvp",
-          "---",
-          "# 外部客户知识 v2",
+          "# TAG: client-signal",
+          "",
+          "> 已通过编辑器写回外部 source。",
+          "",
+          "## 2026-05-22",
+          "",
+          "**Brief**：外部客户知识 v2",
           "",
           "这条知识已经写回部署者自己的目录。",
         ].join("\n"),
       );
 
-      assert.equal(updated.title, "外部客户知识 v2");
-      assert.equal(updated.description, "已通过编辑器写回外部 source。");
-      assert.deepEqual(updated.relatedNodeIds, ["scope-mvp"]);
+      assert.equal(updated.brief, "外部客户知识 v2");
+      assert.equal(updated.sourceDescription, "已通过编辑器写回外部 source。");
       assert.match(readFileSync(join(sourceRoot, "client-note.md"), "utf8"), /写回部署者自己的目录/);
     } finally {
       repository.close();
@@ -163,17 +176,20 @@ describe("local data repository", () => {
 
   it("imports local markdown knowledge from the configured data directory", () => {
     const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
-    const knowledgeDir = join(dataRoot, "knowledge/行业判断");
+    const knowledgeDir = join(dataRoot, "knowledge");
     mkdirSync(knowledgeDir, { recursive: true });
     writeFileSync(
-      join(knowledgeDir, "custom-market-signal.md"),
+      join(knowledgeDir, "market-signal.md"),
       [
-        "---",
-        "title: 自定义市场信号",
-        "description: 来自本地知识库的判断摘要。",
         "relatedNodeIds: find-scenario, define-solution",
-        "---",
-        "# 自定义市场信号",
+        "",
+        "# TAG: market-signal",
+        "",
+        "> 来自本地知识库的判断摘要。",
+        "",
+        "## 2026-05-22",
+        "",
+        "**Brief**：自定义市场信号",
         "",
         "这是一条部署者自己的本地知识。",
       ].join("\n"),
@@ -182,11 +198,10 @@ describe("local data repository", () => {
     const repository = createRepository({ dataRoot, dbPath: join(dataRoot, "polaris.db") });
 
     try {
-      const item = repository.getLibrary().knowledge.find((entry) => entry.title === "自定义市场信号");
+      const item = repository.getLibrary().knowledge.find((entry) => entry.brief === "自定义市场信号");
 
-      assert.equal(item.type, "行业判断");
-      assert.equal(item.description, "来自本地知识库的判断摘要。");
-      assert.deepEqual(item.relatedNodeIds, ["find-scenario", "define-solution"]);
+      assert.equal(item.type, "market-signal");
+      assert.equal(item.sourceDescription, "来自本地知识库的判断摘要。");
       assert.match(item.markdown, /部署者自己的本地知识/);
     } finally {
       repository.close();
@@ -194,7 +209,7 @@ describe("local data repository", () => {
     }
   });
 
-  it("fills in missing seed library items for existing sqlite data", () => {
+  it("rebuilds markdown library items for existing sqlite data", () => {
     const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
     const dbPath = join(dataRoot, "polaris.db");
 
@@ -203,23 +218,23 @@ describe("local data repository", () => {
       repository.close();
 
       const db = new DatabaseSync(dbPath);
-      db.prepare("DELETE FROM library_items WHERE id = ?").run("tob-agent-budget-owner");
+      db.prepare("DELETE FROM library_items WHERE kind = ? AND source = ?").run("knowledge", "md");
       db.close();
 
       const reopenedRepository = createRepository({ dataRoot, dbPath });
-      const industryJudgements = reopenedRepository
+      const agentKnowledge = reopenedRepository
         .getLibrary()
-        .knowledge.filter((item) => item.type === "行业判断")
+        .knowledge.filter((item) => item.type === "agent-application")
         .map((item) => item.title);
-      const thinkingSkills = reopenedRepository
+      const skills = reopenedRepository
         .getLibrary()
-        .skills.filter((item) => item.type === "思考方式")
+        .skills
         .map((item) => item.title);
 
-      assert.ok(industryJudgements.includes("预算归属正在迁移"));
-      assert.equal(industryJudgements.length, 3);
-      assert.ok(thinkingSkills.includes("反证优先"));
-      assert.equal(thinkingSkills.length, 3);
+      assert.ok(agentKnowledge.includes("预算归属从个人工具迁移到流程 owner"));
+      assert.equal(agentKnowledge.length, 6);
+      assert.ok(skills.includes("反证优先"));
+      assert.equal(skills.length, 6);
       reopenedRepository.close();
     } finally {
       rmSync(dataRoot, { recursive: true, force: true });

@@ -7,6 +7,7 @@ import {
   createDraftOutputSignature,
   createAiResultSignature,
   createSuggestedActionPlanSignature,
+  hasAiResultOutputContent,
   hasDraftOutputContent,
   hasSuggestedActionPlanContent,
   readAiResult,
@@ -99,9 +100,10 @@ describe("AI result store", () => {
         steps: ["读取上文", "生成 brief"],
       },
       output: {
-        title: "差异点定义草稿",
+        title: "差异点分析结果",
         summary: "明确方案判断口径。",
-        points: ["传统路径", "AI 路径"],
+        markdown: "| 维度 | 传统路径 | AI 路径 |\n|---|---|---|\n| 输入 | 人工整理 | 自动读取上下文 |",
+        points: ["传统路径依赖人工整理", "AI 路径应自动读取上下文"],
       },
     });
 
@@ -109,8 +111,10 @@ describe("AI result store", () => {
     assert.match(result.url, /^\/ai-results\/documents\/.+\.html$/);
     assert.equal(existsSync(result.path), true);
     const html = readFileSync(result.path, "utf8");
-    assert.match(html, /差异点定义草稿/);
+    assert.match(html, /差异点分析结果/);
     assert.match(html, /实施依据/);
+    assert.match(html, /<table>/);
+    assert.match(html, /自动读取上下文/);
   });
 
   it("does not treat terminal status or HTML as usable AI content", () => {
@@ -118,6 +122,15 @@ describe("AI result store", () => {
     assert.equal(hasSuggestedActionPlanContent({ summary: "", steps: ["completed"] }), false);
     assert.equal(hasDraftOutputContent({ title: "completed", summary: "", brief: "", points: [] }), false);
     assert.equal(hasDraftOutputContent({ title: "", summary: "<html><h1>Bad Gateway</h1></html>", brief: "" }), false);
+    assert.equal(hasAiResultOutputContent({ title: "只有标题", summary: "只有摘要", points: [] }), false);
+    assert.equal(hasAiResultOutputContent({ markdown: "| 维度 | 结果 |\n|---|---|\n| A | B |" }), true);
+  });
+
+  it("uses a separate AI result signature version from the draft card", () => {
+    const node = createNode();
+    const artifact = { title: "差异点草稿", docType: "Feishu Doc" };
+
+    assert.notEqual(createAiResultSignature({ node, artifact }), createDraftOutputSignature({ node, artifact }));
   });
 });
 

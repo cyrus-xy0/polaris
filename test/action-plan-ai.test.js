@@ -4,12 +4,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import {
+  buildAiResultOutputPrompt,
   buildDraftOutputPrompt,
   buildTaskNodeSplitPrompt,
   findLocalActionPlanGenerator,
+  generateAiResultOutput,
   generateDraftOutput,
   generateSuggestedActionPlan,
   generateTaskNodeSplit,
+  parseAiResultOutput,
   parseActionPlanOutput,
   parseDraftOutput,
   parseTaskNodeSplitOutput,
@@ -41,6 +44,28 @@ describe("action plan AI", () => {
     });
 
     assert.deepEqual(output, { title: "", summary: "", brief: "", points: [], provider: null });
+  });
+
+  it("leaves AI result output blank when no local generator exists", async () => {
+    const serviceRoot = mkdtempSync(join(tmpdir(), "polaris-no-result-generator-"));
+    const output = await generateAiResultOutput({
+      node: createTestNode(),
+      serviceRoot,
+      dataRoot: serviceRoot,
+      env: { PATH: "" },
+      includePath: false,
+    });
+
+    assert.deepEqual(output, {
+      title: "",
+      summary: "",
+      resultType: "analysis",
+      markdown: "",
+      points: [],
+      nextActions: [],
+      shouldContinue: null,
+      provider: null,
+    });
   });
 
   it("leaves task-node split blank when no local generator exists", async () => {
@@ -198,6 +223,41 @@ describe("action plan AI", () => {
     assert.match(output.brief, /Suggest Action Plan/);
   });
 
+  it("generates an executed AI result instead of a Draft Output card extraction", async () => {
+    const serviceRoot = mkdtempSync(join(tmpdir(), "polaris-result-hermes-"));
+    const commandPath = join(serviceRoot, "hermes");
+    writeFileSync(
+      commandPath,
+      [
+        "#!/usr/bin/env node",
+        "if (process.argv[2] !== 'chat') process.exit(3);",
+        "const prompt = process.argv[5] || '';",
+        "if (!prompt.includes('真实产物')) process.exit(4);",
+        "if (!prompt.includes('不是 Draft Output 卡片内容')) process.exit(5);",
+        "console.log(JSON.stringify({ title: '案例迁移分析表', summary: '筛出三类可迁移模式。', resultType: 'analysis-table', markdown: '| 角色 | 案例 | 可迁移设计 |\\n|---|---|---|\\n| RevOps | Clari Copilot | Pipeline 风险预警 |', points: ['RevOps 优先进入', '从风险预警切入'], nextActions: ['把结果写入 Pitchdeck'], shouldContinue: true }));",
+      ].join("\n"),
+    );
+    chmodSync(commandPath, 0o755);
+
+    const output = await generateAiResultOutput({
+      node: createTestNode(),
+      artifact: { docType: "飞书 Base", title: "真实案例分析表", url: "https://example.feishu.cn/base/cases" },
+      actionPlan: {
+        summary: "按案例路径执行。",
+        steps: ["筛案例", "写分析表", "判断迁移"],
+      },
+      serviceRoot,
+      dataRoot: serviceRoot,
+      includePath: false,
+    });
+
+    assert.equal(output.provider, "hermes");
+    assert.equal(output.title, "案例迁移分析表");
+    assert.match(output.markdown, /\| 角色 \| 案例 \| 可迁移设计 \|/);
+    assert.deepEqual(output.points, ["RevOps 优先进入", "从风险预警切入"]);
+    assert.equal(output.shouldContinue, true);
+  });
+
   it("does not render OpenClaw diagnostic output as AI content", async () => {
     const serviceRoot = mkdtempSync(join(tmpdir(), "polaris-openclaw-diagnostic-"));
     const commandPath = join(serviceRoot, "openclaw");
@@ -348,6 +408,16 @@ describe("action plan AI", () => {
   it("treats terminal status text as empty generator output", () => {
     assert.deepEqual(parseActionPlanOutput("completed"), { summary: "", steps: [], provider: null });
     assert.deepEqual(parseDraftOutput("completed"), { title: "", summary: "", brief: "", points: [], provider: null });
+    assert.deepEqual(parseAiResultOutput("completed"), {
+      title: "",
+      summary: "",
+      resultType: "analysis",
+      markdown: "",
+      points: [],
+      nextActions: [],
+      shouldContinue: null,
+      provider: null,
+    });
     assert.deepEqual(parseTaskNodeSplitOutput("completed"), { summary: "", nodes: [], provider: null });
   });
 
@@ -357,6 +427,14 @@ describe("action plan AI", () => {
     assert.equal(output.title, "");
     assert.equal(output.brief, "背景判断；核心差异；验收标准");
     assert.deepEqual(output.points, ["背景判断", "核心差异", "验收标准"]);
+  });
+
+  it("parses plain text AI result output as markdown content", () => {
+    const output = parseAiResultOutput("1. 已完成案例筛选\n2. 已形成迁移判断");
+
+    assert.equal(output.summary, "已完成案例筛选");
+    assert.equal(output.markdown, "1. 已完成案例筛选\n2. 已形成迁移判断");
+    assert.deepEqual(output.points, ["已完成案例筛选", "已形成迁移判断"]);
   });
 
   it("parses plain text task-node split as executable child nodes", () => {
@@ -408,6 +486,23 @@ describe("action plan AI", () => {
     assert.match(prompt, /不要只把 AI 当输入框/);
     assert.match(prompt, /必须遵循的 Suggest Action Plan/);
     assert.match(prompt, /1\. 读取上文/);
+  });
+
+  it("builds AI result prompts for actual task outputs", () => {
+    const prompt = buildAiResultOutputPrompt({
+      node: createTestNode(),
+      artifact: { docType: "飞书 Base", title: "真实案例分析表", url: "https://example.feishu.cn/base/cases" },
+      actionPlan: {
+        summary: "按计划产出实际结果。",
+        steps: ["筛案例", "写入分析表", "判断是否继续"],
+      },
+    });
+
+    assert.match(prompt, /查看 AI 结果/);
+    assert.match(prompt, /不是 Draft Output 卡片内容/);
+    assert.match(prompt, /Markdown 表格/);
+    assert.match(prompt, /真实案例分析表/);
+    assert.match(prompt, /1\. 筛案例/);
   });
 
   it("builds task-node split prompts from node title and description", () => {

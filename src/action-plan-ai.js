@@ -69,6 +69,37 @@ export async function generateDraftOutput({
   }
 }
 
+export async function generateAiResultOutput({
+  node,
+  artifact = null,
+  relatedRecords = [],
+  aiContext = null,
+  actionPlan = null,
+  serviceRoot = process.cwd(),
+  dataRoot = null,
+  timeoutMs = 120_000,
+  env = defaultEnv,
+  includePath = true,
+} = {}) {
+  const generator = findLocalActionPlanGenerator({ serviceRoot, dataRoot, env, includePath });
+  if (!generator || !node) return createBlankAiResultOutput();
+
+  try {
+    const prompt = buildAiResultOutputPrompt({ node, artifact, relatedRecords, aiContext, actionPlan });
+    const output = await runGenerator(generator, prompt, { cwd: serviceRoot, timeoutMs, env });
+    return {
+      ...parseAiResultOutput(output),
+      provider: generator.name,
+    };
+  } catch (error) {
+    return {
+      ...createBlankAiResultOutput(),
+      provider: generator.name,
+      error: error.message,
+    };
+  }
+}
+
 export async function generateTaskNodeSplit({
   node,
   relatedRecords = [],
@@ -193,6 +224,50 @@ export function buildDraftOutputPrompt({ node, artifact = null, relatedRecords =
   ].join("\n");
 }
 
+export function buildAiResultOutputPrompt({ node, artifact = null, relatedRecords = [], aiContext = null, actionPlan = null }) {
+  const artifactContext = artifact
+    ? [
+        `- 类型：${artifact.docType ?? "未知"}`,
+        `- 标题：${artifact.title ?? "未知"}`,
+        artifact.url ? `- 链接：${artifact.url}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : "无";
+
+  return [
+    "你是 Polaris 本地任务节点执行助手。",
+    "请综合当前任务、上文输入、knowhow、skill、关联产物和其他任务积累结果，直接完成当前节点可完成的实际 AI 结果。",
+    "这里要生成的是「查看 AI 结果」打开后的真实产物，不是 Draft Output 卡片内容，不要提取或改写节点卡片文案。",
+    "只输出 JSON，不要输出 Markdown 或解释文字。",
+    'JSON 格式：{"title":"实际产物标题","summary":"一句话结果结论","resultType":"analysis","markdown":"完整结果正文，优先用 Markdown 表格/清单/结论","points":["关键结论"],"nextActions":["后续动作"],"shouldContinue":true}',
+    "要求：",
+    "- 必须严格按照 Suggest Action Plan 的 steps 执行；无法执行的步骤要在 markdown 中说明阻塞、缺口和下一步补救。",
+    "- markdown 必须承载实际完成结果：分析表、筛选清单、判断结论、迁移建议、执行记录或可验收产物，不要只写摘要。",
+    "- 如果任务包含“案例、筛选、分析、表、清单、对比”等语义，markdown 必须包含一张 Markdown 表格。",
+    "- 如果关联产物提供了表格、文档或分析结果链接，要在 markdown 中引用它，并说明本次结果与该产物的关系。",
+    "- points 写 3 到 6 条已经形成的关键结论，不要写待办列表。",
+    "- nextActions 只写完成结果之后自然衔接的后续动作，不能替代本次结果。",
+    "- shouldContinue 只能是 true、false 或 null；只有任务本身需要判断是否继续时才给布尔值。",
+    "- 不要复述任务标题，不要输出“AI 会/将会/需要”这类尚未完成的表述。",
+    "",
+    "任务节点：",
+    `- id：${node.id}`,
+    `- 标题：${node.title}`,
+    `- 标签：${node.tag}`,
+    `- 描述：${node.description}`,
+    "",
+    "关联产物：",
+    artifactContext,
+    "",
+    "必须遵循的 Suggest Action Plan：",
+    formatActionPlan(actionPlan),
+    "",
+    "AI 上下文：",
+    formatAiContext({ aiContext, relatedRecords }),
+  ].join("\n");
+}
+
 export function buildTaskNodeSplitPrompt({ node, relatedRecords = [], aiContext = null }) {
   return [
     "你是 Polaris 本地任务节点拆解助手。",
@@ -245,6 +320,23 @@ export function parseDraftOutput(output) {
     summary: "",
     brief: parsePlainTextSteps(text).join("；"),
     points: parsePlainTextSteps(text),
+  });
+}
+
+export function parseAiResultOutput(output) {
+  const text = typeof output === "string" ? output.trim() : "";
+  if (!text) return createBlankAiResultOutput();
+  if (isNonContentStatusText(text)) return createBlankAiResultOutput();
+
+  const jsonPayload = parseJsonPayload(text);
+  if (jsonPayload) return normalizeAiResultOutput(jsonPayload);
+
+  const points = parsePlainTextSteps(text);
+  return normalizeAiResultOutput({
+    title: "",
+    summary: points[0] ?? "",
+    markdown: text,
+    points,
   });
 }
 
@@ -384,6 +476,9 @@ function hasNativePolarisPayload(payload) {
       typeof payload === "object" &&
       (Object.hasOwn(payload, "steps") ||
         Object.hasOwn(payload, "brief") ||
+        Object.hasOwn(payload, "markdown") ||
+        Object.hasOwn(payload, "resultType") ||
+        Object.hasOwn(payload, "resultOutput") ||
         Object.hasOwn(payload, "points") ||
         Object.hasOwn(payload, "nodes")),
   );
@@ -425,7 +520,7 @@ function scoreGeneratorText(text, key) {
   if (/^(response|reply|answer|final)$/i.test(key)) score += 40;
   if (/^(content|text|output|value|result)$/i.test(key)) score += 25;
   if (/^\s*[{[]/.test(text)) score += 60;
-  if (/"(summary|steps|title|brief|nodes)"\s*:/.test(text)) score += 80;
+  if (/"(summary|steps|title|brief|nodes|markdown|resultType|nextActions)"\s*:/.test(text)) score += 80;
   if (/[\u4e00-\u9fff]/.test(text)) score += 10;
   if (text.length > 30) score += Math.min(30, Math.floor(text.length / 40));
   return score;
@@ -485,8 +580,8 @@ function formatLegacyRecords(records = []) {
   return (
     records
       .map((record) => {
-        const usage = record.usage ? `\n  用法：${record.usage}` : "";
-        return `- ${record.type ?? record.kind ?? "context"}：${record.title}\n  ${record.description ?? ""}${usage}`;
+        const details = formatRecordDetails(record);
+        return `- ${record.type ?? record.kind ?? "context"}：${record.brief ?? record.title}\n  ${record.description ?? ""}${details}`;
       })
       .join("\n") || "无"
   );
@@ -504,13 +599,24 @@ function formatTaskSection(title, tasks = []) {
 
 function formatRecordSection(title, records = []) {
   const lines = (records ?? []).map((record) => {
-    const usage = record.usage ? `\n  用法：${record.usage}` : "";
+    const details = formatRecordDetails(record);
     const url = record.url ? `\n  链接：${record.url}` : "";
     const markdown = record.markdown ? `\n  内容摘录：${excerpt(record.markdown)}` : "";
-    return `- ${record.type ?? record.kind ?? "context"}：${record.title}\n  ${record.description ?? ""}${usage}${url}${markdown}`;
+    return `- ${record.type ?? record.kind ?? "context"}：${record.brief ?? record.title}\n  ${record.description ?? ""}${details}${url}${markdown}`;
   });
   if (lines.length === 0) return "";
   return `${title}：\n${lines.join("\n")}`;
+}
+
+function formatRecordDetails(record) {
+  return [
+    record.sourceDescription ? `类型说明：${record.sourceDescription}` : "",
+    record.date ? `日期：${record.date}` : "",
+    record.usage && record.usage !== record.date ? `用法：${record.usage}` : "",
+  ]
+    .filter(Boolean)
+    .map((line) => `\n  ${line}`)
+    .join("");
 }
 
 function formatTaskResult(task) {
@@ -601,6 +707,35 @@ function normalizeDraftOutput(payload) {
   };
 }
 
+function normalizeAiResultOutput(payload) {
+  const result = payload?.aiResult ?? payload?.resultOutput ?? payload?.result ?? payload?.output ?? payload;
+  if (Array.isArray(result)) {
+    const points = normalizeSteps(result);
+    return {
+      title: "",
+      summary: points[0] ?? "",
+      resultType: "analysis",
+      markdown: points.map((point) => `- ${point}`).join("\n"),
+      points,
+      nextActions: [],
+      shouldContinue: null,
+    };
+  }
+
+  const points = normalizeSteps(result?.points ?? result?.findings ?? result?.conclusions ?? result?.items ?? []);
+  const nextActions = normalizeSteps(result?.nextActions ?? result?.next_steps ?? result?.actions ?? []);
+  const markdown = normalizeMarkdown(result?.markdown ?? result?.content ?? result?.body ?? result?.resultMarkdown ?? "");
+  return {
+    title: typeof result?.title === "string" ? result.title.trim() : "",
+    summary: typeof result?.summary === "string" ? result.summary.trim() : "",
+    resultType: typeof result?.resultType === "string" ? result.resultType.trim() : "analysis",
+    markdown: markdown || points.map((point) => `- ${point}`).join("\n"),
+    points,
+    nextActions,
+    shouldContinue: normalizeShouldContinue(result?.shouldContinue),
+  };
+}
+
 function normalizeTaskNodeSplit(payload) {
   const split = payload?.taskSplit ?? payload?.split ?? payload?.children ?? payload;
   const rawNodes = Array.isArray(split) ? split : split?.nodes;
@@ -640,6 +775,22 @@ function normalizeSplitNodes(nodes) {
     .slice(0, maxSplitNodes);
 }
 
+function normalizeMarkdown(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeShouldContinue(value) {
+  if (typeof value === "boolean") return value;
+  if (value === null) return null;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+    if (normalized === "null" || normalized === "") return null;
+  }
+  return null;
+}
+
 function normalizeSteps(steps) {
   if (!Array.isArray(steps)) return [];
   return steps
@@ -670,6 +821,19 @@ function createBlankDraftOutput() {
     summary: "",
     brief: "",
     points: [],
+    provider: null,
+  };
+}
+
+function createBlankAiResultOutput() {
+  return {
+    title: "",
+    summary: "",
+    resultType: "analysis",
+    markdown: "",
+    points: [],
+    nextActions: [],
+    shouldContinue: null,
     provider: null,
   };
 }

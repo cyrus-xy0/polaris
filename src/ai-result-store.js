@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+import { renderMarkdownToHtml } from "./markdown-renderer.js";
 
 const aiResultDirName = "ai-results";
 
 const aiContextVersion = "rich-context-v3-openclaw-content";
+const aiResultVersion = "executed-ai-result-v2";
 
 export function createAiContextDigest(aiContext = null) {
   return createHash("sha256").update(JSON.stringify(aiContext ?? null)).digest("hex").slice(0, 16);
@@ -41,7 +43,20 @@ export function createDraftOutputSignature({ node, artifact = null, contextDiges
 }
 
 export function createAiResultSignature({ node, artifact = null, contextDigest = "", actionPlanDigest = "" }) {
-  return createDraftOutputSignature({ node, artifact, contextDigest, actionPlanDigest });
+  return JSON.stringify({
+    version: aiContextVersion,
+    resultVersion: aiResultVersion,
+    id: node.id,
+    title: node.title,
+    tag: node.tag,
+    description: node.description,
+    dependencies: node.dependencies,
+    state: node.state,
+    artifactTitle: artifact?.title ?? "",
+    artifactType: artifact?.docType ?? "",
+    contextDigest,
+    actionPlanDigest,
+  });
 }
 
 export function readAiResult({ dataRoot, kind, nodeId, signature = null }) {
@@ -104,6 +119,13 @@ export function hasDraftOutputContent(output = {}) {
   );
 }
 
+export function hasAiResultOutputContent(output = {}) {
+  return (
+    hasMeaningfulAiText(output.markdown) ||
+    (Array.isArray(output.points) && output.points.some(hasMeaningfulAiText))
+  );
+}
+
 function hasMeaningfulAiText(value) {
   const text = typeof value === "string" ? value.trim() : "";
   if (!text) return false;
@@ -137,9 +159,11 @@ function safePathSegment(value) {
 
 function renderAiResultHtml({ title, node, output, artifact, actionPlan }) {
   const points = Array.isArray(output.points) ? output.points : [];
+  const nextActions = Array.isArray(output.nextActions) ? output.nextActions.filter(Boolean) : [];
+  const body = output.markdown ? renderMarkdownToHtml(output.markdown) : "";
   const brief = output.brief || points.join("；") || output.summary || node.description;
   const sourceArtifact = artifact?.title
-    ? `<p class="meta">参考产物：${escapeHtml(artifact.docType ?? "Output")} · ${escapeHtml(artifact.title)}</p>`
+    ? `<p class="meta">参考产物：${renderArtifactHtml(artifact)}</p>`
     : "";
   const actionPlanSteps = Array.isArray(actionPlan?.steps) ? actionPlan.steps.filter(Boolean) : [];
   const actionPlanSection =
@@ -210,6 +234,27 @@ function renderAiResultHtml({ title, node, output, artifact, actionPlan }) {
         padding: 14px 16px;
         color: rgba(23, 32, 38, 0.76);
       }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 14px 0 22px;
+        font-size: 14px;
+      }
+      th,
+      td {
+        border: 1px solid rgba(23, 32, 38, 0.12);
+        padding: 10px 12px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #eef3f1;
+        color: rgba(23, 32, 38, 0.82);
+      }
+      .result-body {
+        display: grid;
+        gap: 14px;
+      }
     </style>
   </head>
   <body>
@@ -217,17 +262,23 @@ function renderAiResultHtml({ title, node, output, artifact, actionPlan }) {
       <article>
         <p class="kicker">Polaris AI Result</p>
         <h1>${escapeHtml(title)}</h1>
-        <p>${escapeHtml(output.summary || node.description)}</p>
+        <p>${escapeHtml(output.summary || brief || node.description)}</p>
         ${sourceArtifact}
         ${actionPlanSection}
-        <h2>结果 brief</h2>
-        <p>${escapeHtml(brief)}</p>
-        ${points.length > 0 ? `<h2>关键内容</h2><ul>${points.map((point) => `<li>${escapeHtml(point)}</li>`).join("")}</ul>` : ""}
+        ${body ? `<h2>实际结果</h2><section class="result-body">${body}</section>` : `<h2>实际结果</h2><p>${escapeHtml(brief)}</p>`}
+        ${points.length > 0 ? `<h2>关键结论</h2><ul>${points.map((point) => `<li>${escapeHtml(point)}</li>`).join("")}</ul>` : ""}
+        ${nextActions.length > 0 ? `<h2>后续动作</h2><ul>${nextActions.map((action) => `<li>${escapeHtml(action)}</li>`).join("")}</ul>` : ""}
       </article>
     </main>
   </body>
 </html>
 `;
+}
+
+function renderArtifactHtml(artifact) {
+  const label = `${artifact.docType ?? "Output"} · ${artifact.title}`;
+  if (!artifact.url) return escapeHtml(label);
+  return `<a href="${escapeHtml(artifact.url)}">${escapeHtml(label)}</a>`;
 }
 
 function escapeHtml(value) {

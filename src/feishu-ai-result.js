@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { createHash } from "node:crypto";
+import { renderMarkdownToFeishuXml } from "./markdown-renderer.js";
 
 const defaultTimeoutMs = 120_000;
 
@@ -44,14 +45,20 @@ export async function publishAiResultToFeishu({
 
 export function buildFeishuDocContent({ node, output, artifact = null, actionPlan = null }) {
   const title = output.title || `${node.title} AI 结果`;
-  const brief = output.brief || output.summary || node.description;
+  const brief = output.summary || output.brief || node.description;
   const points = Array.isArray(output.points) ? output.points : [];
+  const nextActions = Array.isArray(output.nextActions) ? output.nextActions.filter(Boolean) : [];
+  const resultBody = output.markdown ? renderMarkdownToFeishuXml(output.markdown) : "";
   const artifactLine = artifact?.title
-    ? `<p>参考产物：${escapeXml(artifact.docType ?? "Output")} · ${escapeXml(artifact.title)}</p>`
+    ? `<p>参考产物：${renderArtifactXml(artifact)}</p>`
     : "";
   const pointList =
     points.length > 0
-      ? `<h1>关键内容</h1><ul>${points.map((point) => `<li>${escapeXml(point)}</li>`).join("")}</ul>`
+      ? `<h1>关键结论</h1><ul>${points.map((point) => `<li>${escapeXml(point)}</li>`).join("")}</ul>`
+      : "";
+  const nextActionList =
+    nextActions.length > 0
+      ? `<h1>后续动作</h1><ul>${nextActions.map((action) => `<li>${escapeXml(action)}</li>`).join("")}</ul>`
       : "";
   const actionPlanSteps = Array.isArray(actionPlan?.steps) ? actionPlan.steps.filter(Boolean) : [];
   const actionPlanSection =
@@ -69,9 +76,10 @@ export function buildFeishuDocContent({ node, output, artifact = null, actionPla
     "<hr/>",
     actionPlanSection,
     actionPlanSection ? "<hr/>" : "",
-    "<h1>AI 结果 brief</h1>",
-    `<p>${escapeXml(brief)}</p>`,
+    "<h1>实际结果</h1>",
+    resultBody || `<p>${escapeXml(output.brief || brief)}</p>`,
     pointList,
+    nextActionList,
   ]
     .filter(Boolean)
     .join("");
@@ -166,6 +174,16 @@ function parseJson(output) {
     }
     return null;
   }
+}
+
+function renderArtifactXml(artifact) {
+  const label = `${artifact.docType ?? "Output"} · ${artifact.title}`;
+  if (!artifact.url) return escapeXml(label);
+  return `<a href="${escapeXmlAttribute(artifact.url)}">${escapeXml(label)}</a>`;
+}
+
+function escapeXmlAttribute(value) {
+  return escapeXml(value).replace(/"/g, "&quot;");
 }
 
 function escapeXml(value) {

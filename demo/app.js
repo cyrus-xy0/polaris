@@ -616,7 +616,10 @@ function normalizeAiResult(result = {}) {
 }
 
 function getAiResultSignature(node, artifact, reason = "") {
-  return getDraftOutputSignature(node, artifact, reason);
+  return JSON.stringify({
+    resultVersion: "executed-ai-result-v2",
+    draftSignature: getDraftOutputSignature(node, artifact, reason),
+  });
 }
 
 function getPriorityLabel(nodeId, queue) {
@@ -1421,7 +1424,7 @@ function renderMethods() {
     : library.artifacts;
 
   elements.intermediateGrid.replaceChildren(...createArtifactCards(currentArtifacts));
-  elements.skillGrid.replaceChildren(...createSkillGroups(library.skills));
+  elements.skillGrid.replaceChildren(...createSkillCards(library.skills));
   elements.knowledgeGrid.replaceChildren(...createKnowledgeGroups(library.knowledge));
 }
 
@@ -1477,18 +1480,13 @@ function createArtifactCard(item) {
   return card;
 }
 
-function createSkillGroups(items) {
-  const groups = groupItemsByType(items);
-  return groups.map(createSkillGroupCard);
-}
+function createSkillCards(items) {
+  if (items.length > 0) return items.map((item) => createSkillCard(item, { showType: false }));
 
-function createSkillGroupCard(group) {
-  return createCatalogGroupCard(group, {
-    groupClassName: "skill-catalog-group",
-    label: group.type,
-    showTitle: false,
-    createItem: (item) => createSkillCard(item, { showType: false }),
-  });
+  const empty = document.createElement("article");
+  empty.className = "catalog-empty";
+  empty.innerHTML = "<h3>还没有 Skill</h3><p>在 skills 目录新增 md 文件后重启服务，这里会显示文件名和 description。</p>";
+  return [empty];
 }
 
 function createSkillCard(item, options = {}) {
@@ -1510,6 +1508,7 @@ function groupItemsByType(items) {
 
   return [...groups.entries()].map(([type, groupItems]) => ({
     type,
+    sourceDescription: groupItems.find((item) => item.sourceDescription)?.sourceDescription ?? "",
     items: groupItems,
   }));
 }
@@ -1522,7 +1521,7 @@ function createKnowledgeGroupCard(group) {
     expanded: expandedKnowledgeGroups.has(group.type),
     getBrief: getKnowledgeGroupBrief,
     onToggle: () => toggleKnowledgeGroup(group.type),
-    createItem: (item) => createKnowledgeCard(item, { showType: false }),
+    createItem: (item) => createKnowledgeCard(item),
   });
 }
 
@@ -1592,6 +1591,7 @@ function createCatalogGroupCard(group, options) {
 }
 
 function getKnowledgeGroupBrief(group) {
+  if (group.sourceDescription) return group.sourceDescription;
   if (group.items.length === 1) return group.items[0].description;
 
   const titles = group.items.map((item) => item.title).join("、");
@@ -1608,7 +1608,10 @@ function toggleKnowledgeGroup(groupType) {
 }
 
 function createKnowledgeCard(item, options = {}) {
-  return createEditableIndexCard(item, "knowledge-card", options);
+  return createEditableIndexCard(item, "knowledge-card", {
+    ...options,
+    metaText: (entry) => entry.date || entry.type,
+  });
 }
 
 function createEditableIndexCard(item, className, options = {}) {
@@ -1618,7 +1621,7 @@ function createEditableIndexCard(item, className, options = {}) {
   card.tabIndex = 0;
 
   const type = document.createElement("small");
-  type.textContent = item.type;
+  type.textContent = options.metaText ? options.metaText(item) : item.type;
 
   const title = document.createElement("h3");
   title.textContent = item.title;
