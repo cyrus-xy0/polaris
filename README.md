@@ -21,7 +21,27 @@ The demo starts on `http://127.0.0.1:4173/`. If the port is already in use, the 
 
 ## Connect a local data plane
 
-Polaris is meant to run against a local data directory. That directory owns the SQLite runtime state, project source configuration, and editable markdown-backed knowledge and skills.
+Polaris is meant to run against a local data directory. That directory owns the portable task-node JSON, SQLite runtime mirror, project source configuration, generated output, and editable markdown-backed knowledge and skills.
+
+By default, the demo keeps that data outside the git checkout:
+
+- macOS: `~/Library/Application Support/Polaris`
+- Windows: `%APPDATA%\Polaris`
+- Linux: `${XDG_DATA_HOME:-~/.local/share}/polaris`
+
+The repo's `data/` directory is only the bundled seed/template data. On first run, Polaris copies missing seed knowledge and skills into the user data directory. If an older checkout already has runtime data in `data/`, the default startup path migrates those files once into the user data directory.
+
+First deployment starts with no goal tree. Create the root Polaris goal in the UI; from that point on, task nodes, card state, conclusions, and completion links are user data. To load the bundled demo goal tree deliberately, start with:
+
+```bash
+npm start -- --seed-demo
+```
+
+or:
+
+```bash
+POLARIS_SEED_DEMO=1 npm start
+```
 
 Start with an empty directory:
 
@@ -40,7 +60,12 @@ On first run, Polaris creates this shape:
 ```text
 polaris-data/
   polaris.project.json
+  task-nodes.json
   polaris.db
+  ai-results/
+    *.json
+    documents/
+      *.html
   knowledge/
     *.md
   skills/
@@ -87,7 +112,7 @@ Markdown files from configured `knowledge` and `skills` sources are imported on 
 
 ### Current Output
 
-Current Output stays system-maintained. Seeded output artifact links live in SQLite from `data/seed/library.js`, and task completion can bind AI or manual result links back to the current node.
+Current Output stays user-owned. Generated action plans, draft output cards, executed AI result payloads, and local fallback HTML documents live under `<data-dir>/ai-results/`. Task completion links are also mirrored in `<data-dir>/task-nodes.json` through each node's `result` field.
 
 ### Skills
 
@@ -146,11 +171,14 @@ Data handoff checklist:
 
 - `npm start` launches the browser UI with no extra packages to install.
 - `POLARIS_DATA_DIR` or `--data-dir` points the app at a deployer's own local state.
+- Without an override, Polaris uses the OS user data directory, not the git checkout.
+- First deployment does not import the bundled demo goal tree unless `--seed-demo` or `POLARIS_SEED_DEMO=1` is set.
 - `polaris.project.json` lists every local data source that should be imported.
 - New or renamed markdown files require a server restart so the source scan can rebuild the library index.
 - Existing markdown content can be edited from the browser and persists to disk.
-- Task-node state persists in `<data-dir>/polaris.db`.
-- Markdown-backed `knowledge` and `skills` are user-maintained through project sources; seeded output artifact links live in SQLite from `data/seed/library.js`.
+- Task-node state persists in `<data-dir>/task-nodes.json`; SQLite mirrors it for the running app.
+- Markdown-backed `knowledge` and `skills` are user-maintained through project sources.
+- AI output remains readable after the app is gone because result JSON and fallback HTML are plain files under `<data-dir>/ai-results/`.
 
 ## Local action-plan generation
 
@@ -209,11 +237,13 @@ npm test
 
 ## Data model
 
-- Task-node seed data lives in `data/seed/task-nodes.js`.
+- Optional demo task-node seed data lives in `data/seed/task-nodes.js`; it is only imported when demo seeding is explicitly enabled.
 - System-maintained output artifact seed data lives in `data/seed/library.js`.
-- User-maintained markdown knowledge and skills live in `data/knowledge/` and `data/skills/`.
+- The repo's `data/knowledge/` and `data/skills/` are bundled seeds; user-maintained markdown knowledge and skills live in the configured data directory or external project sources.
 - Project source configuration lives at `<data-dir>/polaris.project.json`.
-- Runtime state is persisted to local SQLite at `<data-dir>/polaris.db`; this file is intentionally ignored by git when the default `data/` directory is used. Previous local database files are migrated automatically on first run.
+- Task tree structure, card state, conclusions, and completion result links live in `<data-dir>/task-nodes.json`.
+- Local SQLite at `<data-dir>/polaris.db` is a runtime mirror/index, not the only copy of user state.
+- Generated AI output lives in `<data-dir>/ai-results/` as JSON plus local HTML documents when Feishu publishing is unavailable.
 
 ## Project layout
 

@@ -1,4 +1,4 @@
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { cpSync, createReadStream, existsSync, mkdirSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, join, normalize, resolve } from "node:path";
 import {
@@ -20,19 +20,24 @@ import {
   writeAiResultDocument,
 } from "../src/ai-result-store.js";
 import { buildActiveQueue, buildAiContextForNode, getRecordsForNode, resolvePreparedArtifact } from "../src/app-logic.js";
-import { resolveDataRoot } from "../src/config.js";
+import { getDefaultDataRoot, hasDataRootOverride, resolveDataRoot, shouldSeedDemoData } from "../src/config.js";
 import { createRepository } from "../src/data/repository.js";
 import { publishAiResultToFeishu } from "../src/feishu-ai-result.js";
 import { CREATED_FROM, TASK_STATES, createNode } from "../src/task-nodes.js";
 
 const root = resolve(import.meta.dirname, "..");
 const preferredPort = 4173;
+const bundledDataRoot = join(root, "data");
 const dataRoot = resolveDataRoot({
   argv: process.argv.slice(2),
   env: process.env,
-  fallback: join(root, "data"),
+  fallback: getDefaultDataRoot({ env: process.env }),
 });
-const repository = createRepository({ dataRoot });
+const seedDemoData = shouldSeedDemoData({ argv: process.argv.slice(2), env: process.env });
+if (!hasDataRootOverride({ argv: process.argv.slice(2), env: process.env })) {
+  migrateLegacyDefaultData({ from: bundledDataRoot, to: dataRoot });
+}
+const repository = createRepository({ dataRoot, seedDataRoot: bundledDataRoot, seedTaskNodes: seedDemoData });
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -102,6 +107,45 @@ function createDemoServer(port) {
 }
 
 createDemoServer(preferredPort);
+
+function migrateLegacyDefaultData({ from, to }) {
+  const sourceRoot = resolve(from);
+  const targetRoot = resolve(to);
+  if (sourceRoot === targetRoot || isDataRootInitialized(targetRoot) || !hasLegacyRuntimeData(sourceRoot)) {
+    return;
+  }
+
+  mkdirSync(targetRoot, { recursive: true });
+  for (const entryName of [
+    "polaris.project.json",
+    "task-nodes.json",
+    "polaris.db",
+    "polaris.db-shm",
+    "polaris.db-wal",
+    "ai-results",
+    "knowledge",
+    "skills",
+  ]) {
+    const sourcePath = join(sourceRoot, entryName);
+    const targetPath = join(targetRoot, entryName);
+    if (!existsSync(sourcePath) || existsSync(targetPath)) continue;
+    cpSync(sourcePath, targetPath, { recursive: true });
+  }
+
+  console.log(`Migrated legacy repo data into ${targetRoot}`);
+}
+
+function isDataRootInitialized(rootPath) {
+  return ["polaris.project.json", "task-nodes.json", "polaris.db", "ai-results"].some((entryName) =>
+    existsSync(join(rootPath, entryName)),
+  );
+}
+
+function hasLegacyRuntimeData(rootPath) {
+  return ["polaris.project.json", "task-nodes.json", "polaris.db", "ai-results"].some((entryName) =>
+    existsSync(join(rootPath, entryName)),
+  );
+}
 
 function resolveAiResultRequestPath(url) {
   const pathname = decodeURIComponent(new URL(url, "http://localhost").pathname);

@@ -5,6 +5,8 @@ import { createHash } from "node:crypto";
 import { renderMarkdownToFeishuXml } from "./markdown-renderer.js";
 
 const defaultTimeoutMs = 120_000;
+const directCreateMaxXmlLength = 3_500;
+const appendChunkMaxXmlLength = 4_500;
 
 export async function publishAiResultToFeishu({
   dataRoot,
@@ -13,8 +15,88 @@ export async function publishAiResultToFeishu({
   artifact = null,
   actionPlan = null,
   timeoutMs = defaultTimeoutMs,
+  env = process.env,
 }) {
-  const contentPath = writeFeishuDocSource({ dataRoot, node, output, artifact, actionPlan });
+  const contentParts = buildFeishuDocContentParts({ node, output, artifact, actionPlan });
+  const contentPath = writeFeishuDocSource({
+    dataRoot,
+    node,
+    output,
+    content: contentParts.fullContent,
+    suffix: "full",
+  });
+  const title = output.title || `${node.title} AI 结果`;
+
+  if (contentParts.fullContent.length > directCreateMaxXmlLength) {
+    return createFeishuDocWithAppend({
+      dataRoot,
+      node,
+      output,
+      contentPath,
+      contentParts,
+      timeoutMs,
+      env,
+      title,
+    });
+  }
+
+  try {
+    const url = await createFeishuDocFromContentPath({ contentPath, timeoutMs, env });
+    return {
+      title,
+      docType: "飞书 Doc",
+      url,
+      path: contentPath,
+    };
+  } catch (error) {
+    try {
+      return await createFeishuDocWithAppend({
+        dataRoot,
+        node,
+        output,
+        contentPath,
+        contentParts,
+        timeoutMs,
+        env,
+        title,
+      });
+    } catch (appendError) {
+      throw new Error(`${error.message}；分段写入也失败：${appendError.message}`);
+    }
+  }
+}
+
+async function createFeishuDocWithAppend({ dataRoot, node, output, contentPath, contentParts, timeoutMs, env, title }) {
+  const skeletonPath = writeFeishuDocSource({
+    dataRoot,
+    node,
+    output,
+    content: contentParts.skeletonContent,
+    suffix: "skeleton",
+  });
+  const url = await createFeishuDocFromContentPath({ contentPath: skeletonPath, timeoutMs, env });
+  const chunks = chunkXmlBlocks(contentParts.bodyBlocks, appendChunkMaxXmlLength);
+
+  for (const [index, chunk] of chunks.entries()) {
+    const chunkPath = writeFeishuDocSource({
+      dataRoot,
+      node,
+      output,
+      content: chunk,
+      suffix: `append-${index + 1}`,
+    });
+    await appendFeishuDocContent({ url, contentPath: chunkPath, timeoutMs, env });
+  }
+
+  return {
+    title,
+    docType: "飞书 Doc",
+    url,
+    path: contentPath,
+  };
+}
+
+async function createFeishuDocFromContentPath({ contentPath, timeoutMs, env }) {
   const cliOutput = await runLarkCli(
     [
       "docs",
@@ -28,22 +110,40 @@ export async function publishAiResultToFeishu({
       "--content",
       `@${basename(contentPath)}`,
     ],
-    { cwd: dirname(contentPath), timeoutMs },
+    { cwd: dirname(contentPath), timeoutMs, env },
   );
   const url = extractCreatedDocUrl(cliOutput);
   if (!url) {
     throw new Error("飞书文档已创建但未返回 URL。");
   }
+  return url;
+}
 
-  return {
-    title: output.title || `${node.title} AI 结果`,
-    docType: "飞书 Doc",
-    url,
-    path: contentPath,
-  };
+async function appendFeishuDocContent({ url, contentPath, timeoutMs, env }) {
+  await runLarkCli(
+    [
+      "docs",
+      "+update",
+      "--api-version",
+      "v2",
+      "--as",
+      "user",
+      "--doc",
+      url,
+      "--command",
+      "append",
+      "--content",
+      `@${basename(contentPath)}`,
+    ],
+    { cwd: dirname(contentPath), timeoutMs, env },
+  );
 }
 
 export function buildFeishuDocContent({ node, output, artifact = null, actionPlan = null }) {
+  return buildFeishuDocContentParts({ node, output, artifact, actionPlan }).fullContent;
+}
+
+function buildFeishuDocContentParts({ node, output, artifact = null, actionPlan = null }) {
   const title = output.title || `${node.title} AI 结果`;
   const brief = output.summary || output.brief || node.description;
   const points = Array.isArray(output.points) ? output.points : [];
@@ -65,10 +165,11 @@ export function buildFeishuDocContent({ node, output, artifact = null, actionPla
     actionPlanSteps.length > 0
       ? `<h1>实施依据：Suggest Action Plan</h1><p>${escapeXml(actionPlan.summary ?? "以下步骤是本结果的实施约束。")}</p><ol>${actionPlanSteps.map((step) => `<li seq="auto">${escapeXml(step)}</li>`).join("")}</ol>`
       : "";
-
-  return [
+  const skeletonBlocks = [
     `<title>${escapeXml(title)}</title>`,
     `<callout emoji="✅" background-color="light-green" border-color="green"><p>${escapeXml(brief)}</p></callout>`,
+  ];
+  const bodyBlocks = [
     "<h1>任务节点</h1>",
     `<p>${escapeXml(node.title)}</p>`,
     `<p>${escapeXml(node.description)}</p>`,
@@ -80,34 +181,44 @@ export function buildFeishuDocContent({ node, output, artifact = null, actionPla
     resultBody || `<p>${escapeXml(output.brief || brief)}</p>`,
     pointList,
     nextActionList,
-  ]
-    .filter(Boolean)
-    .join("");
+  ].filter(Boolean);
+
+  return {
+    fullContent: [...skeletonBlocks, ...bodyBlocks].join(""),
+    skeletonContent: skeletonBlocks.join(""),
+    bodyBlocks,
+  };
 }
 
-function writeFeishuDocSource({ dataRoot, node, output, artifact, actionPlan }) {
-  const filePath = resolveFeishuDocSourcePath({ dataRoot, nodeId: node.id, title: output.title });
+function writeFeishuDocSource({ dataRoot, node, output, content, suffix = "full" }) {
+  const filePath = resolveFeishuDocSourcePath({ dataRoot, nodeId: node.id, title: output.title, suffix });
   mkdirSync(dirname(filePath), { recursive: true });
-  writeFileSync(filePath, buildFeishuDocContent({ node, output, artifact, actionPlan }), "utf8");
+  writeFileSync(filePath, content, "utf8");
   return filePath;
 }
 
-function resolveFeishuDocSourcePath({ dataRoot, nodeId, title }) {
-  const raw = `${nodeId}:${title ?? ""}`;
+function resolveFeishuDocSourcePath({ dataRoot, nodeId, title, suffix }) {
+  const raw = `${nodeId}:${title ?? ""}:${suffix ?? ""}`;
   const hash = createHash("sha256").update(raw).digest("hex").slice(0, 10);
   const safeNodeId = String(nodeId ?? "node")
     .trim()
     .replace(/[^a-zA-Z0-9._-]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
-  return join(resolve(dataRoot), "ai-results", "feishu-doc-source", `${safeNodeId || "node"}-${hash}.xml`);
+  const safeSuffix = String(suffix ?? "full")
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  return join(resolve(dataRoot), "ai-results", "feishu-doc-source", `${safeNodeId || "node"}-${safeSuffix}-${hash}.xml`);
 }
 
-function runLarkCli(args, { cwd, timeoutMs }) {
+function runLarkCli(args, { cwd, timeoutMs, env }) {
   return new Promise((resolvePromise, rejectPromise) => {
     const child = spawn("lark-cli", args, {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
+      env,
     });
     let stdout = "";
     let stderr = "";
@@ -145,6 +256,26 @@ function runLarkCli(args, { cwd, timeoutMs }) {
       resolvePromise(stdout);
     });
   });
+}
+
+function chunkXmlBlocks(blocks, maxLength) {
+  const chunks = [];
+  let current = "";
+
+  for (const block of blocks) {
+    if (current && current.length + block.length > maxLength) {
+      chunks.push(current);
+      current = "";
+    }
+    if (block.length > maxLength) {
+      chunks.push(block);
+      continue;
+    }
+    current += block;
+  }
+
+  if (current) chunks.push(current);
+  return chunks;
 }
 
 function extractCreatedDocUrl(output) {

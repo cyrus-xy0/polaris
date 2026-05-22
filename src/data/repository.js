@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
@@ -13,6 +13,7 @@ const defaultSources = [
   { id: "default-skills", kind: "skills", label: "Skill", path: "skills", defaultType: "本地能力" },
 ];
 const projectFileName = "polaris.project.json";
+const taskNodesFileName = "task-nodes.json";
 const markdownMetadataColumns = {
   brief: "TEXT",
   date: "TEXT",
@@ -25,6 +26,7 @@ export const defaultDbPath = join(defaultDataRoot, "polaris.db");
 export function createRepository(options = {}) {
   const dataRoot = resolve(options.dataRoot ?? defaultDataRoot);
   const seedDataRoot = resolve(options.seedDataRoot ?? defaultDataRoot);
+  const seedTaskNodes = options.seedTaskNodes === true;
   mkdirSync(dataRoot, { recursive: true });
   ensureDataFiles(dataRoot, seedDataRoot);
   const project = loadProject(dataRoot);
@@ -34,6 +36,7 @@ export function createRepository(options = {}) {
   const db = new DatabaseSync(dbPath);
   db.exec("PRAGMA foreign_keys = ON");
   ensureSchema(db);
+  syncTaskNodesWithPortableFile(db, dataRoot);
 
   const repository = {
     close() {
@@ -53,33 +56,12 @@ export function createRepository(options = {}) {
     },
 
     listTaskNodes() {
-      const rows = db
-        .prepare(
-          `SELECT id, parent_id, title, tag, description, ai_actions, dependencies, state, conclusion, result, created_from
-           FROM task_nodes
-           ORDER BY position ASC, rowid ASC`,
-        )
-        .all();
-
-      return rows.map((row) =>
-        createNode({
-          id: row.id,
-          parentId: row.parent_id,
-          title: row.title,
-          tag: row.tag,
-          description: row.description,
-          aiActions: parseJson(row.ai_actions, []),
-          dependencies: parseJson(row.dependencies, []),
-          state: row.state,
-          conclusion: parseJson(row.conclusion, null),
-          result: parseJson(row.result, null),
-          createdFrom: row.created_from,
-        }),
-      );
+      return readTaskNodesFromDb(db);
     },
 
     saveTaskNodes(nodes) {
       const normalizedNodes = normalizeTaskNodes(nodes);
+      writeTaskNodesFile(dataRoot, normalizedNodes);
       replaceTaskNodes(db, normalizedNodes);
       return this.listTaskNodes();
     },
@@ -147,7 +129,7 @@ export function createRepository(options = {}) {
     },
   };
 
-  seedIfEmpty(repository, db);
+  seedIfEmpty(repository, db, { seedTaskNodes });
   syncProjectSources(db, dataRoot, project);
   return repository;
 }
@@ -163,6 +145,84 @@ export function normalizeTaskNodes(nodes) {
     throw createHttpError(400, "task tree must include at least one root node");
   }
   return normalizedNodes;
+}
+
+function syncTaskNodesWithPortableFile(db, dataRoot) {
+  const filePath = join(dataRoot, taskNodesFileName);
+  if (existsSync(filePath)) {
+    replaceTaskNodes(db, readTaskNodesFile(filePath));
+    return;
+  }
+
+  const nodes = readTaskNodesFromDb(db);
+  if (nodes.length > 0) {
+    writeTaskNodesFile(dataRoot, nodes);
+  }
+}
+
+function readTaskNodesFile(filePath) {
+  const payload = parseJson(readFileSync(filePath, "utf8"), null);
+  const nodes = Array.isArray(payload) ? payload : payload?.nodes;
+
+  try {
+    return normalizeTaskNodes(nodes);
+  } catch (error) {
+    throw new Error(`Invalid ${taskNodesFileName}: ${error.message}`);
+  }
+}
+
+function writeTaskNodesFile(dataRoot, nodes) {
+  const filePath = join(dataRoot, taskNodesFileName);
+  const record = {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    nodes: serializeTaskNodes(nodes),
+  };
+  const tmpPath = `${filePath}.${process.pid}.tmp`;
+  writeFileSync(tmpPath, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+  renameSync(tmpPath, filePath);
+}
+
+function readTaskNodesFromDb(db) {
+  const rows = db
+    .prepare(
+      `SELECT id, parent_id, title, tag, description, ai_actions, dependencies, state, conclusion, result, created_from
+       FROM task_nodes
+       ORDER BY position ASC, rowid ASC`,
+    )
+    .all();
+
+  return rows.map((row) =>
+    createNode({
+      id: row.id,
+      parentId: row.parent_id,
+      title: row.title,
+      tag: row.tag,
+      description: row.description,
+      aiActions: parseJson(row.ai_actions, []),
+      dependencies: parseJson(row.dependencies, []),
+      state: row.state,
+      conclusion: parseJson(row.conclusion, null),
+      result: parseJson(row.result, null),
+      createdFrom: row.created_from,
+    }),
+  );
+}
+
+function serializeTaskNodes(nodes) {
+  return nodes.map((node) => ({
+    id: node.id,
+    parentId: node.parentId ?? null,
+    title: node.title,
+    tag: node.tag,
+    description: node.description,
+    aiActions: node.aiActions,
+    dependencies: node.dependencies,
+    state: node.state,
+    conclusion: node.conclusion ?? null,
+    result: node.result ?? null,
+    createdFrom: node.createdFrom,
+  }));
 }
 
 function ensureSchema(db) {
@@ -212,9 +272,9 @@ function ensureLibraryItemColumns(db) {
   }
 }
 
-function seedIfEmpty(repository, db) {
+function seedIfEmpty(repository, db, { seedTaskNodes = false } = {}) {
   const nodeCount = db.prepare("SELECT COUNT(*) AS count FROM task_nodes").get().count;
-  if (nodeCount === 0) {
+  if (seedTaskNodes && nodeCount === 0) {
     repository.saveTaskNodes(sampleNodes);
   }
 

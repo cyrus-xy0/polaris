@@ -841,6 +841,35 @@ button {
   text-align: center;
 }
 
+.first-run-empty {
+  min-width: min(420px, 86vw);
+}
+
+.first-run-empty-content {
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+  max-width: 340px;
+}
+
+.first-run-empty h2 {
+  margin: 0;
+  color: #15191d;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.first-run-empty p {
+  margin: 0;
+  color: rgba(21, 25, 29, 0.62);
+  font-size: 14px;
+  line-height: 1.58;
+}
+
+.first-run-empty .primary-action {
+  margin-top: 4px;
+}
+
 .workspace-page {
   position: relative;
   z-index: 1;
@@ -1887,8 +1916,22 @@ a.tree-record-chip:focus-visible {
   min-height: 132px;
 }
 
-.index-card h3 {
-  margin-top: 2px;
+.index-card-heading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.index-card-heading small {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.index-card-heading h3 {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
 }
 
 .index-card p {
@@ -2007,18 +2050,6 @@ a.tree-record-chip:focus-visible {
   color: rgba(111, 88, 44, 0.92);
   background: rgba(182, 120, 44, 0.09);
   border-color: rgba(182, 120, 44, 0.18);
-}
-
-.knowledge-catalog-group.is-summary .catalog-brief {
-  display: -webkit-box;
-  margin: 12px 0 0;
-  color: rgba(21, 25, 29, 0.66);
-  font-size: 16px;
-  font-weight: 620;
-  line-height: 1.52;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
 }
 
 .knowledge-catalog-group.is-summary .catalog-detail-list {

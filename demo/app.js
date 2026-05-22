@@ -39,6 +39,8 @@ let nodeEditorDependencyIds = new Set();
 let nodeEditorDependencyQuery = "";
 let nodeEditorBackdropPointerStarted = false;
 const aiAnalyzingText = "AI 正在分析";
+const newRootNodeTitle = "新的 Polaris 目标";
+const newRootNodeDescription = "写清楚这棵目标树最终要推进什么。";
 const newNodeTitle = "新的行动节点";
 const newNodeDescription = "写清楚这个节点要推进什么。";
 
@@ -274,6 +276,11 @@ function renderView() {
 }
 
 function renderEmptyState() {
+  if (nodes.length === 0) {
+    renderFirstRunEmptyState();
+    return;
+  }
+
   elements.currentTitle.textContent = "今天的叶子任务都完成了";
   elements.currentSummary.textContent = "可以回到目标树继续拆分，或者复盘刚才完成的判断。";
   elements.currentPriority.textContent = "队列已清空";
@@ -291,6 +298,24 @@ function renderEmptyState() {
   };
   updateAiResultLink();
   elements.queueChain.innerHTML = '<div class="empty-state">没有可执行叶子节点</div>';
+  renderTree();
+  renderMethods();
+}
+
+function renderFirstRunEmptyState() {
+  elements.currentTitle.textContent = "创建你的 Polaris 目标";
+  elements.currentSummary.textContent = "首次部署会保留空目标树，任务节点和结果只写入你的本地数据目录。";
+  elements.currentPriority.textContent = "空数据层";
+  elements.currentPriority.className = "node-chip muted";
+  elements.currentRank.textContent = "等待根目标";
+  elements.actionPlanSummary.textContent = "先写下根目标，再把它拆成可执行节点。";
+  elements.actionPlanSteps.replaceChildren(...["创建根目标", "补充描述", "保存后继续拆分"].map(createActionItem));
+  elements.preparedResultTitle.textContent = "User Data";
+  elements.preparedResultSummary.textContent = "目标树、卡片状态和 output 会从此刻开始保存在用户数据目录。";
+  elements.preparedResultPoints.replaceChildren();
+  currentPreparedArtifact = null;
+  updateAiResultLink();
+  elements.queueChain.replaceChildren(createFirstRunPrompt("创建根目标", addRootNode));
   renderTree();
   renderMethods();
 }
@@ -778,11 +803,37 @@ function renderTree() {
   const previousCardRects = shouldAnimateTreeRender() ? getTreeCardRects() : new Map();
   const focus = getTreeFocus();
   const tree = buildFocusedTree(focus);
-  elements.treeMap.replaceChildren(...tree.map((node) => createTreeNode(node, focus, 0)));
+  elements.treeMap.replaceChildren(
+    ...(tree.length > 0 ? tree.map((node) => createTreeNode(node, focus, 0)) : [createFirstRunPrompt("创建根目标", addRootNode)]),
+  );
   renderNodeEditor(focus);
 
   restoreTreeScrollAfterRender(scrollContainer, scrollLeft, scrollTop);
   animateTreeRender(previousCardRects);
+}
+
+function createFirstRunPrompt(actionLabel, onAction) {
+  const empty = document.createElement("article");
+  empty.className = "empty-state first-run-empty";
+
+  const content = document.createElement("div");
+  content.className = "first-run-empty-content";
+
+  const title = document.createElement("h2");
+  title.textContent = "还没有目标树";
+
+  const description = document.createElement("p");
+  description.textContent = "从一个根目标开始，后续节点状态和 output 都会保存到本地数据层。";
+
+  const button = document.createElement("button");
+  button.className = "primary-action";
+  button.type = "button";
+  button.textContent = actionLabel;
+  button.addEventListener("click", onAction);
+
+  content.append(title, description, button);
+  empty.append(content);
+  return empty;
 }
 
 function renderNodeEditor(focus) {
@@ -1288,6 +1339,33 @@ function addChildNode(parentId) {
   });
 }
 
+function addRootNode() {
+  const root = createNode({
+    id: `goal-${Date.now()}`,
+    title: newRootNodeTitle,
+    tag: TASK_TAGS.THINK,
+    description: newRootNodeDescription,
+    aiActions: ["明确目标", "拆解路径", "记录判断"],
+    state: TASK_STATES.TODO,
+    createdFrom: CREATED_FROM.USER,
+  });
+
+  runTreeTransition(() => {
+    nodes = [root];
+    selectedTreeNodeId = root.id;
+    selectedNodeId = null;
+    activeView = "tree";
+    isNodeEditorOpen = true;
+    pendingSplitNodeIds.add(root.id);
+    nodeEditorFeedback = {
+      nodeId: root.id,
+      tone: "success",
+      message: "已创建根目标，补充标题和描述后保存会自动预拆分",
+    };
+    saveNodes();
+  });
+}
+
 function deleteTreeNode(nodeId) {
   const update = deleteTaskNode(nodes, nodeId);
   if (!update.parentId) return;
@@ -1365,7 +1443,10 @@ function isPlaceholderNode(node) {
 }
 
 function isPlaceholderInput(input) {
-  return input.title === newNodeTitle && input.description === newNodeDescription;
+  return (
+    (input.title === newNodeTitle && input.description === newNodeDescription) ||
+    (input.title === newRootNodeTitle && input.description === newRootNodeDescription)
+  );
 }
 
 function hasChildNodes(nodeId) {
@@ -1508,7 +1589,6 @@ function groupItemsByType(items) {
 
   return [...groups.entries()].map(([type, groupItems]) => ({
     type,
-    sourceDescription: groupItems.find((item) => item.sourceDescription)?.sourceDescription ?? "",
     items: groupItems,
   }));
 }
@@ -1519,7 +1599,6 @@ function createKnowledgeGroupCard(group) {
     label: group.type,
     summaryMode: true,
     expanded: expandedKnowledgeGroups.has(group.type),
-    getBrief: getKnowledgeGroupBrief,
     onToggle: () => toggleKnowledgeGroup(group.type),
     createItem: (item) => createKnowledgeCard(item),
   });
@@ -1548,12 +1627,7 @@ function createCatalogGroupCard(group, options) {
 
   heading.append(label);
 
-  if (options.summaryMode) {
-    const brief = document.createElement("p");
-    brief.className = "catalog-brief";
-    brief.textContent = options.getBrief(group);
-    heading.append(brief);
-  } else if (options.showTitle !== false) {
+  if (!options.summaryMode && options.showTitle !== false) {
     const title = document.createElement("h3");
     title.textContent = group.type;
     heading.append(title);
@@ -1590,14 +1664,6 @@ function createCatalogGroupCard(group, options) {
   return groupCard;
 }
 
-function getKnowledgeGroupBrief(group) {
-  if (group.sourceDescription) return group.sourceDescription;
-  if (group.items.length === 1) return group.items[0].description;
-
-  const titles = group.items.map((item) => item.title).join("、");
-  return `${group.items.length} 条${group.type}知识：${titles}。`;
-}
-
 function toggleKnowledgeGroup(groupType) {
   if (expandedKnowledgeGroups.has(groupType)) {
     expandedKnowledgeGroups.delete(groupType);
@@ -1626,12 +1692,15 @@ function createEditableIndexCard(item, className, options = {}) {
   const title = document.createElement("h3");
   title.textContent = item.title;
 
+  const heading = document.createElement("div");
+  heading.className = "index-card-heading";
+  if (options.showType !== false) heading.append(type);
+  heading.append(title);
+
   const description = document.createElement("p");
   description.textContent = item.description;
 
-  const content = [title, description];
-  if (options.showType !== false) content.unshift(type);
-  card.append(...content);
+  card.append(heading, description);
   card.addEventListener("click", () => openMarkdownEditor(item));
   card.addEventListener("keydown", (event) => {
     if (event.key === "Enter" || event.key === " ") {

@@ -7,12 +7,26 @@ import { describe, it } from "node:test";
 import { createRepository } from "../src/data/repository.js";
 
 describe("local data repository", () => {
-  it("seeds and persists task nodes in sqlite", () => {
+  it("starts with an empty task tree unless demo seed is enabled", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
+
+    try {
+      const repository = createRepository({ dataRoot, dbPath: join(dataRoot, "polaris.db") });
+
+      assert.deepEqual(repository.listTaskNodes(), []);
+      assert.equal(existsSync(join(dataRoot, "task-nodes.json")), false);
+      repository.close();
+    } finally {
+      rmSync(dataRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("seeds demo task nodes only when requested and persists them", () => {
     const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
     const dbPath = join(dataRoot, "polaris.db");
 
     try {
-      const repository = createRepository({ dataRoot, dbPath });
+      const repository = createRepository({ dataRoot, dbPath, seedTaskNodes: true });
       const nodes = repository.listTaskNodes();
       assert.ok(nodes.some((node) => node.id === "polaris"));
 
@@ -26,11 +40,76 @@ describe("local data repository", () => {
             : node,
         ),
       );
+      const snapshot = JSON.parse(readFileSync(join(dataRoot, "task-nodes.json"), "utf8"));
+      assert.equal(snapshot.nodes[0].title, "已持久化的 Polaris 目标");
       repository.close();
 
       const reopenedRepository = createRepository({ dataRoot, dbPath });
       assert.equal(reopenedRepository.listTaskNodes()[0].title, "已持久化的 Polaris 目标");
       reopenedRepository.close();
+    } finally {
+      rmSync(dataRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("uses task-nodes.json as the portable task tree source on restart", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
+    const dbPath = join(dataRoot, "polaris.db");
+
+    try {
+      const repository = createRepository({ dataRoot, dbPath, seedTaskNodes: true });
+      const snapshotPath = join(dataRoot, "task-nodes.json");
+      const snapshot = JSON.parse(readFileSync(snapshotPath, "utf8"));
+      repository.close();
+
+      snapshot.nodes[0] = {
+        ...snapshot.nodes[0],
+        title: "用户文件里改过的目标",
+        state: "完成",
+        result: {
+          source: "manual",
+          url: "https://example.feishu.cn/docx/saved-result",
+        },
+      };
+      writeFileSync(snapshotPath, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
+
+      const reopenedRepository = createRepository({ dataRoot, dbPath });
+      const rootNode = reopenedRepository.listTaskNodes()[0];
+
+      assert.equal(rootNode.title, "用户文件里改过的目标");
+      assert.equal(rootNode.state, "完成");
+      assert.equal(rootNode.result.url, "https://example.feishu.cn/docx/saved-result");
+      reopenedRepository.close();
+    } finally {
+      rmSync(dataRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("exports existing sqlite task nodes to task-nodes.json for legacy data directories", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
+    const dbPath = join(dataRoot, "polaris.db");
+    const snapshotPath = join(dataRoot, "task-nodes.json");
+
+    try {
+      const repository = createRepository({ dataRoot, dbPath, seedTaskNodes: true });
+      repository.saveTaskNodes(
+        repository.listTaskNodes().map((node) =>
+          node.id === "polaris"
+            ? {
+                ...node,
+                title: "旧 SQLite 里的目标",
+              }
+            : node,
+        ),
+      );
+      repository.close();
+      rmSync(snapshotPath, { force: true });
+
+      const reopenedRepository = createRepository({ dataRoot, dbPath });
+      reopenedRepository.close();
+
+      const snapshot = JSON.parse(readFileSync(snapshotPath, "utf8"));
+      assert.equal(snapshot.nodes[0].title, "旧 SQLite 里的目标");
     } finally {
       rmSync(dataRoot, { recursive: true, force: true });
     }
