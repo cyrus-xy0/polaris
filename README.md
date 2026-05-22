@@ -135,10 +135,10 @@ The Suggest Action Plan panel is generated through a service-local AI executable
 - the configured data directory
 - `<data-dir>/bin`
 
-OpenClaw is invoked in non-interactive one-shot mode:
+OpenClaw is invoked through the non-interactive agent command:
 
 ```bash
-openclaw crestodian --message "<prompt>"
+openclaw agent --agent "${POLARIS_OPENCLAW_AGENT:-main}" --message "<prompt>" --thinking "${POLARIS_OPENCLAW_THINKING:-low}" --json
 ```
 
 Hermes is invoked in quiet query mode:
@@ -147,7 +147,13 @@ Hermes is invoked in quiet query mode:
 hermes chat --quiet --query "<prompt>"
 ```
 
-Both providers should print either JSON or a plain text list. Preferred JSON shape:
+OpenClaw's `--json` wrapper is unwrapped from its response text before parsing. Both providers should ultimately return either JSON or a plain text list. Preferred JSON shape:
+
+If the deployment server uses a non-default OpenClaw agent, set `POLARIS_OPENCLAW_AGENT` before starting Polaris. For example:
+
+```bash
+POLARIS_OPENCLAW_AGENT=qa npm start
+```
 
 ```json
 {
@@ -158,13 +164,15 @@ Both providers should print either JSON or a plain text list. Preferred JSON sha
 
 If neither `openclaw` nor `hermes` exists locally, the panel reports that local AI generation is unavailable.
 
-Generated Suggest Action Plan and Draft Output payloads are persisted to `<data-dir>/ai-results/` before the browser updates the panel. The `查看 AI 结果` flow creates a Feishu document with `lark-cli docs +create --api-version v2 --as user`, persists the returned URL, and fills the completion link input after analysis finishes. While generation is in progress, the UI shows `AI 正在分析`.
+Generated Suggest Action Plan and Draft Output payloads are persisted to `<data-dir>/ai-results/` before the browser updates the panel. The `查看 AI 结果` flow creates a Feishu document with `lark-cli docs +create --api-version v2 --as user`, persists the returned URL, and fills the completion link input after analysis finishes. If Feishu creation fails locally, Polaris writes a local HTML result page under `<data-dir>/ai-results/documents/` so the result link still resolves. While generation is in progress, the UI shows `AI 正在分析`.
 
 AI prompts are built from the current task plus its upstream task chain, dependency results, related and global knowhow, skills, artifacts, and prior task results. The persisted cache key includes this context digest, so changed knowledge or accumulated results trigger regeneration.
 
 Draft Output and Feishu result generation are constrained by the saved Suggest Action Plan. The plan is generated or read first, injected into the draft prompt as an implementation checklist, and its digest is included in downstream cache keys.
 
-Deployment servers can run with `openclaw` only. Polaris discovers `openclaw` before `hermes`, invokes it as `openclaw crestodian --message "<prompt>"`, and accepts JSON or plain text on stdout. `hermes` is only a fallback provider and is not required when `openclaw` is executable in the service root, `bin/`, `<data-dir>/bin`, or `PATH`.
+When a newly added task node is saved for the first time, Polaris asks the same local AI provider to pre-split it into child task nodes from the saved title and description. If no provider returns a usable split, Polaris falls back to a minimal local three-step split so the new node still starts with executable children.
+
+Deployment servers can run with `openclaw` only. Polaris discovers `openclaw` before `hermes`, invokes it as `openclaw agent --agent "${POLARIS_OPENCLAW_AGENT:-main}" --message "<prompt>" --thinking "${POLARIS_OPENCLAW_THINKING:-low}" --json`, and accepts JSON or plain text from the response. `hermes` is only a fallback provider and is not required when `openclaw` is executable in the service root, `bin/`, `<data-dir>/bin`, or `PATH`.
 
 ## Test
 

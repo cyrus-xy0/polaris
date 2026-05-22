@@ -92,6 +92,10 @@ describe("AI result store", () => {
       node,
       signature,
       artifact,
+      actionPlan: {
+        summary: "按计划产出。",
+        steps: ["读取上文", "生成 brief"],
+      },
       output: {
         title: "差异点定义草稿",
         summary: "明确方案判断口径。",
@@ -102,7 +106,9 @@ describe("AI result store", () => {
     assert.equal(result.docType, "本地 HTML");
     assert.match(result.url, /^\/ai-results\/documents\/.+\.html$/);
     assert.equal(existsSync(result.path), true);
-    assert.match(readFileSync(result.path, "utf8"), /差异点定义草稿/);
+    const html = readFileSync(result.path, "utf8");
+    assert.match(html, /差异点定义草稿/);
+    assert.match(html, /实施依据/);
   });
 });
 

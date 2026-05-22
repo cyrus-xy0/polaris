@@ -4,6 +4,8 @@ import { delimiter, join, resolve } from "node:path";
 
 const generatorNames = ["openclaw", "hermes"];
 const maxSteps = 8;
+const maxSplitNodes = 6;
+const validTaskTags = new Set(["思考", "执行", "沟通", "验证", "整理"]);
 const defaultEnv = process.env;
 
 export async function generateSuggestedActionPlan({
@@ -61,6 +63,35 @@ export async function generateDraftOutput({
   } catch (error) {
     return {
       ...createBlankDraftOutput(),
+      provider: generator.name,
+      error: error.message,
+    };
+  }
+}
+
+export async function generateTaskNodeSplit({
+  node,
+  relatedRecords = [],
+  aiContext = null,
+  serviceRoot = process.cwd(),
+  dataRoot = null,
+  timeoutMs = 120_000,
+  env = defaultEnv,
+  includePath = true,
+} = {}) {
+  const generator = findLocalActionPlanGenerator({ serviceRoot, dataRoot, env, includePath });
+  if (!generator || !node) return createBlankTaskNodeSplit();
+
+  try {
+    const prompt = buildTaskNodeSplitPrompt({ node, relatedRecords, aiContext });
+    const output = await runGenerator(generator, prompt, { cwd: serviceRoot, timeoutMs, env });
+    return {
+      ...parseTaskNodeSplitOutput(output),
+      provider: generator.name,
+    };
+  } catch (error) {
+    return {
+      ...createBlankTaskNodeSplit(),
       provider: generator.name,
       error: error.message,
     };
@@ -162,6 +193,31 @@ export function buildDraftOutputPrompt({ node, artifact = null, relatedRecords =
   ].join("\n");
 }
 
+export function buildTaskNodeSplitPrompt({ node, relatedRecords = [], aiContext = null }) {
+  return [
+    "你是 Polaris 本地任务节点拆解助手。",
+    "请根据当前节点标题、描述和上下文，把这个节点预拆分成一组可执行子节点。",
+    "只输出 JSON，不要输出 Markdown 或解释文字。",
+    'JSON 格式：{"summary":"一句话说明拆分逻辑","nodes":[{"title":"子节点标题","description":"子节点要推进什么","tag":"思考","aiActions":["明确输入","执行最小动作","记录判断"]}]}',
+    "要求：",
+    "- nodes 生成 3 到 5 个，必须覆盖从理解、执行到验证或沉淀的完整路径。",
+    "- title 用 4 到 18 个中文字符，像任务节点，不要写编号。",
+    "- description 用一句话说明这个子节点的完成标准。",
+    "- tag 只能从 思考、执行、沟通、验证、整理 中选择。",
+    "- aiActions 生成 2 到 4 条短动作，不能空泛。",
+    "- 不要生成与当前节点同名的子节点。",
+    "",
+    "当前节点：",
+    `- id：${node.id}`,
+    `- 标题：${node.title}`,
+    `- 标签：${node.tag}`,
+    `- 描述：${node.description}`,
+    "",
+    "AI 上下文：",
+    formatAiContext({ aiContext, relatedRecords }),
+  ].join("\n");
+}
+
 export function parseActionPlanOutput(output) {
   const text = typeof output === "string" ? output.trim() : "";
   if (!text) return createBlankActionPlan();
@@ -190,9 +246,22 @@ export function parseDraftOutput(output) {
   });
 }
 
+export function parseTaskNodeSplitOutput(output) {
+  const text = typeof output === "string" ? output.trim() : "";
+  if (!text) return createBlankTaskNodeSplit();
+
+  const jsonPayload = parseJsonPayload(text);
+  if (jsonPayload) return normalizeTaskNodeSplit(jsonPayload);
+
+  return normalizeTaskNodeSplit({
+    summary: "",
+    nodes: parsePlainTextSteps(text),
+  });
+}
+
 function runGenerator(generator, prompt, { cwd, timeoutMs, env }) {
   return new Promise((resolvePromise, rejectPromise) => {
-    const invocation = buildGeneratorInvocation(generator, prompt);
+    const invocation = buildGeneratorInvocation(generator, prompt, { env, timeoutMs });
     const child = spawn(generator.commandPath, invocation.args, {
       cwd,
       stdio: [invocation.stdin ? "pipe" : "ignore", "pipe", "pipe"],
@@ -234,17 +303,34 @@ function runGenerator(generator, prompt, { cwd, timeoutMs, env }) {
         rejectPromise(new Error(stderr.trim() || `${generator.name} exited with code ${code}`));
         return;
       }
-      resolvePromise(stdout);
+      try {
+        resolvePromise(extractGeneratorText(generator, stdout));
+      } catch (error) {
+        rejectPromise(error);
+      }
     });
 
     if (invocation.stdin) child.stdin.end(invocation.stdin);
   });
 }
 
-function buildGeneratorInvocation(generator, prompt) {
+function buildGeneratorInvocation(generator, prompt, { env = defaultEnv, timeoutMs = 120_000 } = {}) {
   if (generator.name === "openclaw") {
+    const agent = getEnvString(env, "POLARIS_OPENCLAW_AGENT") || "main";
+    const thinking = getEnvString(env, "POLARIS_OPENCLAW_THINKING") || "low";
     return {
-      args: ["crestodian", "--message", prompt],
+      args: [
+        "agent",
+        "--agent",
+        agent,
+        "--message",
+        prompt,
+        "--thinking",
+        thinking,
+        "--json",
+        "--timeout",
+        String(Math.max(1, Math.ceil(timeoutMs / 1000))),
+      ],
       stdin: null,
     };
   }
@@ -260,6 +346,67 @@ function buildGeneratorInvocation(generator, prompt) {
     args: [],
     stdin: prompt,
   };
+}
+
+function extractGeneratorText(generator, output) {
+  const text = typeof output === "string" ? output.trim() : "";
+  if (!text) return "";
+  if (generator.name === "openclaw" && isOpenClawDiagnosticOutput(text)) {
+    throw new Error("OpenClaw 返回了 Crestodian 状态信息，而不是 AI 生成内容。请确认使用 openclaw agent 命令并配置可用模型。");
+  }
+  if (generator.name !== "openclaw") return text;
+
+  const payload = parseJsonPayload(text);
+  if (!payload) return text;
+  if (hasNativePolarisPayload(payload)) return JSON.stringify(payload);
+
+  const responseText = findFirstStringByKeys(payload, ["response", "reply", "message", "content", "text", "output"]);
+  if (responseText) {
+    if (isOpenClawDiagnosticOutput(responseText)) {
+      throw new Error("OpenClaw 返回了诊断信息，而不是 AI 生成内容。请检查 Agent 和模型配置。");
+    }
+    return responseText.trim();
+  }
+
+  return text;
+}
+
+function hasNativePolarisPayload(payload) {
+  return Boolean(
+    payload &&
+      typeof payload === "object" &&
+      (Object.hasOwn(payload, "steps") ||
+        Object.hasOwn(payload, "brief") ||
+        Object.hasOwn(payload, "points") ||
+        Object.hasOwn(payload, "nodes")),
+  );
+}
+
+function findFirstStringByKeys(value, keys) {
+  if (!value || typeof value !== "object") return "";
+  for (const key of keys) {
+    const candidate = value[key];
+    if (typeof candidate === "string" && candidate.trim()) return candidate;
+  }
+  for (const key of keys) {
+    const candidate = value[key];
+    const nested = Array.isArray(candidate)
+      ? candidate.map((item) => findFirstStringByKeys(item, keys)).find(Boolean)
+      : findFirstStringByKeys(candidate, keys);
+    if (nested) return nested;
+  }
+  return "";
+}
+
+function isOpenClawDiagnosticOutput(text) {
+  return /Crestodian online|Crestodian needs an interactive TTY|Default agent:|Gateway: reachable|Next: run "talk to agent"/i.test(
+    text,
+  );
+}
+
+function getEnvString(env, key) {
+  const value = env?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
 function formatAiContext({ aiContext, relatedRecords = [] }) {
@@ -410,6 +557,45 @@ function normalizeDraftOutput(payload) {
   };
 }
 
+function normalizeTaskNodeSplit(payload) {
+  const split = payload?.taskSplit ?? payload?.split ?? payload?.children ?? payload;
+  const rawNodes = Array.isArray(split) ? split : split?.nodes;
+
+  return {
+    summary: typeof split?.summary === "string" ? split.summary.trim() : "",
+    nodes: normalizeSplitNodes(rawNodes),
+  };
+}
+
+function normalizeSplitNodes(nodes) {
+  if (!Array.isArray(nodes)) return [];
+  return nodes
+    .map((node) => {
+      if (typeof node === "string") {
+        const title = node.trim();
+        return {
+          title,
+          description: title ? `完成「${title}」并记录判断。` : "",
+          tag: "执行",
+          aiActions: ["明确输入", "执行最小动作", "记录结果"],
+        };
+      }
+
+      const title = typeof node?.title === "string" ? node.title.trim() : "";
+      const description = typeof node?.description === "string" ? node.description.trim() : "";
+      const tag = validTaskTags.has(node?.tag) ? node.tag : "执行";
+      const aiActions = normalizeSteps(node?.aiActions ?? node?.actions ?? node?.steps ?? []);
+      return {
+        title,
+        description: description || (title ? `完成「${title}」并记录判断。` : ""),
+        tag,
+        aiActions: aiActions.length > 0 ? aiActions.slice(0, 4) : ["明确输入", "执行最小动作", "记录结果"],
+      };
+    })
+    .filter((node) => node.title)
+    .slice(0, maxSplitNodes);
+}
+
 function normalizeSteps(steps) {
   if (!Array.isArray(steps)) return [];
   return steps
@@ -440,6 +626,14 @@ function createBlankDraftOutput() {
     summary: "",
     brief: "",
     points: [],
+    provider: null,
+  };
+}
+
+function createBlankTaskNodeSplit() {
+  return {
+    summary: "",
+    nodes: [],
     provider: null,
   };
 }

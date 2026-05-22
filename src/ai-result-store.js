@@ -4,7 +4,7 @@ import { dirname, join, relative, resolve } from "node:path";
 
 const aiResultDirName = "ai-results";
 
-const aiContextVersion = "rich-context-v1";
+const aiContextVersion = "rich-context-v2-openclaw-agent";
 
 export function createAiContextDigest(aiContext = null) {
   return createHash("sha256").update(JSON.stringify(aiContext ?? null)).digest("hex").slice(0, 16);
@@ -74,11 +74,11 @@ export function writeAiResult({ dataRoot, kind, nodeId, signature, payload }) {
   return readAiResult({ dataRoot, kind, nodeId, signature });
 }
 
-export function writeAiResultDocument({ dataRoot, node, signature, output, artifact = null }) {
+export function writeAiResultDocument({ dataRoot, node, signature, output, artifact = null, actionPlan = null }) {
   const title = output.title || `${node.title} AI 结果`;
   const filePath = resolveAiResultDocumentPath({ dataRoot, nodeId: node.id, signature });
   mkdirSync(dirname(filePath), { recursive: true });
-  writeFileSync(filePath, renderAiResultHtml({ title, node, output, artifact }), "utf8");
+  writeFileSync(filePath, renderAiResultHtml({ title, node, output, artifact, actionPlan }), "utf8");
 
   const relativePath = relative(join(resolve(dataRoot), aiResultDirName), filePath);
   return {
@@ -125,12 +125,17 @@ function safePathSegment(value) {
     .replace(/^-+|-+$/g, "");
 }
 
-function renderAiResultHtml({ title, node, output, artifact }) {
+function renderAiResultHtml({ title, node, output, artifact, actionPlan }) {
   const points = Array.isArray(output.points) ? output.points : [];
   const brief = output.brief || points.join("；") || output.summary || node.description;
   const sourceArtifact = artifact?.title
     ? `<p class="meta">参考产物：${escapeHtml(artifact.docType ?? "Output")} · ${escapeHtml(artifact.title)}</p>`
     : "";
+  const actionPlanSteps = Array.isArray(actionPlan?.steps) ? actionPlan.steps.filter(Boolean) : [];
+  const actionPlanSection =
+    actionPlanSteps.length > 0
+      ? `<h2>实施依据</h2><p>${escapeHtml(actionPlan.summary ?? "以下步骤是本结果的实施约束。")}</p><ul>${actionPlanSteps.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ul>`
+      : "";
 
   return `<!doctype html>
 <html lang="zh-CN">
@@ -204,6 +209,7 @@ function renderAiResultHtml({ title, node, output, artifact }) {
         <h1>${escapeHtml(title)}</h1>
         <p>${escapeHtml(output.summary || node.description)}</p>
         ${sourceArtifact}
+        ${actionPlanSection}
         <h2>结果 brief</h2>
         <p>${escapeHtml(brief)}</p>
         ${points.length > 0 ? `<h2>关键内容</h2><ul>${points.map((point) => `<li>${escapeHtml(point)}</li>`).join("")}</ul>` : ""}

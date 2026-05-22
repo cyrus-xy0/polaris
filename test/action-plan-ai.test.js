@@ -5,11 +5,14 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 import {
   buildDraftOutputPrompt,
+  buildTaskNodeSplitPrompt,
   findLocalActionPlanGenerator,
   generateDraftOutput,
   generateSuggestedActionPlan,
+  generateTaskNodeSplit,
   parseActionPlanOutput,
   parseDraftOutput,
+  parseTaskNodeSplitOutput,
 } from "../src/action-plan-ai.js";
 import { CREATED_FROM, TASK_STATES, TASK_TAGS, createNode } from "../src/task-nodes.js";
 
@@ -40,6 +43,19 @@ describe("action plan AI", () => {
     assert.deepEqual(output, { title: "", summary: "", brief: "", points: [], provider: null });
   });
 
+  it("leaves task-node split blank when no local generator exists", async () => {
+    const serviceRoot = mkdtempSync(join(tmpdir(), "polaris-no-split-generator-"));
+    const split = await generateTaskNodeSplit({
+      node: createTestNode(),
+      serviceRoot,
+      dataRoot: serviceRoot,
+      env: { PATH: "" },
+      includePath: false,
+    });
+
+    assert.deepEqual(split, { summary: "", nodes: [], provider: null });
+  });
+
   it("uses a service-local openclaw executable before falling back to static steps", async () => {
     const serviceRoot = mkdtempSync(join(tmpdir(), "polaris-openclaw-"));
     const commandPath = join(serviceRoot, "openclaw");
@@ -47,10 +63,14 @@ describe("action plan AI", () => {
       commandPath,
       [
         "#!/usr/bin/env node",
-        "if (process.argv[2] !== 'crestodian') process.exit(2);",
-        "if (process.argv[3] !== '--message') process.exit(3);",
-        "if (!process.argv[4].includes('测试节点')) process.exit(4);",
-        "console.log(JSON.stringify({ summary: '先收敛输入，再执行验证', steps: ['收集上下文', '生成行动计划', '记录判断'] }));",
+        "if (process.argv[2] !== 'agent') process.exit(2);",
+        "if (process.argv[3] !== '--agent') process.exit(3);",
+        "if (process.argv[4] !== 'main') process.exit(4);",
+        "const messageIndex = process.argv.indexOf('--message');",
+        "if (messageIndex < 0) process.exit(5);",
+        "if (!process.argv[messageIndex + 1].includes('测试节点')) process.exit(6);",
+        "if (!process.argv.includes('--json')) process.exit(7);",
+        "console.log(JSON.stringify({ response: JSON.stringify({ summary: '先收敛输入，再执行验证', steps: ['收集上下文', '生成行动计划', '记录判断'] }) }));",
       ].join("\n"),
     );
     chmodSync(commandPath, 0o755);
@@ -150,12 +170,13 @@ describe("action plan AI", () => {
       commandPath,
       [
         "#!/usr/bin/env node",
-        "if (process.argv[2] !== 'crestodian') process.exit(2);",
-        "if (process.argv[3] !== '--message') process.exit(3);",
-        "const prompt = process.argv[4] || '';",
+        "if (process.argv[2] !== 'agent') process.exit(2);",
+        "if (process.argv[3] !== '--agent') process.exit(3);",
+        "if (process.argv[4] !== 'main') process.exit(4);",
+        "const prompt = process.argv[process.argv.indexOf('--message') + 1] || '';",
         "if (!prompt.includes('必须遵循的 Suggest Action Plan')) process.exit(4);",
         "if (!prompt.includes('读取上文')) process.exit(5);",
-        "console.log(JSON.stringify({ title: '按计划产出草稿', summary: '严格依据行动计划生成结果。', brief: '先读取上文，再应用本地 knowhow 和 skill，最后形成可检查的结果 brief，确保 Draft Output 与 Suggest Action Plan 保持一致。' }));",
+        "console.log(JSON.stringify({ response: JSON.stringify({ title: '按计划产出草稿', summary: '严格依据行动计划生成结果。', brief: '先读取上文，再应用本地 knowhow 和 skill，最后形成可检查的结果 brief，确保 Draft Output 与 Suggest Action Plan 保持一致。' }) }));",
       ].join("\n"),
     );
     chmodSync(commandPath, 0o755);
@@ -177,6 +198,94 @@ describe("action plan AI", () => {
     assert.match(output.brief, /Suggest Action Plan/);
   });
 
+  it("does not render OpenClaw diagnostic output as AI content", async () => {
+    const serviceRoot = mkdtempSync(join(tmpdir(), "polaris-openclaw-diagnostic-"));
+    const commandPath = join(serviceRoot, "openclaw");
+    writeFileSync(
+      commandPath,
+      [
+        "#!/usr/bin/env node",
+        "console.log('Crestodian online. Little claws, typed tools.');",
+        "console.log('Default agent: main');",
+        "console.log('Gateway: reachable (ws://127.0.0.1:18789, local loopback)');",
+      ].join("\n"),
+    );
+    chmodSync(commandPath, 0o755);
+
+    const plan = await generateSuggestedActionPlan({
+      node: createTestNode(),
+      serviceRoot,
+      dataRoot: serviceRoot,
+      includePath: false,
+    });
+
+    assert.equal(plan.provider, "openclaw");
+    assert.deepEqual(plan.steps, []);
+    assert.match(plan.error, /Crestodian 状态信息/);
+  });
+
+  it("can target a configured OpenClaw agent from the environment", async () => {
+    const serviceRoot = mkdtempSync(join(tmpdir(), "polaris-openclaw-agent-env-"));
+    const commandPath = join(serviceRoot, "openclaw");
+    writeFileSync(
+      commandPath,
+      [
+        "#!/usr/bin/env node",
+        "if (process.argv[2] !== 'agent') process.exit(2);",
+        "if (process.argv[3] !== '--agent') process.exit(3);",
+        "if (process.argv[4] !== 'qa') process.exit(4);",
+        "console.log(JSON.stringify({ response: JSON.stringify({ summary: '指定 qa agent 生成', steps: ['读取上下文', '输出计划', '保存结果'] }) }));",
+      ].join("\n"),
+    );
+    chmodSync(commandPath, 0o755);
+
+    const plan = await generateSuggestedActionPlan({
+      node: createTestNode(),
+      serviceRoot,
+      dataRoot: serviceRoot,
+      env: { ...process.env, POLARIS_OPENCLAW_AGENT: "qa" },
+      includePath: false,
+    });
+
+    assert.equal(plan.provider, "openclaw");
+    assert.equal(plan.summary, "指定 qa agent 生成");
+    assert.deepEqual(plan.steps, ["读取上下文", "输出计划", "保存结果"]);
+  });
+
+  it("generates task-node split through openclaw", async () => {
+    const serviceRoot = mkdtempSync(join(tmpdir(), "polaris-split-openclaw-"));
+    const commandPath = join(serviceRoot, "openclaw");
+    writeFileSync(
+      commandPath,
+      [
+        "#!/usr/bin/env node",
+        "if (process.argv[2] !== 'agent') process.exit(2);",
+        "if (process.argv[3] !== '--agent') process.exit(3);",
+        "if (process.argv[4] !== 'main') process.exit(4);",
+        "const prompt = process.argv[process.argv.indexOf('--message') + 1] || '';",
+        "if (!prompt.includes('任务节点拆解助手')) process.exit(4);",
+        "if (!prompt.includes('测试节点')) process.exit(5);",
+        "console.log(JSON.stringify({ response: JSON.stringify({ summary: '先理解，再执行，再验证', nodes: [{ title: '明确判断口径', description: '确认输入和完成标准。', tag: '思考', aiActions: ['读取输入', '写出口径'] }, { title: '执行最小验证', description: '完成一个可检查的验证动作。', tag: '验证', aiActions: ['执行验证', '记录结果'] }] }) }));",
+      ].join("\n"),
+    );
+    chmodSync(commandPath, 0o755);
+
+    const split = await generateTaskNodeSplit({
+      node: createTestNode(),
+      serviceRoot,
+      dataRoot: serviceRoot,
+      includePath: false,
+    });
+
+    assert.equal(split.provider, "openclaw");
+    assert.equal(split.summary, "先理解，再执行，再验证");
+    assert.deepEqual(
+      split.nodes.map((node) => node.title),
+      ["明确判断口径", "执行最小验证"],
+    );
+    assert.equal(split.nodes[0].tag, "思考");
+  });
+
   it("parses plain text generator output as ordered action steps", () => {
     const plan = parseActionPlanOutput("1. 收集输入\n2. 生成建议\n3. 回写结果");
 
@@ -190,6 +299,17 @@ describe("action plan AI", () => {
     assert.equal(output.title, "");
     assert.equal(output.brief, "背景判断；核心差异；验收标准");
     assert.deepEqual(output.points, ["背景判断", "核心差异", "验收标准"]);
+  });
+
+  it("parses plain text task-node split as executable child nodes", () => {
+    const split = parseTaskNodeSplitOutput("1. 明确输入\n2. 执行验证\n3. 记录结论");
+
+    assert.equal(split.summary, "");
+    assert.deepEqual(
+      split.nodes.map((node) => node.title),
+      ["明确输入", "执行验证", "记录结论"],
+    );
+    assert.deepEqual(split.nodes[0].aiActions, ["明确输入", "执行最小动作", "记录结果"]);
   });
 
   it("parses draft JSON embedded in diff-like model output", () => {
@@ -230,6 +350,20 @@ describe("action plan AI", () => {
     assert.match(prompt, /不要只把 AI 当输入框/);
     assert.match(prompt, /必须遵循的 Suggest Action Plan/);
     assert.match(prompt, /1\. 读取上文/);
+  });
+
+  it("builds task-node split prompts from node title and description", () => {
+    const prompt = buildTaskNodeSplitPrompt({
+      node: createTestNode(),
+      aiContext: {
+        taskLineage: [{ title: "北极星目标", tag: "思考", state: "待做", description: "找到 ToB AI 场景。" }],
+      },
+    });
+
+    assert.match(prompt, /任务节点拆解助手/);
+    assert.match(prompt, /测试节点/);
+    assert.match(prompt, /预拆分成一组可执行子节点/);
+    assert.match(prompt, /北极星目标/);
   });
 });
 

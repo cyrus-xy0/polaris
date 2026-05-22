@@ -9,6 +9,7 @@ import {
 } from "/src/task-nodes.js";
 import {
   buildActiveQueue,
+  buildAiContextForNode,
   completeTask,
   deleteTaskNode,
   getAncestorIds,
@@ -32,7 +33,10 @@ let isNodeEditorOpen = false;
 const suggestedActionPlanCache = new Map();
 const draftOutputCache = new Map();
 const aiResultCache = new Map();
+const pendingSplitNodeIds = new Set();
 const aiAnalyzingText = "AI 正在分析";
+const newNodeTitle = "新的行动节点";
+const newNodeDescription = "写清楚这个节点要推进什么。";
 
 const elements = {
   viewButtons: [...document.querySelectorAll("[data-view-button]")],
@@ -62,8 +66,6 @@ const elements = {
   nodeEditorTitle: document.querySelector("#node-editor-title"),
   nodeEditorDescription: document.querySelector("#node-editor-description"),
   nodeEditorTag: document.querySelector("#node-editor-tag"),
-  nodeEditorState: document.querySelector("#node-editor-state"),
-  nodeEditorActions: document.querySelector("#node-editor-actions"),
   nodeEditorDependencies: document.querySelector("#node-editor-dependencies"),
   nodeEditorReset: document.querySelector("#node-editor-reset"),
   nodeEditorStatus: document.querySelector("#node-editor-status"),
@@ -266,7 +268,7 @@ function renderCurrent(item, queue) {
   elements.currentPriority.className = `node-chip ${getPriorityClass(node.id, queue)}`;
   elements.currentRank.textContent = getQueueRankLabel(node.id, queue);
   renderSuggestedActionPlan(node, reason);
-  renderDraftOutput(node);
+  renderDraftOutput(node, reason);
 }
 
 function renderSuggestedActionPlan(node, reason) {
@@ -349,28 +351,29 @@ function getSuggestedActionPlanSignature(node, reason) {
     dependencies: node.dependencies,
     state: node.state,
     reason,
+    aiContext: getAiContextSignature(node, reason),
   });
 }
 
-function renderDraftOutput(node) {
+function renderDraftOutput(node, reason) {
   const artifact = resolvePreparedArtifact(node, library.artifacts);
-  const signature = getDraftOutputSignature(node, artifact);
+  const signature = getDraftOutputSignature(node, artifact, reason);
   const cached = draftOutputCache.get(node.id);
   currentPreparedArtifact = null;
 
   if (cached?.signature === signature && cached.status === "ready") {
     renderDraftOutputContent(cached.output);
-    renderAiResultLink(node, artifact, cached);
+    renderAiResultLink(node, artifact, reason, cached);
     return;
   }
   if (cached?.signature === signature && cached.status === "error") {
     renderDraftOutputContent(createAiErrorDraftOutput(cached.error));
-    renderAiResultLink(node, artifact, cached);
+    renderAiResultLink(node, artifact, reason, cached);
     return;
   }
 
   renderDraftOutputContent(createAiPendingDraftOutput());
-  renderAiResultLink(node, artifact, { status: "loading", signature });
+  renderAiResultLink(node, artifact, reason, { status: "loading", signature });
   if (cached?.signature === signature && cached.status === "loading") return;
   requestDraftOutput(node, signature);
 }
@@ -438,6 +441,15 @@ function normalizeDraftOutput(output = {}) {
   };
 }
 
+function getAiContextSignature(node, reason) {
+  return buildAiContextForNode({
+    nodes,
+    library,
+    nodeId: node.id,
+    reason,
+  });
+}
+
 function createAiPendingActionPlan() {
   return {
     summary: aiAnalyzingText,
@@ -470,7 +482,7 @@ function createAiErrorDraftOutput(error) {
   };
 }
 
-function getDraftOutputSignature(node, artifact) {
+function getDraftOutputSignature(node, artifact, reason = "") {
   return JSON.stringify({
     id: node.id,
     title: node.title,
@@ -480,12 +492,19 @@ function getDraftOutputSignature(node, artifact) {
     state: node.state,
     artifactTitle: artifact?.title ?? "",
     artifactType: artifact?.docType ?? "",
+    aiContext: getAiContextSignature(node, reason),
   });
 }
 
-function renderAiResultLink(node, artifact, draftState) {
+function clearAiGenerationCaches() {
+  suggestedActionPlanCache.clear();
+  draftOutputCache.clear();
+  aiResultCache.clear();
+}
+
+function renderAiResultLink(node, artifact, reason, draftState) {
   currentPreparedArtifact = null;
-  const signature = getAiResultSignature(node, artifact);
+  const signature = getAiResultSignature(node, artifact, reason);
   const cached = aiResultCache.get(node.id);
 
   if (draftState?.status === "error") {
@@ -560,8 +579,8 @@ function normalizeAiResult(result = {}) {
   };
 }
 
-function getAiResultSignature(node, artifact) {
-  return getDraftOutputSignature(node, artifact);
+function getAiResultSignature(node, artifact, reason = "") {
+  return getDraftOutputSignature(node, artifact, reason);
 }
 
 function getPriorityLabel(nodeId, queue) {
@@ -734,9 +753,6 @@ function renderNodeEditor(focus) {
     elements.nodeEditorTitle,
     elements.nodeEditorDescription,
     elements.nodeEditorTag,
-    elements.nodeEditorState,
-    elements.nodeEditorActions,
-    elements.nodeEditorDependencies,
     elements.nodeEditorReset,
   ];
 
@@ -746,6 +762,7 @@ function renderNodeEditor(focus) {
     fields.forEach((field) => {
       field.disabled = true;
     });
+    renderDependencyOptions(null);
     elements.nodeEditorStatus.textContent = "";
     return;
   }
@@ -759,8 +776,6 @@ function renderNodeEditor(focus) {
   elements.nodeEditorTitle.value = selected.title;
   elements.nodeEditorDescription.value = selected.description;
   renderSelectOptions(elements.nodeEditorTag, Object.values(TASK_TAGS), selected.tag);
-  renderSelectOptions(elements.nodeEditorState, Object.values(TASK_STATES), selected.state);
-  elements.nodeEditorActions.value = selected.aiActions.join("\n");
   renderDependencyOptions(selected);
 
   const feedback = nodeEditorFeedback?.nodeId === selected.id ? nodeEditorFeedback : null;
@@ -781,6 +796,13 @@ function renderSelectOptions(select, values, selectedValue) {
 }
 
 function renderDependencyOptions(selected) {
+  if (!selected) {
+    elements.nodeEditorDependencies.replaceChildren();
+    elements.nodeEditorDependencies.ariaDisabled = "true";
+    return;
+  }
+
+  elements.nodeEditorDependencies.ariaDisabled = "false";
   const blockedIds = new Set([
     selected.id,
     ...getAncestorIds(nodes, selected.id),
@@ -790,11 +812,20 @@ function renderDependencyOptions(selected) {
   const options = nodes
     .filter((node) => !blockedIds.has(node.id))
     .map((node) => {
-      const option = document.createElement("option");
-      option.value = node.id;
-      option.textContent = node.title;
-      option.selected = selectedDependencies.has(node.id);
-      return option;
+      const item = document.createElement("label");
+      item.className = "node-dependency-item";
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.name = "dependencies";
+      checkbox.value = node.id;
+      checkbox.checked = selectedDependencies.has(node.id);
+
+      const text = document.createElement("span");
+      text.textContent = node.title;
+
+      item.append(checkbox, text);
+      return item;
     });
 
   elements.nodeEditorDependencies.replaceChildren(...options);
@@ -1125,9 +1156,9 @@ function addChildNode(parentId) {
   const child = createNode({
     id: `node-${Date.now()}`,
     parentId,
-    title: "新的行动节点",
+    title: newNodeTitle,
     tag: TASK_TAGS.THINK,
-    description: "写清楚这个节点要推进什么。",
+    description: newNodeDescription,
     aiActions: ["明确输入", "做最小动作", "记录判断"],
     state: TASK_STATES.TODO,
     createdFrom: CREATED_FROM.USER,
@@ -1137,7 +1168,13 @@ function addChildNode(parentId) {
     nodes = [...nodes, child];
     selectedTreeNodeId = child.id;
     selectedNodeId = null;
-    nodeEditorFeedback = { nodeId: child.id, tone: "success", message: "已添加子节点" };
+    isNodeEditorOpen = true;
+    pendingSplitNodeIds.add(child.id);
+    nodeEditorFeedback = {
+      nodeId: child.id,
+      tone: "success",
+      message: "已添加节点，补充标题和描述后保存会自动预拆分",
+    };
     saveNodes();
   });
 }
@@ -1164,16 +1201,14 @@ async function saveNodeEditor(event) {
   if (!selected) return;
 
   const title = elements.nodeEditorTitle.value.trim();
-  const aiActions = parseActionLines(elements.nodeEditorActions.value);
-  const dependencies = [...elements.nodeEditorDependencies.selectedOptions].map((option) => option.value);
+  const description = elements.nodeEditorDescription.value.trim();
+  const dependencies = [...elements.nodeEditorDependencies.querySelectorAll('input[name="dependencies"]:checked')].map(
+    (option) => option.value,
+  );
+  const shouldAutoSplit = shouldAutoSplitNodeAfterSave(selected, { title, description });
 
   if (!title) {
     showNodeEditorStatus(selected.id, "标题不能为空", "error");
-    return;
-  }
-
-  if (aiActions.length === 0) {
-    showNodeEditorStatus(selected.id, "行动列表不能为空", "error");
     return;
   }
 
@@ -1181,10 +1216,8 @@ async function saveNodeEditor(event) {
     const nextNode = createNode({
       ...selected,
       title,
-      description: elements.nodeEditorDescription.value.trim(),
+      description,
       tag: elements.nodeEditorTag.value,
-      state: elements.nodeEditorState.value,
-      aiActions,
       dependencies,
     });
     nodes = nodes.map((node) => (node.id === selected.id ? nextNode : node));
@@ -1200,16 +1233,59 @@ async function saveNodeEditor(event) {
       message: saved ? "已保存到本地数据层" : "保存失败，请查看终端日志",
     };
     render();
+
+    if (saved && shouldAutoSplit) {
+      nodeEditorFeedback = {
+        nodeId: selected.id,
+        tone: "success",
+        message: "已保存，AI 正在预拆分子节点...",
+      };
+      render();
+      await requestTaskNodeSplit(selected.id);
+    }
   } catch (error) {
     showNodeEditorStatus(selected.id, error.message, "error");
   }
 }
 
-function parseActionLines(value) {
-  return value
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+function shouldAutoSplitNodeAfterSave(node, nextInput) {
+  const isNewNode = pendingSplitNodeIds.has(node.id) || isPlaceholderNode(node);
+  return isNewNode && !isPlaceholderInput(nextInput) && !hasChildNodes(node.id);
+}
+
+function isPlaceholderNode(node) {
+  return isPlaceholderInput(node);
+}
+
+function isPlaceholderInput(input) {
+  return input.title === newNodeTitle && input.description === newNodeDescription;
+}
+
+function hasChildNodes(nodeId) {
+  return nodes.some((node) => node.parentId === nodeId);
+}
+
+async function requestTaskNodeSplit(nodeId) {
+  try {
+    const payload = await requestJson(`/api/task-nodes/${encodeURIComponent(nodeId)}/split-children`, {
+      method: "POST",
+    });
+    nodes = hydrateNodes(payload.nodes);
+    clearAiGenerationCaches();
+    pendingSplitNodeIds.delete(nodeId);
+    selectedTreeNodeId = nodeId;
+    const childCount = Array.isArray(payload.children) ? payload.children.length : 0;
+    nodeEditorFeedback = {
+      nodeId,
+      tone: childCount > 0 ? "success" : "error",
+      message: childCount > 0 ? `已预拆分 ${childCount} 个子节点` : "没有生成可用子节点",
+    };
+    render();
+  } catch (error) {
+    console.error("Failed to split task node", error);
+    pendingSplitNodeIds.delete(nodeId);
+    showNodeEditorStatus(nodeId, `预拆分失败：${error.message}`, "error");
+  }
 }
 
 function resetNodeEditor() {
@@ -1482,6 +1558,8 @@ async function saveMarkdownEditor() {
     );
     Object.assign(editingMarkdownItem, data.item);
     elements.markdownEditorPath.textContent = `${editingMarkdownItem.path} · 已保存`;
+    clearAiGenerationCaches();
+    render();
   } catch (error) {
     console.error("Failed to persist markdown", error);
     elements.markdownEditorPath.textContent = `${editingMarkdownItem.path} · 保存失败`;

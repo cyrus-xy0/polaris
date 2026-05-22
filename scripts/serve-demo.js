@@ -1,7 +1,7 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, join, normalize, resolve } from "node:path";
-import { generateDraftOutput, generateSuggestedActionPlan } from "../src/action-plan-ai.js";
+import { generateDraftOutput, generateSuggestedActionPlan, generateTaskNodeSplit } from "../src/action-plan-ai.js";
 import {
   createAiResultSignature,
   createAiContextDigest,
@@ -11,11 +11,13 @@ import {
   hasSuggestedActionPlanContent,
   readAiResult,
   writeAiResult,
+  writeAiResultDocument,
 } from "../src/ai-result-store.js";
 import { buildActiveQueue, buildAiContextForNode, getRecordsForNode, resolvePreparedArtifact } from "../src/app-logic.js";
 import { resolveDataRoot } from "../src/config.js";
 import { createRepository } from "../src/data/repository.js";
 import { publishAiResultToFeishu } from "../src/feishu-ai-result.js";
+import { CREATED_FROM, TASK_STATES, createNode } from "../src/task-nodes.js";
 
 const root = resolve(import.meta.dirname, "..");
 const preferredPort = 4173;
@@ -129,6 +131,49 @@ async function handleApiRequest(request, response) {
     if (request.method === "PUT" && url.pathname === "/api/task-nodes") {
       const body = await readJsonBody(request);
       sendJson(response, 200, { nodes: repository.saveTaskNodes(body.nodes) });
+      return true;
+    }
+
+    const splitChildrenMatch = url.pathname.match(/^\/api\/task-nodes\/([^/]+)\/split-children$/);
+    if (request.method === "POST" && splitChildrenMatch) {
+      const nodeId = decodeURIComponent(splitChildrenMatch[1]);
+      const nodes = repository.listTaskNodes();
+      const node = nodes.find((candidate) => candidate.id === nodeId);
+      if (!node) {
+        sendJson(response, 404, { error: `Task node not found: ${nodeId}` });
+        return true;
+      }
+
+      const existingChildren = nodes.filter((candidate) => candidate.parentId === nodeId);
+      if (existingChildren.length > 0) {
+        sendJson(response, 200, {
+          nodes,
+          children: existingChildren,
+          status: "skipped",
+          reason: "节点已经有子节点，跳过预拆分。",
+        });
+        return true;
+      }
+
+      const library = repository.getLibrary();
+      const aiContext = buildAiContextForNode({ nodes, library, nodeId, reason: "新建节点预拆分" });
+      const split = await generateTaskNodeSplit({
+        node,
+        relatedRecords: getRecordsForNode(library, nodeId),
+        aiContext,
+        serviceRoot: root,
+        dataRoot,
+      });
+      const splitNodes = split.nodes.length > 0 ? split.nodes : createFallbackTaskNodeSplit(node).nodes;
+      const children = createSplitChildren({ parent: node, splitNodes, existingNodes: nodes });
+      const savedNodes = repository.saveTaskNodes([...nodes, ...children]);
+
+      sendJson(response, 200, {
+        nodes: savedNodes,
+        children,
+        split,
+        status: split.nodes.length > 0 ? "ready" : "fallback",
+      });
       return true;
     }
 
@@ -254,7 +299,7 @@ async function handleApiRequest(request, response) {
       const actionPlanDigest = createAiContextDigest(suggested.plan);
       const signature = createAiResultSignature({ node, artifact, contextDigest, actionPlanDigest });
       const saved = readAiResult({ dataRoot, kind: "ai-result", nodeId, signature });
-      if (saved?.result?.docType === "飞书 Doc" && saved.result.url) {
+      if (saved?.result?.url) {
         sendJson(response, 200, {
           result: saved.result,
           persistedAt: saved.updatedAt,
@@ -279,12 +324,12 @@ async function handleApiRequest(request, response) {
         return true;
       }
 
-      const result = await publishAiResultToFeishu({
-        dataRoot,
+      const result = await publishAiResult({
         node,
         output: draft.output,
         artifact,
         actionPlan: suggested.plan,
+        signature,
       });
       const persisted = writeAiResult({
         dataRoot,
@@ -355,6 +400,94 @@ async function readOrCreateSuggestedActionPlan({ nodeId, node, library, reason, 
     plan: persisted.plan,
     persistedAt: persisted.updatedAt,
   };
+}
+
+function createFallbackTaskNodeSplit(node) {
+  return {
+    summary: "本地 AI 不可用，使用最小任务预拆分。",
+    nodes: [
+      {
+        title: "明确输入和边界",
+        description: `确认「${node.title}」需要依赖的输入、约束和完成边界。`,
+        tag: "思考",
+        aiActions: ["列出输入", "标记约束", "写完成标准"],
+      },
+      {
+        title: "执行最小动作",
+        description: `围绕「${node.title}」完成一个可检查的最小行动。`,
+        tag: "执行",
+        aiActions: ["选择最小路径", "完成核心动作", "记录过程"],
+      },
+      {
+        title: "验证结果可用性",
+        description: `检查「${node.title}」的结果是否能支撑下一步推进。`,
+        tag: "验证",
+        aiActions: ["检查结果", "发现缺口", "给出下一步"],
+      },
+    ],
+  };
+}
+
+function createSplitChildren({ parent, splitNodes, existingNodes }) {
+  const existingIds = new Set(existingNodes.map((node) => node.id));
+  return splitNodes.map((splitNode, index) => {
+    const titleSlug = safeNodeId(splitNode.title);
+    const id = createUniqueNodeId(`${parent.id}-child-${index + 1}${titleSlug ? `-${titleSlug}` : ""}`, existingIds);
+    existingIds.add(id);
+    return createNode({
+      id,
+      parentId: parent.id,
+      title: splitNode.title,
+      tag: splitNode.tag,
+      description: splitNode.description,
+      aiActions: splitNode.aiActions,
+      dependencies: [],
+      state: TASK_STATES.TODO,
+      createdFrom: CREATED_FROM.AI_SPLIT,
+    });
+  });
+}
+
+function createUniqueNodeId(baseId, existingIds) {
+  const safeBase = safeNodeId(baseId) || "node";
+  let candidate = safeBase;
+  let index = 2;
+  while (existingIds.has(candidate)) {
+    candidate = `${safeBase}-${index}`;
+    index += 1;
+  }
+  return candidate;
+}
+
+function safeNodeId(value) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+async function publishAiResult({ node, output, artifact, actionPlan, signature }) {
+  try {
+    return await publishAiResultToFeishu({
+      dataRoot,
+      node,
+      output,
+      artifact,
+      actionPlan,
+    });
+  } catch (error) {
+    console.warn(`Feishu AI result publish failed, falling back to local HTML: ${error.message}`);
+    return writeAiResultDocument({
+      dataRoot,
+      node,
+      signature,
+      output,
+      artifact,
+      actionPlan,
+    });
+  }
 }
 
 async function readOrCreateDraftOutput({

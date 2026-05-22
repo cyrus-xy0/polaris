@@ -103,27 +103,20 @@
                 <textarea id="node-editor-description" name="description"></textarea>
               </label>
 
-              <div class="node-editor-grid">
-                <label class="node-editor-field">
-                  <span>标签</span>
-                  <select id="node-editor-tag" name="tag"></select>
-                </label>
+              <label class="node-editor-field">
+                <span>标签</span>
+                <select id="node-editor-tag" name="tag"></select>
+              </label>
 
-                <label class="node-editor-field">
-                  <span>状态</span>
-                  <select id="node-editor-state" name="state"></select>
-                </label>
+              <div class="node-editor-field node-dependency-field">
+                <span id="node-editor-dependencies-label">依赖节点</span>
+                <div
+                  class="node-dependency-list"
+                  id="node-editor-dependencies"
+                  role="group"
+                  aria-labelledby="node-editor-dependencies-label"
+                ></div>
               </div>
-
-              <label class="node-editor-field">
-                <span>行动列表</span>
-                <textarea id="node-editor-actions" name="aiActions"></textarea>
-              </label>
-
-              <label class="node-editor-field">
-                <span>依赖节点</span>
-                <select id="node-editor-dependencies" name="dependencies" multiple></select>
-              </label>
 
               <div class="node-editor-actions">
                 <button class="soft-action" id="node-editor-reset" type="button">重置</button>
