@@ -224,6 +224,58 @@ describe("action plan AI", () => {
     assert.match(plan.error, /Crestodian 状态信息/);
   });
 
+  it("does not render OpenClaw completion status as AI content", async () => {
+    const serviceRoot = mkdtempSync(join(tmpdir(), "polaris-openclaw-completed-"));
+    const commandPath = join(serviceRoot, "openclaw");
+    writeFileSync(
+      commandPath,
+      [
+        "#!/usr/bin/env node",
+        "console.log(JSON.stringify({ status: 'completed', output: 'completed' }));",
+      ].join("\n"),
+    );
+    chmodSync(commandPath, 0o755);
+
+    const plan = await generateSuggestedActionPlan({
+      node: createTestNode(),
+      serviceRoot,
+      dataRoot: serviceRoot,
+      includePath: false,
+    });
+
+    assert.equal(plan.provider, "openclaw");
+    assert.deepEqual(plan.steps, []);
+    assert.match(plan.error, /只返回了 completed 状态/);
+  });
+
+  it("extracts real OpenClaw content instead of terminal status text", async () => {
+    const serviceRoot = mkdtempSync(join(tmpdir(), "polaris-openclaw-content-"));
+    const commandPath = join(serviceRoot, "openclaw");
+    writeFileSync(
+      commandPath,
+      [
+        "#!/usr/bin/env node",
+        "console.log(JSON.stringify({",
+        "  status: 'completed',",
+        "  output: 'completed',",
+        "  result: { content: [{ type: 'text', text: JSON.stringify({ summary: '真实内容已返回', steps: ['读取上下文', '生成计划', '写入结果'] }) }] }",
+        "}));",
+      ].join("\n"),
+    );
+    chmodSync(commandPath, 0o755);
+
+    const plan = await generateSuggestedActionPlan({
+      node: createTestNode(),
+      serviceRoot,
+      dataRoot: serviceRoot,
+      includePath: false,
+    });
+
+    assert.equal(plan.provider, "openclaw");
+    assert.equal(plan.summary, "真实内容已返回");
+    assert.deepEqual(plan.steps, ["读取上下文", "生成计划", "写入结果"]);
+  });
+
   it("can target a configured OpenClaw agent from the environment", async () => {
     const serviceRoot = mkdtempSync(join(tmpdir(), "polaris-openclaw-agent-env-"));
     const commandPath = join(serviceRoot, "openclaw");
@@ -291,6 +343,12 @@ describe("action plan AI", () => {
 
     assert.equal(plan.summary, "");
     assert.deepEqual(plan.steps, ["收集输入", "生成建议", "回写结果"]);
+  });
+
+  it("treats terminal status text as empty generator output", () => {
+    assert.deepEqual(parseActionPlanOutput("completed"), { summary: "", steps: [], provider: null });
+    assert.deepEqual(parseDraftOutput("completed"), { title: "", summary: "", brief: "", points: [], provider: null });
+    assert.deepEqual(parseTaskNodeSplitOutput("completed"), { summary: "", nodes: [], provider: null });
   });
 
   it("parses plain text draft output as points", () => {

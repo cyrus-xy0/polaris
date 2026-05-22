@@ -221,6 +221,7 @@ export function buildTaskNodeSplitPrompt({ node, relatedRecords = [], aiContext 
 export function parseActionPlanOutput(output) {
   const text = typeof output === "string" ? output.trim() : "";
   if (!text) return createBlankActionPlan();
+  if (isNonContentStatusText(text)) return createBlankActionPlan();
 
   const jsonPayload = parseJsonPayload(text);
   if (jsonPayload) return normalizeActionPlan(jsonPayload);
@@ -234,6 +235,7 @@ export function parseActionPlanOutput(output) {
 export function parseDraftOutput(output) {
   const text = typeof output === "string" ? output.trim() : "";
   if (!text) return createBlankDraftOutput();
+  if (isNonContentStatusText(text)) return createBlankDraftOutput();
 
   const jsonPayload = parseJsonPayload(text);
   if (jsonPayload) return normalizeDraftOutput(jsonPayload);
@@ -249,6 +251,7 @@ export function parseDraftOutput(output) {
 export function parseTaskNodeSplitOutput(output) {
   const text = typeof output === "string" ? output.trim() : "";
   if (!text) return createBlankTaskNodeSplit();
+  if (isNonContentStatusText(text)) return createBlankTaskNodeSplit();
 
   const jsonPayload = parseJsonPayload(text);
   if (jsonPayload) return normalizeTaskNodeSplit(jsonPayload);
@@ -360,12 +363,16 @@ function extractGeneratorText(generator, output) {
   if (!payload) return text;
   if (hasNativePolarisPayload(payload)) return JSON.stringify(payload);
 
-  const responseText = findFirstStringByKeys(payload, ["response", "reply", "message", "content", "text", "output"]);
+  const responseText = findBestGeneratorText(payload);
   if (responseText) {
     if (isOpenClawDiagnosticOutput(responseText)) {
       throw new Error("OpenClaw 返回了诊断信息，而不是 AI 生成内容。请检查 Agent 和模型配置。");
     }
     return responseText.trim();
+  }
+
+  if (hasCompletionStatusOnly(payload)) {
+    throw new Error("OpenClaw 只返回了 completed 状态，没有返回可用的 AI 内容。请检查 Agent 输出或模型配置。");
   }
 
   return text;
@@ -382,26 +389,63 @@ function hasNativePolarisPayload(payload) {
   );
 }
 
-function findFirstStringByKeys(value, keys) {
-  if (!value || typeof value !== "object") return "";
-  for (const key of keys) {
-    const candidate = value[key];
-    if (typeof candidate === "string" && candidate.trim()) return candidate;
+function findBestGeneratorText(value) {
+  const candidates = [];
+  collectGeneratorTextCandidates(value, candidates);
+  candidates.sort((left, right) => right.score - left.score);
+  return candidates[0]?.text ?? "";
+}
+
+function collectGeneratorTextCandidates(value, candidates, key = "") {
+  if (typeof value === "string") {
+    const text = value.trim();
+    if (isLikelyContentKey(key) && text && !isNonContentStatusText(text)) {
+      candidates.push({ text, score: scoreGeneratorText(text, key) });
+    }
+    return;
   }
-  for (const key of keys) {
-    const candidate = value[key];
-    const nested = Array.isArray(candidate)
-      ? candidate.map((item) => findFirstStringByKeys(item, keys)).find(Boolean)
-      : findFirstStringByKeys(candidate, keys);
-    if (nested) return nested;
+  if (!value || typeof value !== "object") return;
+
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectGeneratorTextCandidates(item, candidates, key));
+    return;
   }
-  return "";
+
+  for (const [childKey, childValue] of Object.entries(value)) {
+    collectGeneratorTextCandidates(childValue, candidates, childKey);
+  }
+}
+
+function isLikelyContentKey(key) {
+  return /^(response|reply|message|content|text|output|value|result|answer|final|summary)$/i.test(key);
+}
+
+function scoreGeneratorText(text, key) {
+  let score = 0;
+  if (/^(response|reply|answer|final)$/i.test(key)) score += 40;
+  if (/^(content|text|output|value|result)$/i.test(key)) score += 25;
+  if (/^\s*[{[]/.test(text)) score += 60;
+  if (/"(summary|steps|title|brief|nodes)"\s*:/.test(text)) score += 80;
+  if (/[\u4e00-\u9fff]/.test(text)) score += 10;
+  if (text.length > 30) score += Math.min(30, Math.floor(text.length / 40));
+  return score;
+}
+
+function hasCompletionStatusOnly(payload) {
+  if (!payload || typeof payload !== "object") return false;
+  const status = typeof payload.status === "string" ? payload.status : "";
+  if (!isNonContentStatusText(status)) return false;
+  return !findBestGeneratorText(payload);
 }
 
 function isOpenClawDiagnosticOutput(text) {
   return /Crestodian online|Crestodian needs an interactive TTY|Default agent:|Gateway: reachable|Next: run "talk to agent"/i.test(
     text,
   );
+}
+
+function isNonContentStatusText(text) {
+  return /^(completed|complete|succeeded|success|done|finished|ok)$/i.test(String(text ?? "").trim());
 }
 
 function getEnvString(env, key) {

@@ -34,6 +34,10 @@ const suggestedActionPlanCache = new Map();
 const draftOutputCache = new Map();
 const aiResultCache = new Map();
 const pendingSplitNodeIds = new Set();
+let nodeEditorDependencyNodeId = null;
+let nodeEditorDependencyIds = new Set();
+let nodeEditorDependencyQuery = "";
+let nodeEditorBackdropPointerStarted = false;
 const aiAnalyzingText = "AI 正在分析";
 const newNodeTitle = "新的行动节点";
 const newNodeDescription = "写清楚这个节点要推进什么。";
@@ -66,8 +70,9 @@ const elements = {
   nodeEditorTitle: document.querySelector("#node-editor-title"),
   nodeEditorDescription: document.querySelector("#node-editor-description"),
   nodeEditorTag: document.querySelector("#node-editor-tag"),
+  nodeEditorDependencySearch: document.querySelector("#node-editor-dependency-search"),
+  nodeEditorDependencySelected: document.querySelector("#node-editor-dependency-selected"),
   nodeEditorDependencies: document.querySelector("#node-editor-dependencies"),
-  nodeEditorReset: document.querySelector("#node-editor-reset"),
   nodeEditorStatus: document.querySelector("#node-editor-status"),
   nodeEditorClose: document.querySelector("#node-editor-close"),
   knowledgeGrid: document.querySelector("#knowledge-grid"),
@@ -106,11 +111,19 @@ async function saveNodes() {
       method: "PUT",
       body: JSON.stringify({ nodes }),
     });
-    return true;
+    return { ok: true };
   } catch (error) {
     console.error("Failed to persist task nodes", error);
-    return false;
+    return { ok: false, error };
   }
+}
+
+function formatSaveError(error) {
+  if (!error) return "保存失败，请查看终端日志";
+  if (error.name === "TypeError" && /fetch|load|network/i.test(error.message)) {
+    return "保存失败：本地服务已断开，请刷新或打开最新端口";
+  }
+  return `保存失败：${error.message}`;
 }
 
 async function requestJson(url, options = {}) {
@@ -124,11 +137,34 @@ async function requestJson(url, options = {}) {
     headers,
   });
   const text = await response.text();
-  const payload = text ? JSON.parse(text) : null;
+  const payload = parseJsonResponse(text, { url, status: response.status });
   if (!response.ok) {
     throw new Error(payload?.error ?? `Request failed: ${response.status}`);
   }
   return payload;
+}
+
+function parseJsonResponse(text, { url, status }) {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(formatNonJsonResponseError(text, { url, status }));
+  }
+}
+
+function formatNonJsonResponseError(text, { url, status }) {
+  const trimmed = String(text ?? "").trim();
+  const plainText = trimmed
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (/^<(!doctype|html|head|body)\b/i.test(trimmed)) {
+    return `服务返回了 HTML 页面，请检查部署代理是否把 /api 转发到 Polaris 服务。路径：${url}，状态码：${status}`;
+  }
+  return `服务返回了非 JSON 响应：${plainText.slice(0, 120) || "空内容"}`;
 }
 
 async function init() {
@@ -753,7 +789,7 @@ function renderNodeEditor(focus) {
     elements.nodeEditorTitle,
     elements.nodeEditorDescription,
     elements.nodeEditorTag,
-    elements.nodeEditorReset,
+    elements.nodeEditorDependencySearch,
   ];
 
   if (!isNodeEditorOpen || !selected) {
@@ -797,50 +833,120 @@ function renderSelectOptions(select, values, selectedValue) {
 
 function renderDependencyOptions(selected) {
   if (!selected) {
+    nodeEditorDependencyNodeId = null;
+    nodeEditorDependencyIds = new Set();
+    nodeEditorDependencyQuery = "";
+    elements.nodeEditorDependencySearch.value = "";
+    elements.nodeEditorDependencySearch.disabled = true;
+    elements.nodeEditorDependencySelected.replaceChildren();
     elements.nodeEditorDependencies.replaceChildren();
     elements.nodeEditorDependencies.ariaDisabled = "true";
     return;
   }
 
+  ensureDependencyDraft(selected);
+  elements.nodeEditorDependencySearch.disabled = false;
+  elements.nodeEditorDependencySearch.value = nodeEditorDependencyQuery;
   elements.nodeEditorDependencies.ariaDisabled = "false";
   const blockedIds = new Set([
     selected.id,
     ...getAncestorIds(nodes, selected.id),
     ...getNodeAndDescendantIds(nodes, selected.id),
   ]);
-  const selectedDependencies = new Set(selected.dependencies);
-  const options = nodes
-    .filter((node) => !blockedIds.has(node.id))
-    .map((node) => {
-      const item = document.createElement("label");
-      item.className = "node-dependency-item";
+  const candidateNodes = nodes.filter((node) => !blockedIds.has(node.id));
+  const selectedNodes = [...nodeEditorDependencyIds]
+    .map((nodeId) => nodes.find((node) => node.id === nodeId))
+    .filter(Boolean);
+  const query = nodeEditorDependencyQuery.trim().toLowerCase();
+  const resultNodes = query
+    ? candidateNodes
+        .filter((node) => dependencySearchText(node).includes(query))
+        .slice(0, 8)
+    : [];
 
-      const checkbox = document.createElement("input");
-      checkbox.type = "checkbox";
-      checkbox.name = "dependencies";
-      checkbox.value = node.id;
-      checkbox.checked = selectedDependencies.has(node.id);
+  elements.nodeEditorDependencySelected.replaceChildren(
+    ...(selectedNodes.length > 0
+      ? selectedNodes.map((node) => createSelectedDependencyItem(node))
+      : [createDependencyEmptyState("暂无依赖")]),
+  );
+  elements.nodeEditorDependencies.replaceChildren(
+    ...(resultNodes.length > 0
+      ? resultNodes.map((node) => createDependencyResultItem(node))
+      : [createDependencyEmptyState(query ? "没有匹配节点" : "输入关键词搜索节点")]),
+  );
+}
 
-      const text = document.createElement("span");
-      text.textContent = node.title;
+function ensureDependencyDraft(selected) {
+  if (nodeEditorDependencyNodeId === selected.id) return;
+  nodeEditorDependencyNodeId = selected.id;
+  nodeEditorDependencyIds = new Set(selected.dependencies);
+  nodeEditorDependencyQuery = "";
+}
 
-      item.append(checkbox, text);
-      return item;
-    });
+function dependencySearchText(node) {
+  return [node.title, node.id, node.description].join(" ").toLowerCase();
+}
 
-  elements.nodeEditorDependencies.replaceChildren(...options);
+function createSelectedDependencyItem(node) {
+  const item = document.createElement("div");
+  item.className = "node-dependency-item is-selected";
+  item.append(createDependencyTitle(node), createDependencyToggleButton(node, false));
+  return item;
+}
+
+function createDependencyResultItem(node) {
+  const isSelected = nodeEditorDependencyIds.has(node.id);
+  const item = document.createElement("div");
+  item.className = `node-dependency-item ${isSelected ? "is-selected" : ""}`;
+  item.role = "listitem";
+  item.append(createDependencyTitle(node), createDependencyToggleButton(node, !isSelected));
+  return item;
+}
+
+function createDependencyTitle(node) {
+  const title = document.createElement("span");
+  title.className = "node-dependency-title";
+  title.textContent = node.title;
+  return title;
+}
+
+function createDependencyToggleButton(node, shouldAdd) {
+  const button = document.createElement("button");
+  button.className = `node-dependency-toggle ${shouldAdd ? "is-add" : "is-remove"}`;
+  button.type = "button";
+  button.textContent = shouldAdd ? "+" : "−";
+  button.ariaLabel = `${shouldAdd ? "添加" : "移除"}依赖：${node.title}`;
+  button.addEventListener("click", () => {
+    if (shouldAdd) {
+      nodeEditorDependencyIds.add(node.id);
+    } else {
+      nodeEditorDependencyIds.delete(node.id);
+    }
+    const selectedNode = selectedTreeNodeId ? indexNodes(nodes).byId.get(selectedTreeNodeId) : null;
+    renderDependencyOptions(selectedNode);
+  });
+  return button;
+}
+
+function createDependencyEmptyState(text) {
+  const empty = document.createElement("div");
+  empty.className = "node-dependency-empty";
+  empty.textContent = text;
+  return empty;
 }
 
 function openNodeEditor(nodeId) {
   selectedTreeNodeId = nodeId;
   isNodeEditorOpen = true;
   nodeEditorFeedback = null;
+  nodeEditorDependencyNodeId = null;
   render();
 }
 
 function closeNodeEditor() {
   isNodeEditorOpen = false;
   nodeEditorFeedback = null;
+  nodeEditorDependencyNodeId = null;
   render();
 }
 
@@ -1202,9 +1308,7 @@ async function saveNodeEditor(event) {
 
   const title = elements.nodeEditorTitle.value.trim();
   const description = elements.nodeEditorDescription.value.trim();
-  const dependencies = [...elements.nodeEditorDependencies.querySelectorAll('input[name="dependencies"]:checked')].map(
-    (option) => option.value,
-  );
+  const dependencies = [...nodeEditorDependencyIds];
   const shouldAutoSplit = shouldAutoSplitNodeAfterSave(selected, { title, description });
 
   if (!title) {
@@ -1226,15 +1330,15 @@ async function saveNodeEditor(event) {
     aiResultCache.delete(selected.id);
     nodeEditorFeedback = { nodeId: selected.id, tone: "success", message: "正在保存..." };
     render();
-    const saved = await saveNodes();
+    const saveResult = await saveNodes();
     nodeEditorFeedback = {
       nodeId: selected.id,
-      tone: saved ? "success" : "error",
-      message: saved ? "已保存到本地数据层" : "保存失败，请查看终端日志",
+      tone: saveResult.ok ? "success" : "error",
+      message: saveResult.ok ? "已保存到本地数据层" : formatSaveError(saveResult.error),
     };
     render();
 
-    if (saved && shouldAutoSplit) {
+    if (saveResult.ok && shouldAutoSplit) {
       nodeEditorFeedback = {
         nodeId: selected.id,
         tone: "success",
@@ -1288,21 +1392,25 @@ async function requestTaskNodeSplit(nodeId) {
   }
 }
 
-function resetNodeEditor() {
-  nodeEditorFeedback = selectedTreeNodeId
-    ? { nodeId: selectedTreeNodeId, tone: "success", message: "已重置表单" }
-    : null;
-  renderTree();
-}
-
 function showNodeEditorStatus(nodeId, message, tone = "success") {
   nodeEditorFeedback = { nodeId, message, tone };
   elements.nodeEditorStatus.textContent = message;
   elements.nodeEditorStatus.className = `node-editor-status ${tone === "error" ? "is-error" : ""}`;
 }
 
+function isNodeEditorBackdropEvent(event) {
+  if (event.currentTarget !== elements.nodeEditorDrawer) return false;
+  const target = event.target instanceof Element ? event.target : null;
+  return !target?.closest(".tree-editor");
+}
+
+function rememberNodeEditorBackdropPointer(event) {
+  nodeEditorBackdropPointerStarted = isNodeEditorBackdropEvent(event);
+}
+
 function closeNodeEditorFromBackdrop(event) {
-  if (event.target === elements.nodeEditorDrawer) closeNodeEditor();
+  if (nodeEditorBackdropPointerStarted && isNodeEditorBackdropEvent(event)) closeNodeEditor();
+  nodeEditorBackdropPointerStarted = false;
 }
 
 function renderMethods() {
@@ -1574,8 +1682,13 @@ elements.viewButtons.forEach((button) => {
 });
 elements.completeButton.addEventListener("click", completeSelectedTask);
 elements.nodeEditorForm.addEventListener("submit", saveNodeEditor);
-elements.nodeEditorReset.addEventListener("click", resetNodeEditor);
+elements.nodeEditorDependencySearch.addEventListener("input", () => {
+  nodeEditorDependencyQuery = elements.nodeEditorDependencySearch.value;
+  const selected = selectedTreeNodeId ? indexNodes(nodes).byId.get(selectedTreeNodeId) : null;
+  renderDependencyOptions(selected);
+});
 elements.nodeEditorClose.addEventListener("click", closeNodeEditor);
+elements.nodeEditorDrawer.addEventListener("pointerdown", rememberNodeEditorBackdropPointer);
 elements.nodeEditorDrawer.addEventListener("click", closeNodeEditorFromBackdrop);
 elements.manualResultUrl.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {

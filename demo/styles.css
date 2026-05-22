@@ -1110,51 +1110,82 @@ button {
 #node-editor-dependencies {
   display: grid;
   gap: 8px;
-  max-height: 190px;
+  max-height: 156px;
   overflow: auto;
   padding: 4px 2px 4px 0;
 }
 
+.node-dependency-selected {
+  display: grid;
+  gap: 8px;
+}
+
 .node-dependency-item {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  gap: 10px;
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 12px;
+  align-items: center;
   min-height: 42px;
-  padding: 11px 12px;
+  padding: 8px 8px 8px 12px;
   border: 1px solid rgba(21, 25, 29, 0.085);
   border-radius: 14px;
   color: rgba(17, 24, 32, 0.82);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 253, 247, 0.56));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86);
-  cursor: pointer;
 }
 
-.node-dependency-item input {
-  width: 16px;
-  height: 16px;
-  margin: 2px 0 0;
-  accent-color: var(--teal);
-}
-
-.node-dependency-item span {
+.node-dependency-title {
   min-width: 0;
   overflow-wrap: anywhere;
   font-size: 14px;
   line-height: 1.35;
 }
 
-.node-dependency-item:has(input:checked) {
+.node-dependency-item.is-selected {
   border-color: rgba(47, 128, 117, 0.34);
   background:
     linear-gradient(180deg, rgba(239, 249, 247, 0.92), rgba(255, 253, 247, 0.66));
 }
 
+.node-dependency-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(21, 25, 29, 0.1);
+  border-radius: 50%;
+  color: rgba(17, 24, 32, 0.78);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  font-size: 20px;
+  font-weight: 680;
+  line-height: 1;
+}
+
+.node-dependency-toggle.is-add {
+  color: #2f8075;
+}
+
+.node-dependency-toggle.is-remove {
+  color: #9a5a2b;
+}
+
+.node-dependency-empty {
+  min-height: 40px;
+  padding: 10px 12px;
+  border: 1px dashed rgba(21, 25, 29, 0.12);
+  border-radius: 14px;
+  color: rgba(21, 25, 29, 0.46);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .node-editor-field > input:focus,
 .node-editor-field > select:focus,
 .node-editor-field > textarea:focus,
-.node-dependency-item:focus-within {
+.node-dependency-toggle:focus-visible {
   border-color: rgba(47, 128, 117, 0.34);
   box-shadow:
     0 0 0 4px rgba(47, 128, 117, 0.08),
@@ -1163,7 +1194,7 @@ button {
 
 .node-editor-actions {
   display: grid;
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr);
+  grid-template-columns: 1fr;
   gap: 10px;
   margin-top: 2px;
 }
@@ -2832,10 +2863,6 @@ a.tree-record-chip:focus-visible {
 
   .tree-editor {
     width: 100%;
-  }
-
-  .node-editor-actions {
-    grid-template-columns: 1fr;
   }
 
   .knowledge-layout {

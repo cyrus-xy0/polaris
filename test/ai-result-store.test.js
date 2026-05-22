@@ -7,6 +7,8 @@ import {
   createDraftOutputSignature,
   createAiResultSignature,
   createSuggestedActionPlanSignature,
+  hasDraftOutputContent,
+  hasSuggestedActionPlanContent,
   readAiResult,
   writeAiResult,
   writeAiResultDocument,
@@ -109,6 +111,13 @@ describe("AI result store", () => {
     const html = readFileSync(result.path, "utf8");
     assert.match(html, /差异点定义草稿/);
     assert.match(html, /实施依据/);
+  });
+
+  it("does not treat terminal status or HTML as usable AI content", () => {
+    assert.equal(hasSuggestedActionPlanContent({ summary: "completed", steps: [] }), false);
+    assert.equal(hasSuggestedActionPlanContent({ summary: "", steps: ["completed"] }), false);
+    assert.equal(hasDraftOutputContent({ title: "completed", summary: "", brief: "", points: [] }), false);
+    assert.equal(hasDraftOutputContent({ title: "", summary: "<html><h1>Bad Gateway</h1></html>", brief: "" }), false);
   });
 });
 

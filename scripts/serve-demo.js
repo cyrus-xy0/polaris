@@ -234,7 +234,7 @@ async function handleApiRequest(request, response) {
       const actionPlanDigest = createAiContextDigest(suggested.plan);
       const signature = createDraftOutputSignature({ node, artifact, contextDigest, actionPlanDigest });
       const saved = readAiResult({ dataRoot, kind: "draft-output", nodeId, signature });
-      if (saved?.output) {
+      if (saved?.output && hasDraftOutputContent(saved.output)) {
         sendJson(response, 200, {
           output: saved.output,
           persistedAt: saved.updatedAt,
@@ -370,7 +370,7 @@ async function handleApiRequest(request, response) {
 async function readOrCreateSuggestedActionPlan({ nodeId, node, library, reason, aiContext, contextDigest }) {
   const signature = createSuggestedActionPlanSignature({ node, reason, contextDigest });
   const saved = readAiResult({ dataRoot, kind: "suggested-action-plan", nodeId, signature });
-  if (saved?.plan) {
+  if (saved?.plan && hasSuggestedActionPlanContent(saved.plan)) {
     return {
       plan: saved.plan,
       persistedAt: saved.updatedAt,
@@ -502,7 +502,7 @@ async function readOrCreateDraftOutput({
 }) {
   const signature = createDraftOutputSignature({ node, artifact, contextDigest, actionPlanDigest });
   const saved = readAiResult({ dataRoot, kind: "draft-output", nodeId, signature });
-  if (saved?.output) return { output: saved.output };
+  if (saved?.output && hasDraftOutputContent(saved.output)) return { output: saved.output };
 
   const output = await generateDraftOutput({
     node,

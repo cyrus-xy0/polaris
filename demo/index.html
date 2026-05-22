@@ -110,16 +110,23 @@
 
               <div class="node-editor-field node-dependency-field">
                 <span id="node-editor-dependencies-label">依赖节点</span>
+                <input
+                  id="node-editor-dependency-search"
+                  type="search"
+                  placeholder="搜索节点"
+                  autocomplete="off"
+                  aria-labelledby="node-editor-dependencies-label"
+                />
+                <div class="node-dependency-selected" id="node-editor-dependency-selected" aria-live="polite"></div>
                 <div
-                  class="node-dependency-list"
+                  class="node-dependency-results"
                   id="node-editor-dependencies"
-                  role="group"
+                  role="list"
                   aria-labelledby="node-editor-dependencies-label"
                 ></div>
               </div>
 
               <div class="node-editor-actions">
-                <button class="soft-action" id="node-editor-reset" type="button">重置</button>
                 <button class="primary-action" type="submit">保存节点</button>
               </div>
               <p class="node-editor-status" id="node-editor-status" role="status"></p>

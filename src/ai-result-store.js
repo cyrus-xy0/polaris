@@ -4,7 +4,7 @@ import { dirname, join, relative, resolve } from "node:path";
 
 const aiResultDirName = "ai-results";
 
-const aiContextVersion = "rich-context-v2-openclaw-agent";
+const aiContextVersion = "rich-context-v3-openclaw-content";
 
 export function createAiContextDigest(aiContext = null) {
   return createHash("sha256").update(JSON.stringify(aiContext ?? null)).digest("hex").slice(0, 16);
@@ -90,16 +90,26 @@ export function writeAiResultDocument({ dataRoot, node, signature, output, artif
 }
 
 export function hasSuggestedActionPlanContent(plan = {}) {
-  return Boolean(plan.summary?.trim()) || (Array.isArray(plan.steps) && plan.steps.length > 0);
+  const summary = typeof plan.summary === "string" ? plan.summary.trim() : "";
+  const steps = Array.isArray(plan.steps) ? plan.steps.filter(hasMeaningfulAiText) : [];
+  return hasMeaningfulAiText(summary) || steps.length > 0;
 }
 
 export function hasDraftOutputContent(output = {}) {
   return (
-    Boolean(output.title?.trim()) ||
-    Boolean(output.summary?.trim()) ||
-    Boolean(output.brief?.trim()) ||
-    (Array.isArray(output.points) && output.points.length > 0)
+    hasMeaningfulAiText(output.title) ||
+    hasMeaningfulAiText(output.summary) ||
+    hasMeaningfulAiText(output.brief) ||
+    (Array.isArray(output.points) && output.points.some(hasMeaningfulAiText))
   );
+}
+
+function hasMeaningfulAiText(value) {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) return false;
+  if (/^(completed|complete|succeeded|success|done|finished|ok)$/i.test(text)) return false;
+  if (/^<(!doctype|html|head|body)\b/i.test(text)) return false;
+  return true;
 }
 
 function resolveAiResultPath({ dataRoot, kind, nodeId }) {
