@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import {
+  buildDraftOutputPrompt,
   findLocalActionPlanGenerator,
   generateDraftOutput,
   generateSuggestedActionPlan,
@@ -36,7 +37,7 @@ describe("action plan AI", () => {
       includePath: false,
     });
 
-    assert.deepEqual(output, { title: "", summary: "", points: [], provider: null });
+    assert.deepEqual(output, { title: "", summary: "", brief: "", points: [], provider: null });
   });
 
   it("uses a service-local openclaw executable before falling back to static steps", async () => {
@@ -122,7 +123,7 @@ describe("action plan AI", () => {
         "#!/usr/bin/env node",
         "if (process.argv[2] !== 'chat') process.exit(3);",
         "if (!process.argv[5].includes('Draft Output')) process.exit(4);",
-        "console.log(JSON.stringify({ title: '差异点定义草稿', summary: '说明草稿要验证的关键差异。', points: ['传统方案对照', 'AI-native 差异', '验收标准'] }));",
+        "console.log(JSON.stringify({ title: '差异点定义草稿', summary: '说明草稿要验证的关键差异。', brief: '围绕传统方案与 AI-native 方案的关键差异，提炼判断标准和反证方法，帮助后续 demo 设计保持代际差异。' }));",
       ].join("\n"),
     );
     chmodSync(commandPath, 0o755);
@@ -137,7 +138,46 @@ describe("action plan AI", () => {
     assert.equal(output.provider, "hermes");
     assert.equal(output.title, "差异点定义草稿");
     assert.equal(output.summary, "说明草稿要验证的关键差异。");
-    assert.deepEqual(output.points, ["传统方案对照", "AI-native 差异", "验收标准"]);
+    assert.equal(
+      output.brief,
+      "围绕传统方案与 AI-native 方案的关键差异，提炼判断标准和反证方法，帮助后续 demo 设计保持代际差异。",
+    );
+    assert.deepEqual(output.points, []);
+  });
+
+  it("generates draft output through openclaw with the action plan on stdin", async () => {
+    const serviceRoot = mkdtempSync(join(tmpdir(), "polaris-draft-openclaw-"));
+    const commandPath = join(serviceRoot, "openclaw");
+    writeFileSync(
+      commandPath,
+      [
+        "#!/usr/bin/env node",
+        "let input = '';",
+        "process.stdin.on('data', (chunk) => { input += chunk; });",
+        "process.stdin.on('end', () => {",
+        "  if (!input.includes('必须遵循的 Suggest Action Plan')) process.exit(4);",
+        "  if (!input.includes('读取上文')) process.exit(5);",
+        "  console.log(JSON.stringify({ title: '按计划产出草稿', summary: '严格依据行动计划生成结果。', brief: '先读取上文，再应用本地 knowhow 和 skill，最后形成可检查的结果 brief，确保 Draft Output 与 Suggest Action Plan 保持一致。' }));",
+        "});",
+      ].join("\n"),
+    );
+    chmodSync(commandPath, 0o755);
+
+    const output = await generateDraftOutput({
+      node: createTestNode(),
+      artifact: { docType: "飞书 Doc", title: "测试草稿" },
+      actionPlan: {
+        summary: "按计划执行。",
+        steps: ["读取上文", "应用 knowhow", "生成结果"],
+      },
+      serviceRoot,
+      dataRoot: serviceRoot,
+      includePath: false,
+    });
+
+    assert.equal(output.provider, "openclaw");
+    assert.equal(output.title, "按计划产出草稿");
+    assert.match(output.brief, /Suggest Action Plan/);
   });
 
   it("parses plain text generator output as ordered action steps", () => {
@@ -151,6 +191,7 @@ describe("action plan AI", () => {
     const output = parseDraftOutput("1. 背景判断\n2. 核心差异\n3. 验收标准");
 
     assert.equal(output.title, "");
+    assert.equal(output.brief, "背景判断；核心差异；验收标准");
     assert.deepEqual(output.points, ["背景判断", "核心差异", "验收标准"]);
   });
 
@@ -164,7 +205,34 @@ describe("action plan AI", () => {
 
     assert.equal(output.title, "差异界定");
     assert.equal(output.summary, "明确关键差异。");
+    assert.equal(output.brief, "逻辑差异；反证标准；验收方法");
     assert.deepEqual(output.points, ["逻辑差异", "反证标准", "验收方法"]);
+  });
+
+  it("includes lineage, knowhow, skills, and accumulated results in draft prompts", () => {
+    const prompt = buildDraftOutputPrompt({
+      node: createTestNode(),
+      actionPlan: {
+        summary: "按计划落地。",
+        steps: ["读取上文", "应用 knowhow", "生成结果"],
+      },
+      aiContext: {
+        taskLineage: [{ title: "北极星目标", tag: "思考", state: "待做", description: "找到 ToB AI 场景。" }],
+        upstreamTasks: [{ title: "前置判断", tag: "验证", state: "完成", description: "已验证。", result: { url: "https://example.feishu.cn/docx/result" } }],
+        knowledge: [{ type: "Knowhow", title: "AI-native 原则", description: "读上下文、执行动作、沉淀结果。", markdown: "不要只把 AI 当输入框。" }],
+        skills: [{ type: "Skill", title: "反证优先", description: "先找失败证据。" }],
+        artifacts: [{ type: "产物", title: "前置结果", description: "已完成材料。", url: "https://example.feishu.cn/docx/result" }],
+        accumulatedResults: [{ title: "已完成任务", tag: "整理", state: "完成", description: "沉淀结论。", conclusion: { shouldContinue: true } }],
+      },
+    });
+
+    assert.match(prompt, /任务上文输入/);
+    assert.match(prompt, /Knowhow \/ 知识库/);
+    assert.match(prompt, /Skill \/ 可复用能力/);
+    assert.match(prompt, /其他任务积累结果/);
+    assert.match(prompt, /不要只把 AI 当输入框/);
+    assert.match(prompt, /必须遵循的 Suggest Action Plan/);
+    assert.match(prompt, /1\. 读取上文/);
   });
 });
 

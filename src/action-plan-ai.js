@@ -10,6 +10,7 @@ export async function generateSuggestedActionPlan({
   node,
   reason = "",
   relatedRecords = [],
+  aiContext = null,
   serviceRoot = process.cwd(),
   dataRoot = null,
   timeoutMs = 120_000,
@@ -20,7 +21,7 @@ export async function generateSuggestedActionPlan({
   if (!generator || !node) return createBlankActionPlan();
 
   try {
-    const prompt = buildSuggestedActionPlanPrompt({ node, reason, relatedRecords });
+    const prompt = buildSuggestedActionPlanPrompt({ node, reason, relatedRecords, aiContext });
     const output = await runGenerator(generator, prompt, { cwd: serviceRoot, timeoutMs, env });
     return {
       ...parseActionPlanOutput(output),
@@ -39,6 +40,8 @@ export async function generateDraftOutput({
   node,
   artifact = null,
   relatedRecords = [],
+  aiContext = null,
+  actionPlan = null,
   serviceRoot = process.cwd(),
   dataRoot = null,
   timeoutMs = 120_000,
@@ -49,7 +52,7 @@ export async function generateDraftOutput({
   if (!generator || !node) return createBlankDraftOutput();
 
   try {
-    const prompt = buildDraftOutputPrompt({ node, artifact, relatedRecords });
+    const prompt = buildDraftOutputPrompt({ node, artifact, relatedRecords, aiContext, actionPlan });
     const output = await runGenerator(generator, prompt, { cwd: serviceRoot, timeoutMs, env });
     return {
       ...parseDraftOutput(output),
@@ -92,17 +95,10 @@ export function findLocalActionPlanGenerator({
   return null;
 }
 
-export function buildSuggestedActionPlanPrompt({ node, reason = "", relatedRecords = [] }) {
-  const context = relatedRecords
-    .map((record) => {
-      const usage = record.usage ? `\n  用法：${record.usage}` : "";
-      return `- ${record.type ?? record.kind ?? "context"}：${record.title}\n  ${record.description ?? ""}${usage}`;
-    })
-    .join("\n");
-
+export function buildSuggestedActionPlanPrompt({ node, reason = "", relatedRecords = [], aiContext = null }) {
   return [
     "你是 Polaris 本地任务节点规划助手。",
-    "请基于任务节点和本地知识，生成 Suggest Action Plan。",
+    "请综合当前任务、上文输入、knowhow、skill 和其他任务积累结果，生成 Suggest Action Plan。",
     "只输出 JSON，不要输出 Markdown 或解释文字。",
     'JSON 格式：{"summary":"一句话说明推荐逻辑","steps":["具体步骤 1","具体步骤 2"]}',
     "要求：",
@@ -117,20 +113,14 @@ export function buildSuggestedActionPlanPrompt({ node, reason = "", relatedRecor
     `- 描述：${node.description}`,
     reason ? `- 推荐原因：${reason}` : null,
     "",
-    "本地上下文：",
-    context || "无",
+    "AI 上下文：",
+    formatAiContext({ aiContext, relatedRecords }),
   ]
     .filter((line) => line !== null)
     .join("\n");
 }
 
-export function buildDraftOutputPrompt({ node, artifact = null, relatedRecords = [] }) {
-  const context = relatedRecords
-    .map((record) => {
-      const usage = record.usage ? `\n  用法：${record.usage}` : "";
-      return `- ${record.type ?? record.kind ?? "context"}：${record.title}\n  ${record.description ?? ""}${usage}`;
-    })
-    .join("\n");
+export function buildDraftOutputPrompt({ node, artifact = null, relatedRecords = [], aiContext = null, actionPlan = null }) {
   const artifactContext = artifact
     ? [
         `- 类型：${artifact.docType ?? "未知"}`,
@@ -143,13 +133,16 @@ export function buildDraftOutputPrompt({ node, artifact = null, relatedRecords =
 
   return [
     "你是 Polaris 本地任务节点输出草稿助手。",
-    "请基于任务节点和本地知识，生成 Draft Output 卡片内容。",
+    "请综合当前任务、上文输入、knowhow、skill 和其他任务积累结果，生成 Draft Output 卡片内容。",
     "只输出 JSON，不要输出 Markdown 或解释文字。",
-    'JSON 格式：{"title":"草稿标题","summary":"一句话说明草稿会解决什么","points":["要点 1","要点 2"]}',
+    'JSON 格式：{"title":"结果标题","summary":"一句话说明 AI 结果解决了什么","brief":"AI 结果 brief"}',
     "要求：",
+    "- 必须严格按照 Suggest Action Plan 的 steps 逐步实施，brief 要体现这些步骤的执行结果。",
+    "- 不要跳过、替换或重新发明行动计划；如果某一步无法实施，要在 brief 里说明阻塞和下一步处理。",
     "- title 用 8 到 18 个中文字符，像真实产物标题，不要写文件类型。",
-    "- summary 说明这份草稿要回答的关键问题和判断价值，不要写“AI 会读取”。",
-    "- points 生成 3 到 5 条，描述草稿应包含的关键内容模块或验收要点。",
+    "- summary 说明这个 AI 结果回答的关键问题和判断价值，不要写“AI 会读取”。",
+    "- brief 用 80 到 140 个中文字符，直接概括 AI 结果的核心结论、建议和可执行价值。",
+    "- brief 不要写成模块清单，不要使用编号，不要复述节点标题。",
     "- 不要复述任务标题，不要使用“产出：”前缀。",
     "",
     "任务节点：",
@@ -161,8 +154,11 @@ export function buildDraftOutputPrompt({ node, artifact = null, relatedRecords =
     "关联产物：",
     artifactContext,
     "",
-    "本地上下文：",
-    context || "无",
+    "必须遵循的 Suggest Action Plan：",
+    formatActionPlan(actionPlan),
+    "",
+    "AI 上下文：",
+    formatAiContext({ aiContext, relatedRecords }),
   ].join("\n");
 }
 
@@ -189,6 +185,7 @@ export function parseDraftOutput(output) {
   return normalizeDraftOutput({
     title: "",
     summary: "",
+    brief: parsePlainTextSteps(text).join("；"),
     points: parsePlainTextSteps(text),
   });
 }
@@ -258,6 +255,84 @@ function buildGeneratorInvocation(generator, prompt) {
   };
 }
 
+function formatAiContext({ aiContext, relatedRecords = [] }) {
+  if (!aiContext) {
+    return formatLegacyRecords(relatedRecords);
+  }
+
+  return [
+    formatTaskSection("任务上文输入", aiContext.taskLineage),
+    formatTaskSection("依赖与上游任务", aiContext.upstreamTasks),
+    formatRecordSection("Knowhow / 知识库", aiContext.knowledge),
+    formatRecordSection("Skill / 可复用能力", aiContext.skills),
+    formatRecordSection("关联产物", aiContext.artifacts),
+    formatTaskSection("其他任务积累结果", aiContext.accumulatedResults),
+  ]
+    .filter(Boolean)
+    .join("\n\n") || "无";
+}
+
+function formatActionPlan(actionPlan) {
+  if (!actionPlan) return "无";
+  const steps = Array.isArray(actionPlan.steps) ? actionPlan.steps.filter(Boolean) : [];
+  return [
+    actionPlan.summary ? `summary：${actionPlan.summary}` : null,
+    steps.length > 0 ? `steps：\n${steps.map((step, index) => `${index + 1}. ${step}`).join("\n")}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n") || "无";
+}
+
+function formatLegacyRecords(records = []) {
+  return (
+    records
+      .map((record) => {
+        const usage = record.usage ? `\n  用法：${record.usage}` : "";
+        return `- ${record.type ?? record.kind ?? "context"}：${record.title}\n  ${record.description ?? ""}${usage}`;
+      })
+      .join("\n") || "无"
+  );
+}
+
+function formatTaskSection(title, tasks = []) {
+  const lines = (tasks ?? []).map((task) => {
+    const result = formatTaskResult(task);
+    const actions = Array.isArray(task.aiActions) && task.aiActions.length > 0 ? `\n  已知动作：${task.aiActions.join(" / ")}` : "";
+    return `- ${task.title}（${task.tag ?? "任务"}，${task.state ?? "未知状态"}）\n  ${task.description ?? ""}${actions}${result}`;
+  });
+  if (lines.length === 0) return "";
+  return `${title}：\n${lines.join("\n")}`;
+}
+
+function formatRecordSection(title, records = []) {
+  const lines = (records ?? []).map((record) => {
+    const usage = record.usage ? `\n  用法：${record.usage}` : "";
+    const url = record.url ? `\n  链接：${record.url}` : "";
+    const markdown = record.markdown ? `\n  内容摘录：${excerpt(record.markdown)}` : "";
+    return `- ${record.type ?? record.kind ?? "context"}：${record.title}\n  ${record.description ?? ""}${usage}${url}${markdown}`;
+  });
+  if (lines.length === 0) return "";
+  return `${title}：\n${lines.join("\n")}`;
+}
+
+function formatTaskResult(task) {
+  const parts = [];
+  if (task.conclusion) parts.push(`结论：${stringifyCompact(task.conclusion)}`);
+  if (task.result) parts.push(`结果：${stringifyCompact(task.result)}`);
+  return parts.length > 0 ? `\n  ${parts.join("\n  ")}` : "";
+}
+
+function stringifyCompact(value) {
+  if (typeof value === "string") return value;
+  return JSON.stringify(value);
+}
+
+function excerpt(value, maxLength = 700) {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength)}...`;
+}
+
 function parseJsonPayload(text) {
   for (const candidate of getJsonCandidates(text)) {
     try {
@@ -310,17 +385,21 @@ function normalizeActionPlan(payload) {
 function normalizeDraftOutput(payload) {
   const draft = payload?.draftOutput ?? payload?.output ?? payload?.draft ?? payload;
   if (Array.isArray(draft)) {
+    const points = normalizeSteps(draft);
     return {
       title: "",
       summary: "",
-      points: normalizeSteps(draft),
+      brief: points.join("；"),
+      points,
     };
   }
 
+  const points = normalizeSteps(draft?.points ?? draft?.sections ?? draft?.items ?? []);
   return {
     title: typeof draft?.title === "string" ? draft.title.trim() : "",
     summary: typeof draft?.summary === "string" ? draft.summary.trim() : "",
-    points: normalizeSteps(draft?.points ?? draft?.sections ?? draft?.items ?? []),
+    brief: typeof draft?.brief === "string" ? draft.brief.trim() : points.join("；"),
+    points,
   };
 }
 
@@ -352,6 +431,7 @@ function createBlankDraftOutput() {
   return {
     title: "",
     summary: "",
+    brief: "",
     points: [],
     provider: null,
   };

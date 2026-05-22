@@ -53,6 +53,50 @@ export function getRecordsForNode(library, nodeId) {
   return getAllRecords(library).filter((item) => item.relatedNodeIds?.includes(nodeId));
 }
 
+export function buildAiContextForNode({ nodes = [], library = {}, nodeId, reason = "" } = {}) {
+  const index = indexNodes(nodes);
+  const node = index.byId.get(nodeId);
+  if (!node) {
+    return {
+      reason,
+      taskLineage: [],
+      upstreamTasks: [],
+      knowledge: [],
+      skills: [],
+      artifacts: [],
+      accumulatedResults: [],
+    };
+  }
+
+  const lineage = getLineage(node, index);
+  const upstreamTaskIds = new Set([
+    ...lineage.map((item) => item.id),
+    ...(node.dependencies ?? []),
+  ]);
+  const upstreamTasks = [...upstreamTaskIds]
+    .map((id) => index.byId.get(id))
+    .filter((item) => item && item.id !== node.id)
+    .map(serializeTaskContext);
+  const relatedNodeIds = new Set([node.id, ...upstreamTaskIds]);
+  const knowledge = selectContextRecords(library.knowledge, relatedNodeIds, { includeGlobal: true });
+  const skills = selectContextRecords(library.skills, relatedNodeIds, { includeGlobal: true });
+  const artifacts = selectContextRecords(library.artifacts, relatedNodeIds);
+  const accumulatedResults = nodes
+    .filter((item) => item.id !== node.id && (item.result || item.conclusion))
+    .map(serializeTaskContext)
+    .slice(0, 16);
+
+  return {
+    reason,
+    taskLineage: lineage.map(serializeTaskContext),
+    upstreamTasks,
+    knowledge,
+    skills,
+    artifacts,
+    accumulatedResults,
+  };
+}
+
 export function resolvePreparedArtifact(node, artifacts = []) {
   const linkedArtifact = artifacts.find((item) => item.relatedNodeIds?.includes(node.id));
   if (linkedArtifact) return linkedArtifact;
@@ -124,6 +168,60 @@ export function getAncestorIds(nodes, nodeId) {
   }
 
   return ids;
+}
+
+function getLineage(node, index) {
+  const lineage = [];
+  let current = node;
+
+  while (current) {
+    lineage.unshift(current);
+    current = current.parentId ? index.byId.get(current.parentId) : null;
+  }
+
+  return lineage;
+}
+
+function selectContextRecords(records = [], relatedNodeIds, { includeGlobal = false } = {}) {
+  const direct = [];
+  const global = [];
+
+  for (const record of records ?? []) {
+    if (record.relatedNodeIds?.some((id) => relatedNodeIds.has(id))) {
+      direct.push(serializeRecordContext(record));
+    } else if (includeGlobal) {
+      global.push(serializeRecordContext(record));
+    }
+  }
+
+  return [...direct, ...global].slice(0, includeGlobal ? 14 : 8);
+}
+
+function serializeTaskContext(node) {
+  return {
+    id: node.id,
+    title: node.title,
+    tag: node.tag,
+    description: node.description,
+    state: node.state,
+    aiActions: node.aiActions,
+    conclusion: node.conclusion,
+    result: node.result,
+  };
+}
+
+function serializeRecordContext(record) {
+  return {
+    id: record.id,
+    kind: record.kind,
+    type: record.type,
+    title: record.title,
+    description: record.description,
+    usage: record.usage,
+    docType: record.docType,
+    url: record.url,
+    markdown: record.markdown,
+  };
 }
 
 export function deleteTaskNode(nodes, nodeId) {

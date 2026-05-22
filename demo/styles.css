@@ -455,6 +455,17 @@ button {
   content: "";
 }
 
+#prepared-result-points.is-brief li {
+  min-height: 0;
+  padding: 14px 16px;
+  color: rgba(21, 25, 29, 0.66);
+  line-height: 1.68;
+}
+
+#prepared-result-points.is-brief li::before {
+  content: none;
+}
+
 .completion-panel {
   grid-column: 1 / -1;
   margin-top: 20px;

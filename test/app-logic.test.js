@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { sampleNodes } from "../src/sample-tree.js";
 import {
   buildActiveQueue,
+  buildAiContextForNode,
   completeTask,
   getRecordsForNode,
   resolvePreparedArtifact,
@@ -55,5 +56,58 @@ describe("app logic", () => {
     ]);
 
     assert.equal(artifact.title, "Demo 草稿");
+  });
+
+  it("builds AI context from task lineage, knowhow, skills, and accumulated results", () => {
+    const context = buildAiContextForNode({
+      nodes: [
+        {
+          id: "root",
+          parentId: null,
+          title: "北极星",
+          tag: "思考",
+          description: "找到 ToB AI 场景。",
+          aiActions: [],
+          dependencies: [],
+          state: "待做",
+        },
+        {
+          id: "previous",
+          parentId: "root",
+          title: "前置判断",
+          tag: "验证",
+          description: "已经验证过的判断。",
+          aiActions: [],
+          dependencies: [],
+          state: "完成",
+          result: { source: "ai", url: "https://example.feishu.cn/docx/result" },
+        },
+        {
+          id: "current",
+          parentId: "root",
+          title: "当前任务",
+          tag: "执行",
+          description: "要生成行动方案。",
+          aiActions: ["读取上下文"],
+          dependencies: ["previous"],
+          state: "待做",
+        },
+      ],
+      library: {
+        knowledge: [{ id: "k1", kind: "knowledge", title: "AI-native 原则", relatedNodeIds: ["root"], markdown: "让 AI 读上下文、执行动作、沉淀结果。" }],
+        skills: [{ id: "s1", kind: "skills", title: "反证优先", relatedNodeIds: ["current"], usage: "先找失败证据。" }],
+        artifacts: [{ id: "a1", kind: "artifacts", title: "前置结果", relatedNodeIds: ["previous"], url: "https://example.feishu.cn/docx/result" }],
+      },
+      nodeId: "current",
+    });
+
+    assert.deepEqual(
+      context.taskLineage.map((task) => task.id),
+      ["root", "current"],
+    );
+    assert.equal(context.upstreamTasks.some((task) => task.id === "previous"), true);
+    assert.equal(context.knowledge[0].title, "AI-native 原则");
+    assert.equal(context.skills[0].title, "反证优先");
+    assert.equal(context.accumulatedResults[0].result.url, "https://example.feishu.cn/docx/result");
   });
 });

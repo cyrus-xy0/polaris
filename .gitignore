@@ -7,3 +7,4 @@ dist/
 data/*.db
 data/*.db-*
 data/*.project.json
+data/ai-results/

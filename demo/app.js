@@ -25,11 +25,14 @@ let selectedTreeNodeId = null;
 let activeView = "today";
 let editingMarkdownItem = null;
 let currentPreparedArtifact = null;
+let autoFilledResultUrl = "";
 const expandedKnowledgeGroups = new Set();
 let nodeEditorFeedback = null;
 let isNodeEditorOpen = false;
 const suggestedActionPlanCache = new Map();
 const draftOutputCache = new Map();
+const aiResultCache = new Map();
+const aiAnalyzingText = "AI 正在分析";
 
 const elements = {
   viewButtons: [...document.querySelectorAll("[data-view-button]")],
@@ -274,8 +277,12 @@ function renderSuggestedActionPlan(node, reason) {
     renderActionPlan(cached.plan);
     return;
   }
+  if (cached?.signature === signature && cached.status === "error") {
+    renderActionPlan(createAiErrorActionPlan(cached.error));
+    return;
+  }
 
-  renderActionPlan({ summary: "", steps: [] });
+  renderActionPlan(createAiPendingActionPlan());
   if (cached?.signature === signature && cached.status === "loading") return;
   requestSuggestedActionPlan(node, signature);
 }
@@ -287,17 +294,28 @@ async function requestSuggestedActionPlan(node, signature) {
     const payload = await requestJson(`/api/task-nodes/${encodeURIComponent(node.id)}/suggested-action-plan`, {
       method: "POST",
     });
+    const plan = normalizeSuggestedActionPlan(payload.plan);
+    if (payload.status === "error" || plan.error) {
+      suggestedActionPlanCache.set(node.id, {
+        status: "error",
+        signature,
+        error: payload.error || plan.error,
+      });
+      render();
+      return;
+    }
+
     suggestedActionPlanCache.set(node.id, {
       status: "ready",
       signature,
-      plan: normalizeSuggestedActionPlan(payload.plan),
+      plan,
     });
   } catch (error) {
     console.error("Failed to generate suggested action plan", error);
     suggestedActionPlanCache.set(node.id, {
-      status: "ready",
+      status: "error",
       signature,
-      plan: { summary: "", steps: [] },
+      error: error.message,
     });
   }
 
@@ -318,6 +336,7 @@ function normalizeSuggestedActionPlan(plan = {}) {
   return {
     summary: typeof normalizedPlan.summary === "string" ? normalizedPlan.summary.trim() : "",
     steps,
+    error: typeof normalizedPlan.error === "string" ? normalizedPlan.error.trim() : "",
   };
 }
 
@@ -337,15 +356,21 @@ function renderDraftOutput(node) {
   const artifact = resolvePreparedArtifact(node, library.artifacts);
   const signature = getDraftOutputSignature(node, artifact);
   const cached = draftOutputCache.get(node.id);
-  currentPreparedArtifact = artifact;
-  updateAiResultLink();
+  currentPreparedArtifact = null;
 
   if (cached?.signature === signature && cached.status === "ready") {
     renderDraftOutputContent(cached.output);
+    renderAiResultLink(node, artifact, cached);
+    return;
+  }
+  if (cached?.signature === signature && cached.status === "error") {
+    renderDraftOutputContent(createAiErrorDraftOutput(cached.error));
+    renderAiResultLink(node, artifact, cached);
     return;
   }
 
-  renderDraftOutputContent({ title: "", summary: "", points: [] });
+  renderDraftOutputContent(createAiPendingDraftOutput());
+  renderAiResultLink(node, artifact, { status: "loading", signature });
   if (cached?.signature === signature && cached.status === "loading") return;
   requestDraftOutput(node, signature);
 }
@@ -357,17 +382,28 @@ async function requestDraftOutput(node, signature) {
     const payload = await requestJson(`/api/task-nodes/${encodeURIComponent(node.id)}/draft-output`, {
       method: "POST",
     });
+    const output = normalizeDraftOutput(payload.output);
+    if (payload.status === "error" || output.error) {
+      draftOutputCache.set(node.id, {
+        status: "error",
+        signature,
+        error: payload.error || output.error,
+      });
+      render();
+      return;
+    }
+
     draftOutputCache.set(node.id, {
       status: "ready",
       signature,
-      output: normalizeDraftOutput(payload.output),
+      output,
     });
   } catch (error) {
     console.error("Failed to generate draft output", error);
     draftOutputCache.set(node.id, {
-      status: "ready",
+      status: "error",
       signature,
-      output: { title: "", summary: "", points: [] },
+      error: error.message,
     });
   }
 
@@ -377,6 +413,13 @@ async function requestDraftOutput(node, signature) {
 function renderDraftOutputContent(output) {
   elements.preparedResultTitle.textContent = output.title;
   elements.preparedResultSummary.textContent = output.summary;
+  if (output.brief) {
+    elements.preparedResultPoints.classList.add("is-brief");
+    elements.preparedResultPoints.replaceChildren(createPreparedBrief(output.brief));
+    return;
+  }
+
+  elements.preparedResultPoints.classList.remove("is-brief");
   elements.preparedResultPoints.replaceChildren(...output.points.map(createPreparedPoint));
 }
 
@@ -389,7 +432,41 @@ function normalizeDraftOutput(output = {}) {
   return {
     title: typeof normalizedOutput.title === "string" ? normalizedOutput.title.trim() : "",
     summary: typeof normalizedOutput.summary === "string" ? normalizedOutput.summary.trim() : "",
+    brief: typeof normalizedOutput.brief === "string" ? normalizedOutput.brief.trim() : points.join("；"),
     points,
+    error: typeof normalizedOutput.error === "string" ? normalizedOutput.error.trim() : "",
+  };
+}
+
+function createAiPendingActionPlan() {
+  return {
+    summary: aiAnalyzingText,
+    steps: [],
+  };
+}
+
+function createAiErrorActionPlan(error) {
+  return {
+    summary: error ? `AI 分析失败：${error}` : "AI 分析失败，请查看终端日志。",
+    steps: [],
+  };
+}
+
+function createAiPendingDraftOutput() {
+  return {
+    title: "",
+    summary: aiAnalyzingText,
+    brief: "",
+    points: [],
+  };
+}
+
+function createAiErrorDraftOutput(error) {
+  return {
+    title: "AI 分析失败",
+    summary: error || "请查看终端日志后重试。",
+    brief: "",
+    points: [],
   };
 }
 
@@ -404,6 +481,87 @@ function getDraftOutputSignature(node, artifact) {
     artifactTitle: artifact?.title ?? "",
     artifactType: artifact?.docType ?? "",
   });
+}
+
+function renderAiResultLink(node, artifact, draftState) {
+  currentPreparedArtifact = null;
+  const signature = getAiResultSignature(node, artifact);
+  const cached = aiResultCache.get(node.id);
+
+  if (draftState?.status === "error") {
+    updateAiResultLink({ status: "error", error: draftState.error });
+    return;
+  }
+
+  if (draftState?.status !== "ready") {
+    updateAiResultLink({ status: "loading" });
+    return;
+  }
+
+  if (cached?.signature === signature && cached.status === "ready") {
+    currentPreparedArtifact = cached.result;
+    updateAiResultLink({ status: "ready", result: cached.result });
+    return;
+  }
+
+  if (cached?.signature === signature && cached.status === "error") {
+    updateAiResultLink({ status: "error", error: cached.error });
+    return;
+  }
+
+  updateAiResultLink({ status: "loading" });
+  if (cached?.signature === signature && cached.status === "loading") return;
+  requestAiResult(node, signature);
+}
+
+async function requestAiResult(node, signature) {
+  aiResultCache.set(node.id, { status: "loading", signature });
+
+  try {
+    const payload = await requestJson(`/api/task-nodes/${encodeURIComponent(node.id)}/ai-result`, {
+      method: "POST",
+    });
+    const result = normalizeAiResult(payload.result);
+    if (payload.status === "error" || result.error) {
+      aiResultCache.set(node.id, {
+        status: "error",
+        signature,
+        error: payload.error || result.error,
+      });
+      render();
+      return;
+    }
+
+    aiResultCache.set(node.id, {
+      status: "ready",
+      signature,
+      result,
+    });
+  } catch (error) {
+    console.error("Failed to generate AI result link", error);
+    aiResultCache.set(node.id, {
+      status: "error",
+      signature,
+      error: error.message,
+    });
+  }
+
+  render();
+}
+
+function normalizeAiResult(result = {}) {
+  const normalizedResult = result ?? {};
+  return {
+    title: typeof normalizedResult.title === "string" ? normalizedResult.title.trim() : "",
+    docType: typeof normalizedResult.docType === "string" ? normalizedResult.docType.trim() : "本地 HTML",
+    url: typeof normalizedResult.url === "string" ? normalizedResult.url.trim() : "",
+    path: typeof normalizedResult.path === "string" ? normalizedResult.path.trim() : "",
+    error: typeof normalizedResult.error === "string" ? normalizedResult.error.trim() : "",
+  };
+}
+
+function getAiResultSignature(node, artifact) {
+  return getDraftOutputSignature(node, artifact);
 }
 
 function getPriorityLabel(nodeId, queue) {
@@ -443,18 +601,62 @@ function createPreparedPoint(text) {
   return item;
 }
 
-function updateAiResultLink() {
-  if (!currentPreparedArtifact?.url) {
+function createPreparedBrief(text) {
+  const item = document.createElement("li");
+  item.className = "prepared-brief";
+  item.textContent = text;
+  return item;
+}
+
+function updateAiResultLink(state = {}) {
+  if (state.status === "loading") {
+    clearAutoFilledResultUrl();
     elements.aiResultLink.removeAttribute("href");
     elements.aiResultLink.ariaDisabled = "true";
-    elements.aiResultLink.textContent = "AI 结果未生成";
+    elements.aiResultLink.textContent = aiAnalyzingText;
+    elements.aiResultLink.title = "AI 结果生成中";
     return;
   }
 
-  elements.aiResultLink.href = currentPreparedArtifact.url;
+  if (state.status === "error") {
+    clearAutoFilledResultUrl();
+    elements.aiResultLink.removeAttribute("href");
+    elements.aiResultLink.ariaDisabled = "true";
+    elements.aiResultLink.textContent = "AI 结果生成失败";
+    elements.aiResultLink.title = state.error || "请查看终端日志后重试。";
+    return;
+  }
+
+  const result = state.result ?? currentPreparedArtifact;
+  if (!result?.url) {
+    clearAutoFilledResultUrl();
+    elements.aiResultLink.removeAttribute("href");
+    elements.aiResultLink.ariaDisabled = "true";
+    elements.aiResultLink.textContent = "AI 结果未生成";
+    elements.aiResultLink.title = "AI 结果尚未生成";
+    return;
+  }
+
+  elements.aiResultLink.href = result.url;
   elements.aiResultLink.ariaDisabled = "false";
   elements.aiResultLink.textContent = "查看 AI 结果";
-  elements.aiResultLink.title = `${currentPreparedArtifact.docType ?? "AI 结果"} · ${currentPreparedArtifact.title}`;
+  elements.aiResultLink.title = `${result.docType ?? "AI 结果"} · ${result.title}`;
+  fillManualResultUrl(result.url);
+}
+
+function fillManualResultUrl(url) {
+  if (!url) return;
+  const currentValue = elements.manualResultUrl.value.trim();
+  if (currentValue && currentValue !== autoFilledResultUrl) return;
+  elements.manualResultUrl.value = url;
+  autoFilledResultUrl = url;
+}
+
+function clearAutoFilledResultUrl() {
+  if (autoFilledResultUrl && elements.manualResultUrl.value.trim() === autoFilledResultUrl) {
+    elements.manualResultUrl.value = "";
+  }
+  autoFilledResultUrl = "";
 }
 
 function createQueueCard(item, index, currentNodeId) {
@@ -489,7 +691,7 @@ function createQueueCard(item, index, currentNodeId) {
 function completeSelectedTask() {
   const manualUrl = elements.manualResultUrl.value.trim();
   completeTaskWithResult({
-    source: manualUrl ? "manual" : "ai",
+    source: manualUrl && manualUrl !== autoFilledResultUrl ? "manual" : "ai",
     url: manualUrl || currentPreparedArtifact?.url || "",
   });
 }
@@ -503,6 +705,7 @@ function completeTaskWithResult(result) {
   saveNodes();
   selectedNodeId = null;
   elements.manualResultUrl.value = "";
+  autoFilledResultUrl = "";
   render();
 }
 
@@ -987,6 +1190,7 @@ async function saveNodeEditor(event) {
     nodes = nodes.map((node) => (node.id === selected.id ? nextNode : node));
     suggestedActionPlanCache.delete(selected.id);
     draftOutputCache.delete(selected.id);
+    aiResultCache.delete(selected.id);
     nodeEditorFeedback = { nodeId: selected.id, tone: "success", message: "正在保存..." };
     render();
     const saved = await saveNodes();
