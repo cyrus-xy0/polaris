@@ -3,7 +3,6 @@ import { describe, it } from "node:test";
 import { sampleNodes } from "../src/sample-tree.js";
 import {
   buildActiveQueue,
-  buildPreparedResult,
   completeTask,
   getRecordsForNode,
   resolvePreparedArtifact,
@@ -56,6 +55,5 @@ describe("app logic", () => {
     ]);
 
     assert.equal(artifact.title, "Demo 草稿");
-    assert.match(buildPreparedResult(node).summary, /最小 demo/);
   });
 });

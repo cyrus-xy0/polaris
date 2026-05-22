@@ -35,6 +35,35 @@ export async function generateSuggestedActionPlan({
   }
 }
 
+export async function generateDraftOutput({
+  node,
+  artifact = null,
+  relatedRecords = [],
+  serviceRoot = process.cwd(),
+  dataRoot = null,
+  timeoutMs = 120_000,
+  env = defaultEnv,
+  includePath = true,
+} = {}) {
+  const generator = findLocalActionPlanGenerator({ serviceRoot, dataRoot, env, includePath });
+  if (!generator || !node) return createBlankDraftOutput();
+
+  try {
+    const prompt = buildDraftOutputPrompt({ node, artifact, relatedRecords });
+    const output = await runGenerator(generator, prompt, { cwd: serviceRoot, timeoutMs, env });
+    return {
+      ...parseDraftOutput(output),
+      provider: generator.name,
+    };
+  } catch (error) {
+    return {
+      ...createBlankDraftOutput(),
+      provider: generator.name,
+      error: error.message,
+    };
+  }
+}
+
 export function findLocalActionPlanGenerator({
   serviceRoot = process.cwd(),
   dataRoot = null,
@@ -95,6 +124,48 @@ export function buildSuggestedActionPlanPrompt({ node, reason = "", relatedRecor
     .join("\n");
 }
 
+export function buildDraftOutputPrompt({ node, artifact = null, relatedRecords = [] }) {
+  const context = relatedRecords
+    .map((record) => {
+      const usage = record.usage ? `\n  用法：${record.usage}` : "";
+      return `- ${record.type ?? record.kind ?? "context"}：${record.title}\n  ${record.description ?? ""}${usage}`;
+    })
+    .join("\n");
+  const artifactContext = artifact
+    ? [
+        `- 类型：${artifact.docType ?? "未知"}`,
+        `- 标题：${artifact.title ?? "未知"}`,
+        artifact.url ? `- 链接：${artifact.url}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : "无";
+
+  return [
+    "你是 Polaris 本地任务节点输出草稿助手。",
+    "请基于任务节点和本地知识，生成 Draft Output 卡片内容。",
+    "只输出 JSON，不要输出 Markdown 或解释文字。",
+    'JSON 格式：{"title":"草稿标题","summary":"一句话说明草稿会解决什么","points":["要点 1","要点 2"]}',
+    "要求：",
+    "- title 用 8 到 18 个中文字符，像真实产物标题，不要写文件类型。",
+    "- summary 说明这份草稿要回答的关键问题和判断价值，不要写“AI 会读取”。",
+    "- points 生成 3 到 5 条，描述草稿应包含的关键内容模块或验收要点。",
+    "- 不要复述任务标题，不要使用“产出：”前缀。",
+    "",
+    "任务节点：",
+    `- id：${node.id}`,
+    `- 标题：${node.title}`,
+    `- 标签：${node.tag}`,
+    `- 描述：${node.description}`,
+    "",
+    "关联产物：",
+    artifactContext,
+    "",
+    "本地上下文：",
+    context || "无",
+  ].join("\n");
+}
+
 export function parseActionPlanOutput(output) {
   const text = typeof output === "string" ? output.trim() : "";
   if (!text) return createBlankActionPlan();
@@ -105,6 +176,20 @@ export function parseActionPlanOutput(output) {
   return normalizeActionPlan({
     summary: "",
     steps: parsePlainTextSteps(text),
+  });
+}
+
+export function parseDraftOutput(output) {
+  const text = typeof output === "string" ? output.trim() : "";
+  if (!text) return createBlankDraftOutput();
+
+  const jsonPayload = parseJsonPayload(text);
+  if (jsonPayload) return normalizeDraftOutput(jsonPayload);
+
+  return normalizeDraftOutput({
+    title: "",
+    summary: "",
+    points: parsePlainTextSteps(text),
   });
 }
 
@@ -162,7 +247,7 @@ function runGenerator(generator, prompt, { cwd, timeoutMs, env }) {
 function buildGeneratorInvocation(generator, prompt) {
   if (generator.name === "hermes") {
     return {
-      args: ["--oneshot", prompt],
+      args: ["chat", "--quiet", "--query", prompt],
       stdin: null,
     };
   }
@@ -189,7 +274,11 @@ function getJsonCandidates(text) {
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/i, "")
     .trim();
-  const candidates = [unfenced];
+  const lineCandidates = unfenced
+    .split(/\r?\n/)
+    .map((line) => line.trim().replace(/^[+>]\s*/, ""))
+    .filter((line) => (line.startsWith("{") && line.endsWith("}")) || (line.startsWith("[") && line.endsWith("]")));
+  const candidates = [...lineCandidates.reverse(), unfenced];
   const objectStart = unfenced.indexOf("{");
   const objectEnd = unfenced.lastIndexOf("}");
   if (objectStart >= 0 && objectEnd > objectStart) {
@@ -218,6 +307,23 @@ function normalizeActionPlan(payload) {
   };
 }
 
+function normalizeDraftOutput(payload) {
+  const draft = payload?.draftOutput ?? payload?.output ?? payload?.draft ?? payload;
+  if (Array.isArray(draft)) {
+    return {
+      title: "",
+      summary: "",
+      points: normalizeSteps(draft),
+    };
+  }
+
+  return {
+    title: typeof draft?.title === "string" ? draft.title.trim() : "",
+    summary: typeof draft?.summary === "string" ? draft.summary.trim() : "",
+    points: normalizeSteps(draft?.points ?? draft?.sections ?? draft?.items ?? []),
+  };
+}
+
 function normalizeSteps(steps) {
   if (!Array.isArray(steps)) return [];
   return steps
@@ -238,6 +344,15 @@ function createBlankActionPlan() {
   return {
     summary: "",
     steps: [],
+    provider: null,
+  };
+}
+
+function createBlankDraftOutput() {
+  return {
+    title: "",
+    summary: "",
+    points: [],
     provider: null,
   };
 }

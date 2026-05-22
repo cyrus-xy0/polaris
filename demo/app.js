@@ -9,12 +9,9 @@ import {
 } from "/src/task-nodes.js";
 import {
   buildActiveQueue,
-  buildDraftOutputPoints,
-  buildPreparedResult,
   completeTask,
   deleteTaskNode,
   getAncestorIds,
-  getArtifactDisplayType,
   getNodeAndDescendantIds,
   migrateTaskNodes,
   resolvePreparedArtifact,
@@ -32,6 +29,7 @@ const expandedKnowledgeGroups = new Set();
 let nodeEditorFeedback = null;
 let isNodeEditorOpen = false;
 const suggestedActionPlanCache = new Map();
+const draftOutputCache = new Map();
 
 const elements = {
   viewButtons: [...document.querySelectorAll("[data-view-button]")],
@@ -265,7 +263,7 @@ function renderCurrent(item, queue) {
   elements.currentPriority.className = `node-chip ${getPriorityClass(node.id, queue)}`;
   elements.currentRank.textContent = getQueueRankLabel(node.id, queue);
   renderSuggestedActionPlan(node, reason);
-  renderPreparedResult(node);
+  renderDraftOutput(node);
 }
 
 function renderSuggestedActionPlan(node, reason) {
@@ -335,6 +333,79 @@ function getSuggestedActionPlanSignature(node, reason) {
   });
 }
 
+function renderDraftOutput(node) {
+  const artifact = resolvePreparedArtifact(node, library.artifacts);
+  const signature = getDraftOutputSignature(node, artifact);
+  const cached = draftOutputCache.get(node.id);
+  currentPreparedArtifact = artifact;
+  updateAiResultLink();
+
+  if (cached?.signature === signature && cached.status === "ready") {
+    renderDraftOutputContent(cached.output);
+    return;
+  }
+
+  renderDraftOutputContent({ title: "", summary: "", points: [] });
+  if (cached?.signature === signature && cached.status === "loading") return;
+  requestDraftOutput(node, signature);
+}
+
+async function requestDraftOutput(node, signature) {
+  draftOutputCache.set(node.id, { status: "loading", signature });
+
+  try {
+    const payload = await requestJson(`/api/task-nodes/${encodeURIComponent(node.id)}/draft-output`, {
+      method: "POST",
+    });
+    draftOutputCache.set(node.id, {
+      status: "ready",
+      signature,
+      output: normalizeDraftOutput(payload.output),
+    });
+  } catch (error) {
+    console.error("Failed to generate draft output", error);
+    draftOutputCache.set(node.id, {
+      status: "ready",
+      signature,
+      output: { title: "", summary: "", points: [] },
+    });
+  }
+
+  render();
+}
+
+function renderDraftOutputContent(output) {
+  elements.preparedResultTitle.textContent = output.title;
+  elements.preparedResultSummary.textContent = output.summary;
+  elements.preparedResultPoints.replaceChildren(...output.points.map(createPreparedPoint));
+}
+
+function normalizeDraftOutput(output = {}) {
+  const normalizedOutput = output ?? {};
+  const points = Array.isArray(normalizedOutput.points)
+    ? normalizedOutput.points.map((point) => (typeof point === "string" ? point.trim() : "")).filter(Boolean)
+    : [];
+
+  return {
+    title: typeof normalizedOutput.title === "string" ? normalizedOutput.title.trim() : "",
+    summary: typeof normalizedOutput.summary === "string" ? normalizedOutput.summary.trim() : "",
+    points,
+  };
+}
+
+function getDraftOutputSignature(node, artifact) {
+  return JSON.stringify({
+    id: node.id,
+    title: node.title,
+    tag: node.tag,
+    description: node.description,
+    dependencies: node.dependencies,
+    state: node.state,
+    artifactTitle: artifact?.title ?? "",
+    artifactType: artifact?.docType ?? "",
+  });
+}
+
 function getPriorityLabel(nodeId, queue) {
   const index = queue.available.findIndex((item) => item.node.id === nodeId);
   if (index < 0) return "候选任务";
@@ -370,16 +441,6 @@ function createPreparedPoint(text) {
   const item = document.createElement("li");
   item.textContent = text;
   return item;
-}
-
-function renderPreparedResult(node) {
-  const result = buildPreparedResult(node);
-  const artifact = resolvePreparedArtifact(node, library.artifacts);
-  currentPreparedArtifact = artifact;
-  updateAiResultLink();
-  elements.preparedResultTitle.textContent = getArtifactDisplayType(artifact);
-  elements.preparedResultSummary.textContent = result.summary;
-  elements.preparedResultPoints.replaceChildren(...buildDraftOutputPoints(node).map(createPreparedPoint));
 }
 
 function updateAiResultLink() {
@@ -925,6 +986,7 @@ async function saveNodeEditor(event) {
     });
     nodes = nodes.map((node) => (node.id === selected.id ? nextNode : node));
     suggestedActionPlanCache.delete(selected.id);
+    draftOutputCache.delete(selected.id);
     nodeEditorFeedback = { nodeId: selected.id, tone: "success", message: "正在保存..." };
     render();
     const saved = await saveNodes();

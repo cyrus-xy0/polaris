@@ -1,8 +1,8 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, join, normalize, resolve } from "node:path";
-import { generateSuggestedActionPlan } from "../src/action-plan-ai.js";
-import { buildActiveQueue, getRecordsForNode } from "../src/app-logic.js";
+import { generateDraftOutput, generateSuggestedActionPlan } from "../src/action-plan-ai.js";
+import { buildActiveQueue, getRecordsForNode, resolvePreparedArtifact } from "../src/app-logic.js";
 import { resolveDataRoot } from "../src/config.js";
 import { createRepository } from "../src/data/repository.js";
 
@@ -121,6 +121,29 @@ async function handleApiRequest(request, response) {
         dataRoot,
       });
       sendJson(response, 200, { plan });
+      return true;
+    }
+
+    const draftOutputMatch = url.pathname.match(/^\/api\/task-nodes\/([^/]+)\/draft-output$/);
+    if (request.method === "POST" && draftOutputMatch) {
+      const nodeId = decodeURIComponent(draftOutputMatch[1]);
+      const nodes = repository.listTaskNodes();
+      const node = nodes.find((candidate) => candidate.id === nodeId);
+      if (!node) {
+        sendJson(response, 404, { error: `Task node not found: ${nodeId}` });
+        return true;
+      }
+
+      const library = repository.getLibrary();
+      const artifact = resolvePreparedArtifact(node, library.artifacts);
+      const output = await generateDraftOutput({
+        node,
+        artifact,
+        relatedRecords: getRecordsForNode(library, nodeId),
+        serviceRoot: root,
+        dataRoot,
+      });
+      sendJson(response, 200, { output });
       return true;
     }
 

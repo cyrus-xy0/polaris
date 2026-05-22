@@ -53,10 +53,6 @@ export function getRecordsForNode(library, nodeId) {
   return getAllRecords(library).filter((item) => item.relatedNodeIds?.includes(nodeId));
 }
 
-export function buildDraftOutputPoints(node) {
-  return node.aiActions.map((action) => `产出：${action}`);
-}
-
 export function resolvePreparedArtifact(node, artifacts = []) {
   const linkedArtifact = artifacts.find((item) => item.relatedNodeIds?.includes(node.id));
   if (linkedArtifact) return linkedArtifact;
@@ -65,40 +61,6 @@ export function resolvePreparedArtifact(node, artifacts = []) {
     docType: "飞书 Doc",
     url: `https://example.feishu.cn/docx/ai-output-${node.id}`,
     title: `${node.title} 结果草稿`,
-  };
-}
-
-export function getArtifactDisplayType(artifact) {
-  if (artifact.docType === "飞书 Base") return "Feishu Base";
-  if (artifact.docType === "飞书 Doc") return "Feishu Doc";
-  return artifact.docType;
-}
-
-export function buildPreparedResult(node) {
-  if (node.id === "study-real-cases") {
-    return {
-      title: "真实案例分析表 v0.1",
-      summary: "AI 会读取知识库里的 ToB Agent 落地趋势和真实案例表，再按客户、流程、效果和可迁移设计生成一版可确认结果。",
-    };
-  }
-
-  if (node.id === "try-demo") {
-    return {
-      title: "Pitchdeck 管理 demo 草稿 v0.1",
-      summary: "AI 会读取样例 deck、AI-native 工作流原则和当前节点要求，先生成一个可以马上验证的最小 demo 草稿。",
-    };
-  }
-
-  if (node.id.includes("scenario") || node.id.includes("gtm")) {
-    return {
-      title: `${node.title} 判断草稿 v0.1`,
-      summary: "AI 会读取行业判断、场景价值筛选标准和当前节点要求，先把关键证据收敛成一版可确认的判断结果。",
-    };
-  }
-
-  return {
-    title: `${node.title} 结果草稿 v0.1`,
-    summary: "AI 会读取相关知识库、Skill 和当前任务要求，先生成一版可以直接确认、修改或沉淀的结果草稿。",
   };
 }
 
