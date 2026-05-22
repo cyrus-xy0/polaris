@@ -242,6 +242,13 @@ function runGenerator(generator, prompt, { cwd, timeoutMs, env }) {
 }
 
 function buildGeneratorInvocation(generator, prompt) {
+  if (generator.name === "openclaw") {
+    return {
+      args: ["crestodian", "--message", prompt],
+      stdin: null,
+    };
+  }
+
   if (generator.name === "hermes") {
     return {
       args: ["chat", "--quiet", "--query", prompt],

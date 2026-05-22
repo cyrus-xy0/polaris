@@ -47,12 +47,10 @@ describe("action plan AI", () => {
       commandPath,
       [
         "#!/usr/bin/env node",
-        "let input = '';",
-        "process.stdin.on('data', (chunk) => { input += chunk; });",
-        "process.stdin.on('end', () => {",
-        "  if (!input.includes('测试节点')) process.exit(2);",
-        "  console.log(JSON.stringify({ summary: '先收敛输入，再执行验证', steps: ['收集上下文', '生成行动计划', '记录判断'] }));",
-        "});",
+        "if (process.argv[2] !== 'crestodian') process.exit(2);",
+        "if (process.argv[3] !== '--message') process.exit(3);",
+        "if (!process.argv[4].includes('测试节点')) process.exit(4);",
+        "console.log(JSON.stringify({ summary: '先收敛输入，再执行验证', steps: ['收集上下文', '生成行动计划', '记录判断'] }));",
       ].join("\n"),
     );
     chmodSync(commandPath, 0o755);
@@ -145,20 +143,19 @@ describe("action plan AI", () => {
     assert.deepEqual(output.points, []);
   });
 
-  it("generates draft output through openclaw with the action plan on stdin", async () => {
+  it("generates draft output through openclaw one-shot mode", async () => {
     const serviceRoot = mkdtempSync(join(tmpdir(), "polaris-draft-openclaw-"));
     const commandPath = join(serviceRoot, "openclaw");
     writeFileSync(
       commandPath,
       [
         "#!/usr/bin/env node",
-        "let input = '';",
-        "process.stdin.on('data', (chunk) => { input += chunk; });",
-        "process.stdin.on('end', () => {",
-        "  if (!input.includes('必须遵循的 Suggest Action Plan')) process.exit(4);",
-        "  if (!input.includes('读取上文')) process.exit(5);",
-        "  console.log(JSON.stringify({ title: '按计划产出草稿', summary: '严格依据行动计划生成结果。', brief: '先读取上文，再应用本地 knowhow 和 skill，最后形成可检查的结果 brief，确保 Draft Output 与 Suggest Action Plan 保持一致。' }));",
-        "});",
+        "if (process.argv[2] !== 'crestodian') process.exit(2);",
+        "if (process.argv[3] !== '--message') process.exit(3);",
+        "const prompt = process.argv[4] || '';",
+        "if (!prompt.includes('必须遵循的 Suggest Action Plan')) process.exit(4);",
+        "if (!prompt.includes('读取上文')) process.exit(5);",
+        "console.log(JSON.stringify({ title: '按计划产出草稿', summary: '严格依据行动计划生成结果。', brief: '先读取上文，再应用本地 knowhow 和 skill，最后形成可检查的结果 brief，确保 Draft Output 与 Suggest Action Plan 保持一致。' }));",
       ].join("\n"),
     );
     chmodSync(commandPath, 0o755);

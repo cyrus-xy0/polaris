@@ -135,7 +135,19 @@ The Suggest Action Plan panel is generated through a service-local AI executable
 - the configured data directory
 - `<data-dir>/bin`
 
-The executable receives the task-node prompt on stdin and should print either JSON or a plain text list. Preferred JSON shape:
+OpenClaw is invoked in non-interactive one-shot mode:
+
+```bash
+openclaw crestodian --message "<prompt>"
+```
+
+Hermes is invoked in quiet query mode:
+
+```bash
+hermes chat --quiet --query "<prompt>"
+```
+
+Both providers should print either JSON or a plain text list. Preferred JSON shape:
 
 ```json
 {
@@ -152,7 +164,7 @@ AI prompts are built from the current task plus its upstream task chain, depende
 
 Draft Output and Feishu result generation are constrained by the saved Suggest Action Plan. The plan is generated or read first, injected into the draft prompt as an implementation checklist, and its digest is included in downstream cache keys.
 
-Deployment servers can run with `openclaw` only. Polaris discovers `openclaw` before `hermes`, invokes it with the full prompt on stdin, and accepts JSON or plain text on stdout. `hermes` is only a fallback provider and is not required when `openclaw` is executable in the service root, `bin/`, `<data-dir>/bin`, or `PATH`.
+Deployment servers can run with `openclaw` only. Polaris discovers `openclaw` before `hermes`, invokes it as `openclaw crestodian --message "<prompt>"`, and accepts JSON or plain text on stdout. `hermes` is only a fallback provider and is not required when `openclaw` is executable in the service root, `bin/`, `<data-dir>/bin`, or `PATH`.
 
 ## Test
 
