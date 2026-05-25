@@ -8,6 +8,12 @@ import {
   generateTaskNodeSplit,
 } from "../src/action-plan-ai.js";
 import {
+  createFallbackAiResultOutput,
+  createFallbackDraftOutput,
+  createFallbackSuggestedActionPlan,
+  createFallbackTaskNodeSplit,
+} from "../src/ai-fallbacks.js";
+import {
   createAiResultSignature,
   createAiContextDigest,
   createDraftOutputSignature,
@@ -40,6 +46,9 @@ if (!hasDataRootOverride({ argv: process.argv.slice(2), env: process.env })) {
 }
 const repository = createRepository({ dataRoot, seedDataRoot: bundledDataRoot, seedTaskNodes: seedDemoData });
 const inFlightAiJobs = new Map();
+const aiGenerationTimeoutMs = readPositiveIntegerEnv("POLARIS_AI_TIMEOUT_MS", 12_000);
+const aiSplitTimeoutMs = readPositiveIntegerEnv("POLARIS_AI_SPLIT_TIMEOUT_MS", Math.min(aiGenerationTimeoutMs, 6_000));
+const feishuPublishTimeoutMs = readPositiveIntegerEnv("POLARIS_FEISHU_TIMEOUT_MS", 8_000);
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -121,6 +130,12 @@ function readPackageMetadata() {
     console.warn(`Unable to read package metadata: ${error.message}`);
     return fallback;
   }
+}
+
+function readPositiveIntegerEnv(name, fallback) {
+  const rawValue = process.env[name];
+  const value = Number.parseInt(rawValue ?? "", 10);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
 function migrateLegacyDefaultData({ from, to }) {
@@ -234,15 +249,18 @@ async function handleApiRequest(request, response) {
         aiContext,
         serviceRoot: root,
         dataRoot,
+        timeoutMs: aiSplitTimeoutMs,
       });
-      const splitNodes = split.nodes.length > 0 ? split.nodes : createFallbackTaskNodeSplit(node).nodes;
+      const fallbackSplit = createFallbackTaskNodeSplit(node);
+      const effectiveSplit = split.nodes.length > 0 ? split : fallbackSplit;
+      const splitNodes = effectiveSplit.nodes;
       const children = createSplitChildren({ parent: node, splitNodes, existingNodes: nodes });
       const savedNodes = repository.saveTaskNodes([...nodes, ...children]);
 
       sendJson(response, 200, {
         nodes: savedNodes,
         children,
-        split,
+        split: effectiveSplit,
         status: split.nodes.length > 0 ? "ready" : "fallback",
       });
       return true;
@@ -331,17 +349,18 @@ async function handleApiRequest(request, response) {
           actionPlan: suggested.plan,
           serviceRoot: root,
           dataRoot,
+          timeoutMs: aiGenerationTimeoutMs,
         });
-        if (!hasDraftOutputContent(output)) {
-          return { error: output.error || "AI 没有返回可用的 Draft Output。", output };
-        }
+        const effectiveOutput = hasDraftOutputContent(output)
+          ? output
+          : createFallbackDraftOutput({ node, artifact, actionPlan: suggested.plan });
 
         const persisted = writeAiResult({
           dataRoot,
           kind: "draft-output",
           nodeId,
           signature,
-          payload: { output },
+          payload: { output: effectiveOutput },
         });
         return {
           output: persisted.output,
@@ -482,17 +501,18 @@ async function readOrCreateSuggestedActionPlan({ nodeId, node, library, reason, 
       aiContext,
       serviceRoot: root,
       dataRoot,
+      timeoutMs: aiGenerationTimeoutMs,
     });
-    if (!hasSuggestedActionPlanContent(plan)) {
-      return { error: plan.error || "AI 没有返回可用的 Suggest Action Plan。" };
-    }
+    const effectivePlan = hasSuggestedActionPlanContent(plan)
+      ? plan
+      : createFallbackSuggestedActionPlan({ node, reason });
 
     const persisted = writeAiResult({
       dataRoot,
       kind: "suggested-action-plan",
       nodeId,
       signature,
-      payload: { plan },
+      payload: { plan: effectivePlan },
     });
     return {
       plan: persisted.plan,
@@ -512,32 +532,6 @@ function runSharedAiJob(key, createJob) {
     });
   inFlightAiJobs.set(key, job);
   return job;
-}
-
-function createFallbackTaskNodeSplit(node) {
-  return {
-    summary: "本地 AI 不可用，使用最小任务预拆分。",
-    nodes: [
-      {
-        title: "明确输入和边界",
-        description: `确认「${node.title}」需要依赖的输入、约束和完成边界。`,
-        tag: "思考",
-        aiActions: ["列出输入", "标记约束", "写完成标准"],
-      },
-      {
-        title: "执行最小动作",
-        description: `围绕「${node.title}」完成一个可检查的最小行动。`,
-        tag: "执行",
-        aiActions: ["选择最小路径", "完成核心动作", "记录过程"],
-      },
-      {
-        title: "验证结果可用性",
-        description: `检查「${node.title}」的结果是否能支撑下一步推进。`,
-        tag: "验证",
-        aiActions: ["检查结果", "发现缺口", "给出下一步"],
-      },
-    ],
-  };
 }
 
 function createSplitChildren({ parent, splitNodes, existingNodes }) {
@@ -588,6 +582,7 @@ async function publishAiResult({ node, output, artifact, actionPlan, signature }
       output,
       artifact,
       actionPlan,
+      timeoutMs: feishuPublishTimeoutMs,
     });
   } catch (error) {
     console.warn(`Feishu AI result publish failed, falling back to local HTML: ${error.message}`);
@@ -628,17 +623,18 @@ async function readOrCreateAiResultOutput({
       actionPlan,
       serviceRoot: root,
       dataRoot,
+      timeoutMs: aiGenerationTimeoutMs,
     });
-    if (!hasAiResultOutputContent(output)) {
-      return { error: output.error || "AI 没有返回可用的实际结果内容。" };
-    }
+    const effectiveOutput = hasAiResultOutputContent(output)
+      ? output
+      : createFallbackAiResultOutput({ node, artifact, actionPlan });
 
     const persisted = writeAiResult({
       dataRoot,
       kind: "ai-result-output",
       nodeId,
       signature,
-      payload: { output },
+      payload: { output: effectiveOutput },
     });
     return { output: persisted.output };
   });
@@ -670,17 +666,18 @@ async function readOrCreateDraftOutput({
       actionPlan,
       serviceRoot: root,
       dataRoot,
+      timeoutMs: aiGenerationTimeoutMs,
     });
-    if (!hasDraftOutputContent(output)) {
-      return { error: output.error || "AI 没有返回可用的 Draft Output。" };
-    }
+    const effectiveOutput = hasDraftOutputContent(output)
+      ? output
+      : createFallbackDraftOutput({ node, artifact, actionPlan });
 
     const persisted = writeAiResult({
       dataRoot,
       kind: "draft-output",
       nodeId,
       signature,
-      payload: { output },
+      payload: { output: effectiveOutput },
     });
     return { output: persisted.output };
   });

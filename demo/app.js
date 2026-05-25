@@ -29,13 +29,14 @@ let currentPreparedArtifact = null;
 let autoFilledResultUrl = "";
 const expandedKnowledgeGroups = new Set();
 const collapsedKnowledgeGroups = new Set();
+const collapsedWorkbenchSections = new Set(readCollapsedWorkbenchSections());
 let nodeEditorFeedback = null;
 let nodeEditorDraft = null;
 let isNodeEditorOpen = false;
 const suggestedActionPlanCache = new Map();
 const draftOutputCache = new Map();
 const aiResultCache = new Map();
-const pendingSplitNodeIds = new Set();
+const splittingNodeIds = new Set();
 let nodeEditorDependencyNodeId = null;
 let nodeEditorDependencyIds = new Set();
 let nodeEditorDependencyQuery = "";
@@ -73,15 +74,17 @@ const elements = {
   nodeEditorMeta: document.querySelector("#node-editor-meta"),
   nodeEditorTitle: document.querySelector("#node-editor-title"),
   nodeEditorDescription: document.querySelector("#node-editor-description"),
-  nodeEditorTag: document.querySelector("#node-editor-tag"),
   nodeEditorDependencySearch: document.querySelector("#node-editor-dependency-search"),
   nodeEditorDependencySelected: document.querySelector("#node-editor-dependency-selected"),
   nodeEditorDependencies: document.querySelector("#node-editor-dependencies"),
+  nodeEditorAiSplit: document.querySelector("#node-editor-ai-split"),
   nodeEditorStatus: document.querySelector("#node-editor-status"),
   nodeEditorClose: document.querySelector("#node-editor-close"),
   knowledgeGrid: document.querySelector("#knowledge-grid"),
   skillGrid: document.querySelector("#skill-grid"),
   intermediateGrid: document.querySelector("#intermediate-grid"),
+  workbenchSections: [...document.querySelectorAll("[data-workbench-section]")],
+  workbenchToggles: [...document.querySelectorAll("[data-workbench-toggle]")],
   markdownEditor: document.querySelector("#markdown-editor"),
   markdownEditorTitle: document.querySelector("#markdown-editor-title"),
   markdownEditorPath: document.querySelector("#markdown-editor-path"),
@@ -878,7 +881,6 @@ function renderNodeEditor(focus) {
   const fields = [
     elements.nodeEditorTitle,
     elements.nodeEditorDescription,
-    elements.nodeEditorTag,
     elements.nodeEditorDependencySearch,
   ];
 
@@ -890,6 +892,7 @@ function renderNodeEditor(focus) {
     });
     nodeEditorDraft = null;
     renderDependencyOptions(null);
+    renderAiSplitButton(null);
     elements.nodeEditorStatus.textContent = "";
     return;
   }
@@ -904,12 +907,33 @@ function renderNodeEditor(focus) {
   elements.nodeEditorMeta.textContent = selected.parentId ? `ID · ${selected.id}` : "根节点";
   syncNodeEditorField(elements.nodeEditorTitle, draft.title);
   syncNodeEditorField(elements.nodeEditorDescription, draft.description);
-  renderSelectOptions(elements.nodeEditorTag, Object.values(TASK_TAGS), draft.tag);
   renderDependencyOptions(selected);
+  renderAiSplitButton(selected, draft);
 
   const feedback = nodeEditorFeedback?.nodeId === selected.id ? nodeEditorFeedback : null;
   elements.nodeEditorStatus.textContent = feedback?.message ?? "";
   elements.nodeEditorStatus.className = `node-editor-status ${feedback?.tone === "error" ? "is-error" : ""}`;
+}
+
+function renderAiSplitButton(selected, draft = null) {
+  if (!selected) {
+    elements.nodeEditorAiSplit.hidden = true;
+    elements.nodeEditorAiSplit.disabled = true;
+    return;
+  }
+
+  const hasChildren = hasChildNodes(selected.id);
+  const isSplitting = splittingNodeIds.has(selected.id);
+  const input = {
+    title: (draft?.title ?? elements.nodeEditorTitle.value).trim(),
+    description: (draft?.description ?? elements.nodeEditorDescription.value).trim(),
+  };
+  const needsRealInput = !input.title || isPlaceholderInput(input);
+
+  elements.nodeEditorAiSplit.hidden = hasChildren;
+  elements.nodeEditorAiSplit.disabled = hasChildren || isSplitting || needsRealInput;
+  elements.nodeEditorAiSplit.textContent = isSplitting ? "AI 正在生成子节点" : "AI 生成子节点";
+  elements.nodeEditorAiSplit.title = needsRealInput ? "先保存真实标题和描述" : "保存当前节点并生成子节点";
 }
 
 function ensureNodeEditorDraft(selected) {
@@ -918,7 +942,6 @@ function ensureNodeEditorDraft(selected) {
     nodeId: selected.id,
     title: selected.title,
     description: selected.description,
-    tag: selected.tag,
   };
   return nodeEditorDraft;
 }
@@ -929,7 +952,6 @@ function updateNodeEditorDraftFromFields() {
     nodeId: selectedTreeNodeId,
     title: elements.nodeEditorTitle.value,
     description: elements.nodeEditorDescription.value,
-    tag: elements.nodeEditorTag.value,
   };
 }
 
@@ -937,27 +959,6 @@ function syncNodeEditorField(field, value) {
   const nextValue = value ?? "";
   if (document.activeElement === field) return;
   if (field.value !== nextValue) field.value = nextValue;
-}
-
-function renderSelectOptions(select, values, selectedValue) {
-  const shouldRebuild =
-    select.options.length !== values.length ||
-    values.some((value, index) => select.options[index]?.value !== value);
-
-  if (shouldRebuild) {
-    select.replaceChildren(
-      ...values.map((value) => {
-        const option = document.createElement("option");
-        option.value = value;
-        option.textContent = value;
-        return option;
-      }),
-    );
-  }
-
-  if (document.activeElement !== select && select.value !== selectedValue) {
-    select.value = selectedValue;
-  }
 }
 
 function renderDependencyOptions(selected) {
@@ -1410,11 +1411,10 @@ function addChildNode(parentId) {
     selectedTreeNodeId = child.id;
     selectedNodeId = null;
     isNodeEditorOpen = true;
-    pendingSplitNodeIds.add(child.id);
     nodeEditorFeedback = {
       nodeId: child.id,
       tone: "success",
-      message: "已添加节点，补充标题和描述后保存会自动预拆分",
+      message: "已添加节点，补充标题和描述后保存",
     };
     saveNodes();
   });
@@ -1437,11 +1437,10 @@ function addRootNode() {
     selectedNodeId = null;
     activeView = "tree";
     isNodeEditorOpen = true;
-    pendingSplitNodeIds.add(root.id);
     nodeEditorFeedback = {
       nodeId: root.id,
       tone: "success",
-      message: "已创建根目标，补充标题和描述后保存会自动预拆分",
+      message: "已创建根目标，补充标题和描述后保存",
     };
     saveNodes();
   });
@@ -1464,6 +1463,14 @@ function deleteTreeNode(nodeId) {
 
 async function saveNodeEditor(event) {
   event.preventDefault();
+  await persistNodeEditorDraft({ splitAfterSave: false });
+}
+
+async function splitSelectedNodeWithAi() {
+  await persistNodeEditorDraft({ splitAfterSave: true });
+}
+
+async function persistNodeEditorDraft({ splitAfterSave = false } = {}) {
   updateNodeEditorDraftFromFields();
   const selectedId = selectedTreeNodeId;
   const selected = selectedId ? indexNodes(nodes).byId.get(selectedId) : null;
@@ -1472,7 +1479,7 @@ async function saveNodeEditor(event) {
   const title = elements.nodeEditorTitle.value.trim();
   const description = elements.nodeEditorDescription.value.trim();
   const dependencies = [...nodeEditorDependencyIds];
-  const shouldAutoSplit = shouldAutoSplitNodeAfterSave(selected, { title, description });
+  const shouldSplit = splitAfterSave && !hasChildNodes(selected.id);
 
   if (!title) {
     showNodeEditorStatus(selected.id, "标题不能为空", "error");
@@ -1484,45 +1491,34 @@ async function saveNodeEditor(event) {
       ...selected,
       title,
       description,
-      tag: elements.nodeEditorTag.value,
+      tag: selected.tag ?? TASK_TAGS.THINK,
       dependencies,
     });
     nodes = nodes.map((node) => (node.id === selected.id ? nextNode : node));
     suggestedActionPlanCache.delete(selected.id);
     draftOutputCache.delete(selected.id);
     aiResultCache.delete(selected.id);
-    nodeEditorDraft = { nodeId: selected.id, title, description, tag: nextNode.tag };
+    nodeEditorDraft = { nodeId: selected.id, title, description };
     nodeEditorFeedback = { nodeId: selected.id, tone: "success", message: "正在保存..." };
     render();
     const saveResult = await saveNodes();
     nodeEditorFeedback = {
       nodeId: selected.id,
       tone: saveResult.ok ? "success" : "error",
-      message: saveResult.ok ? "已保存到本地数据层" : formatSaveError(saveResult.error),
+      message: saveResult.ok
+        ? shouldSplit
+          ? "已保存，AI 正在生成子节点..."
+          : "已保存到本地数据层"
+        : formatSaveError(saveResult.error),
     };
     render();
 
-    if (saveResult.ok && shouldAutoSplit) {
-      nodeEditorFeedback = {
-        nodeId: selected.id,
-        tone: "success",
-        message: "已保存，AI 正在预拆分子节点...",
-      };
-      render();
+    if (saveResult.ok && shouldSplit) {
       await requestTaskNodeSplit(selected.id);
     }
   } catch (error) {
     showNodeEditorStatus(selected.id, error.message, "error");
   }
-}
-
-function shouldAutoSplitNodeAfterSave(node, nextInput) {
-  const isNewNode = pendingSplitNodeIds.has(node.id) || isPlaceholderNode(node);
-  return isNewNode && !isPlaceholderInput(nextInput) && !hasChildNodes(node.id);
-}
-
-function isPlaceholderNode(node) {
-  return isPlaceholderInput(node);
 }
 
 function isPlaceholderInput(input) {
@@ -1537,25 +1533,27 @@ function hasChildNodes(nodeId) {
 }
 
 async function requestTaskNodeSplit(nodeId) {
+  splittingNodeIds.add(nodeId);
+  render();
   try {
     const payload = await requestJson(`/api/task-nodes/${encodeURIComponent(nodeId)}/split-children`, {
       method: "POST",
     });
     nodes = hydrateNodes(payload.nodes);
     clearAiGenerationCaches();
-    pendingSplitNodeIds.delete(nodeId);
+    splittingNodeIds.delete(nodeId);
     selectedTreeNodeId = nodeId;
     const childCount = Array.isArray(payload.children) ? payload.children.length : 0;
     nodeEditorFeedback = {
       nodeId,
       tone: childCount > 0 ? "success" : "error",
-      message: childCount > 0 ? `已预拆分 ${childCount} 个子节点` : "没有生成可用子节点",
+      message: childCount > 0 ? `已生成 ${childCount} 个子节点` : "没有生成可用子节点",
     };
     render();
   } catch (error) {
     console.error("Failed to split task node", error);
-    pendingSplitNodeIds.delete(nodeId);
-    showNodeEditorStatus(nodeId, `预拆分失败：${error.message}`, "error");
+    splittingNodeIds.delete(nodeId);
+    showNodeEditorStatus(nodeId, `生成子节点失败：${error.message}`, "error");
   }
 }
 
@@ -1590,6 +1588,66 @@ function renderMethods() {
   elements.intermediateGrid.replaceChildren(...createArtifactCards(currentArtifacts));
   elements.skillGrid.replaceChildren(...createSkillCards(library.skills));
   elements.knowledgeGrid.replaceChildren(...createKnowledgeGroups(library.knowledge));
+  renderWorkbenchSectionStates();
+}
+
+function renderWorkbenchSectionStates() {
+  for (const section of elements.workbenchSections) {
+    const sectionName = section.dataset.workbenchSection;
+    const isCollapsed = collapsedWorkbenchSections.has(sectionName);
+    const content = section.querySelector(".knowledge-grid");
+    section.classList.toggle("is-collapsed", isCollapsed);
+    section.setAttribute("aria-expanded", String(!isCollapsed));
+    if (content) content.hidden = isCollapsed;
+  }
+
+  for (const button of elements.workbenchToggles) {
+    const sectionName = button.dataset.workbenchToggle;
+    const isCollapsed = collapsedWorkbenchSections.has(sectionName);
+    const label = getWorkbenchSectionLabel(sectionName);
+    const action = isCollapsed ? "展开" : "收起";
+    button.setAttribute("aria-expanded", String(!isCollapsed));
+    button.setAttribute("aria-label", `${action} ${label}`);
+    button.title = `${action} ${label}`;
+  }
+}
+
+function toggleWorkbenchSection(sectionName) {
+  if (!sectionName) return;
+  if (collapsedWorkbenchSections.has(sectionName)) {
+    collapsedWorkbenchSections.delete(sectionName);
+  } else {
+    collapsedWorkbenchSections.add(sectionName);
+  }
+  writeCollapsedWorkbenchSections();
+  renderWorkbenchSectionStates();
+}
+
+function getWorkbenchSectionLabel(sectionName) {
+  return (
+    {
+      output: "Current Output",
+      skill: "Skill",
+      knowledge: "Knowledge",
+    }[sectionName] ?? "Section"
+  );
+}
+
+function readCollapsedWorkbenchSections() {
+  try {
+    const value = JSON.parse(localStorage.getItem("polaris.collapsedWorkbenchSections") ?? "[]");
+    return Array.isArray(value) ? value : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeCollapsedWorkbenchSections() {
+  try {
+    localStorage.setItem("polaris.collapsedWorkbenchSections", JSON.stringify([...collapsedWorkbenchSections]));
+  } catch {
+    // Ignore storage failures; the in-page state still works.
+  }
 }
 
 function createArtifactCards(items) {
@@ -1995,9 +2053,9 @@ elements.viewButtons.forEach((button) => {
 });
 elements.completeButton.addEventListener("click", completeSelectedTask);
 elements.nodeEditorForm.addEventListener("submit", saveNodeEditor);
+elements.nodeEditorAiSplit.addEventListener("click", splitSelectedNodeWithAi);
 elements.nodeEditorTitle.addEventListener("input", updateNodeEditorDraftFromFields);
 elements.nodeEditorDescription.addEventListener("input", updateNodeEditorDraftFromFields);
-elements.nodeEditorTag.addEventListener("change", updateNodeEditorDraftFromFields);
 elements.nodeEditorDependencySearch.addEventListener("input", () => {
   nodeEditorDependencyQuery = elements.nodeEditorDependencySearch.value;
   const selected = selectedTreeNodeId ? indexNodes(nodes).byId.get(selectedTreeNodeId) : null;
@@ -2016,6 +2074,9 @@ elements.markdownEditorClose.addEventListener("click", closeMarkdownEditor);
 elements.markdownEditorSave.addEventListener("click", saveMarkdownEditor);
 elements.markdownEditor.addEventListener("click", (event) => {
   if (event.target === elements.markdownEditor) closeMarkdownEditor();
+});
+elements.workbenchToggles.forEach((button) => {
+  button.addEventListener("click", () => toggleWorkbenchSection(button.dataset.workbenchToggle));
 });
 
 init();

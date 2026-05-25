@@ -103,11 +103,6 @@
                 <textarea id="node-editor-description" name="description"></textarea>
               </label>
 
-              <label class="node-editor-field">
-                <span>标签</span>
-                <select id="node-editor-tag" name="tag"></select>
-              </label>
-
               <div class="node-editor-field node-dependency-field">
                 <span id="node-editor-dependencies-label">依赖节点</span>
                 <input
@@ -128,6 +123,7 @@
 
               <div class="node-editor-actions">
                 <button class="primary-action" type="submit">保存节点</button>
+                <button class="soft-action" id="node-editor-ai-split" type="button">AI 生成子节点</button>
               </div>
               <p class="node-editor-status" id="node-editor-status" role="status"></p>
             </form>
@@ -137,32 +133,59 @@
 
       <section class="workspace-page view" id="methods-view">
         <div class="knowledge-layout knowledge-workbench">
-          <section class="knowledge-section current-result-section glass">
+          <section class="knowledge-section current-result-section glass" data-workbench-section="output">
             <div class="canvas-header">
               <div>
                 <p class="panel-kicker">Current Output</p>
                 <h2>当前任务结果</h2>
               </div>
+              <button
+                class="section-collapse-toggle"
+                type="button"
+                data-workbench-toggle="output"
+                aria-controls="intermediate-grid"
+                aria-expanded="true"
+                aria-label="收起 Current Output"
+                title="收起 Current Output"
+              ></button>
             </div>
             <div class="knowledge-grid artifact-grid" id="intermediate-grid"></div>
           </section>
 
-          <section class="knowledge-section skill-section glass">
+          <section class="knowledge-section skill-section glass" data-workbench-section="skill">
             <div class="canvas-header">
               <div>
                 <p class="panel-kicker">Skill</p>
                 <h2>可调用能力</h2>
               </div>
+              <button
+                class="section-collapse-toggle"
+                type="button"
+                data-workbench-toggle="skill"
+                aria-controls="skill-grid"
+                aria-expanded="true"
+                aria-label="收起 Skill"
+                title="收起 Skill"
+              ></button>
             </div>
             <div class="knowledge-grid" id="skill-grid"></div>
           </section>
 
-          <section class="knowledge-section reusable-knowledge-section glass">
+          <section class="knowledge-section reusable-knowledge-section glass" data-workbench-section="knowledge">
             <div class="canvas-header">
               <div>
                 <p class="panel-kicker">Knowledge</p>
                 <h2>可复用知识索引</h2>
               </div>
+              <button
+                class="section-collapse-toggle"
+                type="button"
+                data-workbench-toggle="knowledge"
+                aria-controls="knowledge-grid"
+                aria-expanded="true"
+                aria-label="收起 Knowledge"
+                title="收起 Knowledge"
+              ></button>
             </div>
             <div class="knowledge-grid" id="knowledge-grid"></div>
           </section>

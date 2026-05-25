@@ -217,7 +217,7 @@ POLARIS_OPENCLAW_AGENT=qa npm start
 }
 ```
 
-If neither `openclaw` nor `hermes` exists locally, the panel reports that local AI generation is unavailable.
+If neither `openclaw` nor `hermes` exists locally, or if the provider times out, Polaris now generates a deterministic local fallback so the task flow still returns JSON and remains usable.
 
 Generated Suggest Action Plan, Draft Output, and executed AI Result payloads are persisted to `<data-dir>/ai-results/` before the browser updates the panel. Draft Output remains the preview card, while the `查看 AI 结果` flow runs a separate execution prompt that produces the actual result body, such as an analysis table, findings, and follow-up actions. Polaris then creates a Feishu document with `lark-cli docs +create --api-version v2 --as user`, persists the returned URL, and fills the completion link input after analysis finishes. If Feishu creation fails locally, Polaris writes a local HTML result page under `<data-dir>/ai-results/documents/` so the result link still resolves. While generation is in progress, the UI shows `AI 正在分析`.
 
@@ -225,7 +225,13 @@ AI prompts are built from the current task plus its upstream task chain, depende
 
 Draft Output and Feishu result generation are constrained by the saved Suggest Action Plan. The plan is generated or read first, injected into the draft prompt as an implementation checklist, and its digest is included in downstream cache keys.
 
-When a newly added task node is saved for the first time, Polaris asks the same local AI provider to pre-split it into child task nodes from the saved title and description. If no provider returns a usable split, Polaris falls back to a minimal local three-step split so the new node still starts with executable children.
+When a newly added task node is saved, Polaris does not automatically create child nodes. The node editor shows an `AI 生成子节点` action for leaf nodes; choosing it saves the current title and description, then asks the same local AI provider to generate child task nodes. If no provider returns a usable split, Polaris falls back to a minimal local three-step split so the node can still start with executable children.
+
+Polaris uses short request-safe timeouts by default so deployment proxies do not return HTML 504 pages before the app can fall back:
+
+- `POLARIS_AI_TIMEOUT_MS` defaults to `12000` for action plans, draft output, and AI result generation.
+- `POLARIS_AI_SPLIT_TIMEOUT_MS` defaults to `6000` for manual AI child-node generation.
+- `POLARIS_FEISHU_TIMEOUT_MS` defaults to `8000` per `lark-cli` operation before falling back to local HTML.
 
 Deployment servers can run with `openclaw` only. Polaris discovers `openclaw` before `hermes`, invokes it as `openclaw agent --agent "${POLARIS_OPENCLAW_AGENT:-main}" --message "<prompt>" --thinking "${POLARIS_OPENCLAW_THINKING:-low}" --json`, and accepts JSON or plain text from the response. `hermes` is only a fallback provider and is not required when `openclaw` is executable in the service root, `bin/`, `<data-dir>/bin`, or `PATH`.
 
