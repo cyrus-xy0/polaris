@@ -4,9 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "node:test";
-import { createRepository } from "../src/data/repository.js";
+import { bundledSeedDataRoot, createRepository, defaultDataRoot } from "../src/data/repository.js";
 
 describe("local data repository", () => {
+  it("keeps bundled seed data separate from the runtime default data root", () => {
+    assert.notEqual(defaultDataRoot, bundledSeedDataRoot);
+  });
+
   it("starts with an empty task tree unless demo seed is enabled", () => {
     const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
 
@@ -215,7 +219,7 @@ describe("local data repository", () => {
     }
   });
 
-  it("removes unmodified bundled library data that older versions copied into user data", () => {
+  it("preserves existing markdown sources when demo seed is disabled", () => {
     const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
     const dbPath = join(dataRoot, "polaris.db");
     const knowledgeDir = join(dataRoot, "knowledge");
@@ -230,10 +234,10 @@ describe("local data repository", () => {
     try {
       const library = repository.getLibrary();
 
-      assert.equal(existsSync(join(knowledgeDir, "agent-application.md")), false);
-      assert.equal(existsSync(join(skillDir, "抓主要矛盾.md")), false);
+      assert.equal(existsSync(join(knowledgeDir, "agent-application.md")), true);
+      assert.equal(existsSync(join(skillDir, "抓主要矛盾.md")), true);
       assert.equal(existsSync(join(skillDir, "用户自己的能力.md")), true);
-      assert.equal(library.knowledge.some((entry) => entry.type === "agent-application"), false);
+      assert.equal(library.knowledge.some((entry) => entry.type === "agent-application"), true);
       assert.ok(library.skills.some((entry) => entry.title === "用户自己的能力"));
       assert.deepEqual(library.artifacts, []);
     } finally {

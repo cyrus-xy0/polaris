@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { libraryItems } from "../../data/seed/library.js";
 import { sampleNodes } from "../../data/seed/task-nodes.js";
 import { refreshTaskPriorities } from "../app-logic.js";
+import { getDefaultDataRoot } from "../config.js";
 import { createNode, indexNodes } from "../task-nodes.js";
 
 const repoRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -21,12 +22,13 @@ const markdownMetadataColumns = {
   source_description: "TEXT",
 };
 
-export const defaultDataRoot = join(repoRoot, "data");
+export const bundledSeedDataRoot = join(repoRoot, "data");
+export const defaultDataRoot = getDefaultDataRoot();
 export const defaultDbPath = join(defaultDataRoot, "polaris.db");
 
 export function createRepository(options = {}) {
   const dataRoot = resolve(options.dataRoot ?? defaultDataRoot);
-  const seedDataRoot = resolve(options.seedDataRoot ?? defaultDataRoot);
+  const seedDataRoot = resolve(options.seedDataRoot ?? bundledSeedDataRoot);
   const seedTaskNodes = options.seedTaskNodes === true;
   const seedMarkdownLibrary = options.seedMarkdownLibrary === true || seedTaskNodes;
   mkdirSync(dataRoot, { recursive: true });
@@ -325,8 +327,6 @@ function ensureDataFiles(dataRoot, seedDataRoot, { seedMarkdownLibrary = false }
     mkdirSync(targetDir, { recursive: true });
     if (seedMarkdownLibrary) {
       copyMissingMarkdownFiles(sourceDir, targetDir);
-    } else {
-      removeUnmodifiedSeedMarkdownFiles(sourceDir, targetDir);
     }
   }
 }
@@ -419,27 +419,6 @@ function copyMissingMarkdownFiles(sourceDir, targetDir) {
 
     mkdirSync(dirname(targetPath), { recursive: true });
     copyFileSync(sourcePath, targetPath);
-  }
-}
-
-function removeUnmodifiedSeedMarkdownFiles(sourceDir, targetDir) {
-  if (!existsSync(sourceDir) || !existsSync(targetDir)) return;
-  if (resolve(sourceDir) === resolve(targetDir)) return;
-
-  for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
-    const sourcePath = join(sourceDir, entry.name);
-    const targetPath = join(targetDir, entry.name);
-    if (!existsSync(targetPath)) continue;
-
-    if (entry.isDirectory()) {
-      removeUnmodifiedSeedMarkdownFiles(sourcePath, targetPath);
-      continue;
-    }
-
-    if (!entry.isFile() || extname(entry.name) !== ".md") continue;
-    if (readFileSync(sourcePath, "utf8") === readFileSync(targetPath, "utf8")) {
-      rmSync(targetPath, { force: true });
-    }
   }
 }
 
