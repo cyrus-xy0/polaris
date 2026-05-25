@@ -217,6 +217,41 @@ describe("AI result store", () => {
     assert.match(html, /自动读取上下文/);
   });
 
+  it("refreshes an existing local AI result document in place", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-ai-result-refresh-"));
+    const node = createNode();
+    const signature = createAiResultSignature({ node });
+    const firstResult = writeAiResultDocument({
+      dataRoot,
+      node,
+      signature,
+      output: {
+        title: "初版结果",
+        summary: "初版。",
+        markdown: "初版正文",
+      },
+    });
+
+    const refreshedResult = writeAiResultDocument({
+      dataRoot,
+      node,
+      signature,
+      existingResult: firstResult,
+      output: {
+        title: "刷新结果",
+        summary: "刷新。",
+        markdown: "刷新正文",
+      },
+    });
+
+    assert.equal(refreshedResult.path, firstResult.path);
+    assert.equal(refreshedResult.url, firstResult.url);
+    const html = readFileSync(firstResult.path, "utf8");
+    assert.match(html, /刷新结果/);
+    assert.match(html, /刷新正文/);
+    assert.doesNotMatch(html, /初版正文/);
+  });
+
   it("can store AI results in a configured directory outside the data root", () => {
     const dataRoot = mkdtempSync(join(tmpdir(), "polaris-ai-result-data-"));
     const aiResultsRoot = mkdtempSync(join(tmpdir(), "polaris-ai-result-custom-"));

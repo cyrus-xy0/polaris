@@ -80,6 +80,15 @@ export function createRepository(options = {}) {
       return serializeStorage(dataRoot, dbPath, project);
     },
 
+    updateAiConfig(config = {}) {
+      project.ai = normalizeAiConfig({
+        ...project.ai,
+        ...(config && typeof config === "object" ? config : {}),
+      });
+      writeLocalConfig(dataRoot, project);
+      return this.getProject();
+    },
+
     listTaskNodes() {
       return readTaskNodesFromDb(db);
     },
@@ -438,12 +447,16 @@ function loadProject(dataRoot) {
     sources: localConfig.sources,
   };
 
-  const serializedLocalConfig = serializeLocalConfig(project);
   if (!hasLocalConfigFile || shouldRewriteLocalConfig(rawLocalConfig)) {
-    writeFileSync(localConfigPath, `${JSON.stringify(serializedLocalConfig, null, 2)}\n`, "utf8");
+    writeLocalConfig(dataRoot, project);
   }
 
   return project;
+}
+
+function writeLocalConfig(dataRoot, project) {
+  const localConfigPath = join(dataRoot, localConfigFileName);
+  writeFileSync(localConfigPath, `${JSON.stringify(serializeLocalConfig(project), null, 2)}\n`, "utf8");
 }
 
 function createDefaultProject() {

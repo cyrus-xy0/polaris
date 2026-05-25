@@ -362,6 +362,7 @@ function runGenerator(generator, prompt, { cwd, timeoutMs, env }) {
     const child = spawn(generator.commandPath, invocation.args, {
       cwd,
       stdio: [invocation.stdin ? "pipe" : "ignore", "pipe", "pipe"],
+      detached: process.platform !== "win32",
       env: {
         ...env,
         POLARIS_ACTION_PLAN_PROVIDER: generator.name,
@@ -370,12 +371,15 @@ function runGenerator(generator, prompt, { cwd, timeoutMs, env }) {
     let stdout = "";
     let stderr = "";
     let settled = false;
+    let forceKillTimeout = null;
 
     const timeout = setTimeout(() => {
       if (settled) return;
       settled = true;
-      child.kill("SIGTERM");
-      rejectPromise(new Error(`${generator.name} timed out while generating the action plan`));
+      terminateChildProcess(child);
+      forceKillTimeout = setTimeout(() => terminateChildProcess(child, "SIGKILL"), 1_000);
+      forceKillTimeout.unref?.();
+      rejectPromise(new Error(`${generator.name} timed out after ${timeoutMs}ms while generating AI output`));
     }, timeoutMs);
 
     child.stdout.setEncoding("utf8");
@@ -390,9 +394,11 @@ function runGenerator(generator, prompt, { cwd, timeoutMs, env }) {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      if (forceKillTimeout) clearTimeout(forceKillTimeout);
       rejectPromise(error);
     });
     child.on("close", (code) => {
+      if (forceKillTimeout) clearTimeout(forceKillTimeout);
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
@@ -409,6 +415,23 @@ function runGenerator(generator, prompt, { cwd, timeoutMs, env }) {
 
     if (invocation.stdin) child.stdin.end(invocation.stdin);
   });
+}
+
+function terminateChildProcess(child, signal = "SIGTERM") {
+  if (!child.pid) return;
+  try {
+    if (process.platform !== "win32") {
+      process.kill(-child.pid, signal);
+      return;
+    }
+  } catch {
+    // Fall back to killing the direct child process.
+  }
+  try {
+    child.kill(signal);
+  } catch {
+    // The process may already have exited.
+  }
 }
 
 function buildGeneratorInvocation(generator, prompt, { env = defaultEnv, timeoutMs = 120_000 } = {}) {

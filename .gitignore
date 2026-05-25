@@ -7,5 +7,6 @@ dist/
 data/*.db
 data/*.db-*
 data/*.project.json
+data/*.local.json
 data/task-nodes.json
 data/ai-results/

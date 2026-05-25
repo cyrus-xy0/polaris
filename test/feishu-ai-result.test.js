@@ -111,4 +111,66 @@ describe("Feishu AI result publisher", () => {
     assert.equal(calls[1].args[1], "+update");
     assert.match(calls.slice(1).map((call) => call.content).join(""), /角色 42/);
   });
+
+  it("refreshes an existing Feishu result document instead of creating a new one", async () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-feishu-refresh-"));
+    const binDir = mkdtempSync(join(tmpdir(), "polaris-lark-cli-refresh-"));
+    const logPath = join(dataRoot, "lark-cli-log.jsonl");
+    const commandPath = join(binDir, "lark-cli");
+    writeFileSync(
+      commandPath,
+      [
+        "#!/usr/bin/env node",
+        "const fs = require('node:fs');",
+        "const path = require('node:path');",
+        "const args = process.argv.slice(2);",
+        "const contentArg = args[args.indexOf('--content') + 1] || '';",
+        "const contentPath = contentArg.startsWith('@') ? path.resolve(process.cwd(), contentArg.slice(1)) : '';",
+        "const content = contentPath ? fs.readFileSync(contentPath, 'utf8') : contentArg;",
+        "fs.appendFileSync(process.env.LARK_CLI_LOG, JSON.stringify({ args, content }) + '\\n');",
+        "if (args[0] === 'docs' && args[1] === '+update' && args.includes('overwrite')) {",
+        "  console.log(JSON.stringify({ ok: true }));",
+        "  process.exit(0);",
+        "}",
+        "process.exit(2);",
+      ].join("\n"),
+    );
+    chmodSync(commandPath, 0o755);
+
+    const result = await publishAiResultToFeishu({
+      dataRoot,
+      node: {
+        id: "map-gtm-roles",
+        title: "拆 GTM 运营里的关键角色",
+        description: "看清楚销售、市场、RevOps、管理者分别在痛什么。",
+      },
+      output: {
+        title: "GTM 角色痛点刷新结果",
+        summary: "已重新生成并覆盖原文档。",
+        markdown: "## 刷新结论\n原文档内更新，不新建文档。",
+      },
+      existingResult: {
+        docType: "飞书 Doc",
+        url: "https://bytedance.larkoffice.com/docx/existing-result",
+      },
+      timeoutMs: 2_000,
+      env: {
+        ...process.env,
+        PATH: `${binDir}${delimiter}${process.env.PATH ?? ""}`,
+        LARK_CLI_LOG: logPath,
+      },
+    });
+
+    const calls = readFileSync(logPath, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+
+    assert.equal(result.url, "https://bytedance.larkoffice.com/docx/existing-result");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].args[1], "+update");
+    assert.match(calls[0].args.join(" "), /overwrite/);
+    assert.doesNotMatch(calls[0].args.join(" "), /\+create/);
+    assert.match(calls[0].content, /GTM 角色痛点刷新结果/);
+  });
 });

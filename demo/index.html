@@ -34,6 +34,15 @@
           <div class="node-chip-row">
             <span class="node-chip" id="current-priority"></span>
             <span class="node-chip muted" id="current-rank"></span>
+            <button
+              class="ai-refresh-button"
+              id="refresh-ai-button"
+              type="button"
+              aria-label="生成或重新生成当前任务 AI 结果"
+              title="生成或重新生成当前任务 AI 结果"
+            >
+              ↻
+            </button>
           </div>
 
           <article class="action-plan">
@@ -62,6 +71,30 @@
             <input id="manual-result-url" type="url" placeholder="不满意就粘贴自己的 Doc / Base 链接" />
             <button class="primary-action finish-action" id="complete-button">完成</button>
           </div>
+
+          <form class="ai-config-panel" id="ai-config-form" aria-label="AI 超时设置">
+            <div class="ai-config-heading">
+              <p class="panel-kicker">AI Timeout</p>
+              <h2>本地超时</h2>
+            </div>
+            <label class="ai-config-field">
+              <span>生成</span>
+              <input id="ai-timeout-seconds" name="timeoutSeconds" type="number" min="1" step="1" inputmode="numeric" />
+            </label>
+            <label class="ai-config-field">
+              <span>拆分</span>
+              <input
+                id="ai-split-timeout-seconds"
+                name="splitTimeoutSeconds"
+                type="number"
+                min="1"
+                step="1"
+                inputmode="numeric"
+              />
+            </label>
+            <button class="soft-action ai-config-save" type="submit">保存</button>
+            <p class="ai-config-status" id="ai-config-status" role="status"></p>
+          </form>
         </section>
 
         <aside class="queue-panel" aria-labelledby="queue-title">

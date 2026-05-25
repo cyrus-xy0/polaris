@@ -223,13 +223,7 @@ export function buildAiContextForNode({ nodes = [], library = {}, nodeId, reason
 
 export function resolvePreparedArtifact(node, artifacts = []) {
   const linkedArtifact = artifacts.find((item) => item.relatedNodeIds?.includes(node.id));
-  if (linkedArtifact) return linkedArtifact;
-
-  return {
-    docType: "飞书 Doc",
-    url: `https://example.feishu.cn/docx/ai-output-${node.id}`,
-    title: `${node.title} 结果草稿`,
-  };
+  return linkedArtifact ?? null;
 }
 
 export function completeTask(nodes, nodeId, result) {

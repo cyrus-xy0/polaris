@@ -317,6 +317,45 @@ button {
   font-weight: 650;
 }
 
+.ai-refresh-button {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid rgba(21, 25, 29, 0.09);
+  border-radius: 999px;
+  color: rgba(21, 25, 29, 0.5);
+  background: rgba(255, 255, 255, 0.46);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  cursor: pointer;
+  line-height: 1;
+  transition:
+    color 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.ai-refresh-button:hover,
+.ai-refresh-button:focus-visible {
+  color: rgba(36, 95, 86, 0.84);
+  border-color: rgba(47, 128, 117, 0.2);
+  background: rgba(47, 128, 117, 0.07);
+  transform: translateY(-1px);
+}
+
+.ai-refresh-button:focus-visible {
+  outline: 2px solid rgba(47, 128, 117, 0.24);
+  outline-offset: 2px;
+}
+
+.ai-refresh-button:disabled {
+  cursor: wait;
+  opacity: 0.54;
+  transform: none;
+}
+
 .node-chip.priority-p0 {
   border-color: rgba(182, 120, 44, 0.36);
   color: #7d4e16;
@@ -646,6 +685,77 @@ button {
   cursor: not-allowed;
   opacity: 0.48;
   transform: none;
+}
+
+.ai-config-panel {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(128px, 1fr) repeat(2, minmax(112px, 140px)) auto minmax(120px, 1fr);
+  gap: 10px;
+  align-items: center;
+  margin-top: 4px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(21, 25, 29, 0.07);
+}
+
+.ai-config-heading h2 {
+  margin: 0;
+  color: rgba(17, 24, 32, 0.88);
+  font-size: 15px;
+  font-weight: 760;
+  line-height: 1.3;
+}
+
+.ai-config-field {
+  display: grid;
+  gap: 6px;
+  color: rgba(21, 25, 29, 0.52);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.ai-config-field input {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid rgba(21, 25, 29, 0.08);
+  border-radius: 999px;
+  color: rgba(17, 24, 32, 0.86);
+  background: rgba(255, 255, 255, 0.56);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.ai-config-field input:focus {
+  border-color: rgba(47, 128, 117, 0.32);
+  box-shadow:
+    0 0 0 4px rgba(47, 128, 117, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.ai-config-save {
+  height: 38px;
+  padding: 0 16px;
+}
+
+.ai-config-panel.is-saving .ai-config-save {
+  pointer-events: none;
+  opacity: 0.56;
+}
+
+.ai-config-status {
+  min-height: 18px;
+  margin: 0;
+  color: rgba(36, 95, 86, 0.76);
+  font-size: 12px;
+  font-weight: 680;
+  line-height: 1.5;
+}
+
+.ai-config-status.is-error {
+  color: rgba(154, 56, 42, 0.88);
 }
 
 .queue-panel {
@@ -3060,6 +3170,19 @@ a.tree-record-chip:focus-visible {
     margin-left: auto;
   }
 
+  .ai-config-panel {
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    width: min(96%, 680px);
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  .ai-config-heading,
+  .ai-config-status {
+    grid-column: 1 / -1;
+  }
+
   .workspace-page {
     padding-top: 30px;
   }
@@ -3876,6 +3999,101 @@ body {
 .knowledge-row.method-card h3 {
   color: rgba(17, 24, 32, 0.66);
   font-weight: 560;
+}
+
+/* Keep the three Playbook panels on one visual type scale. */
+#methods-view {
+  --playbook-kicker-size: 11px;
+  --playbook-heading-size: 22px;
+  --playbook-card-title-size: 15px;
+  --playbook-card-body-size: 12px;
+  --playbook-meta-size: 11px;
+}
+
+#methods-view .panel-kicker {
+  margin: 0 0 6px;
+  font-size: var(--playbook-kicker-size);
+  font-weight: 760;
+  line-height: 1.15;
+  letter-spacing: 0.1em;
+}
+
+#methods-view .canvas-header h2,
+#methods-view .knowledge-section h2,
+#methods-view .current-result-section .canvas-header h2,
+#methods-view .skill-section .canvas-header h2,
+#methods-view .reusable-knowledge-section .canvas-header h2 {
+  color: rgba(17, 24, 32, 0.92);
+  font-size: var(--playbook-heading-size);
+  font-weight: 760;
+  line-height: 1.2;
+}
+
+#methods-view .catalog-empty,
+#methods-view .method-card.artifact-card.output-result-card,
+#methods-view .method-card.skill-card,
+#methods-view .knowledge-cluster {
+  border-color: rgba(17, 24, 32, 0.065);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow:
+    0 10px 24px rgba(31, 39, 43, 0.045),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+#methods-view .catalog-empty {
+  display: grid;
+  align-content: center;
+  min-height: 98px;
+  padding: 16px 18px 16px 22px;
+  border-style: dashed;
+}
+
+#methods-view .current-result-section .catalog-empty {
+  min-height: 98px;
+}
+
+#methods-view .catalog-empty h3,
+#methods-view .output-result-card .output-task-name,
+#methods-view .skill-section .method-card h3,
+#methods-view .knowledge-cluster-heading h3 {
+  margin: 0;
+  color: rgba(17, 24, 32, 0.88);
+  font-size: var(--playbook-card-title-size);
+  font-weight: 720;
+  line-height: 1.42;
+}
+
+#methods-view .catalog-empty p,
+#methods-view .output-result-card .output-doc-link,
+#methods-view .skill-section .method-card p,
+#methods-view .knowledge-cluster-summary {
+  color: rgba(17, 24, 32, 0.44);
+  font-size: var(--playbook-card-body-size);
+  font-weight: 520;
+  line-height: 1.5;
+}
+
+#methods-view .catalog-empty p {
+  margin: 7px 0 0;
+}
+
+#methods-view .output-result-card .output-doc-type,
+#methods-view .knowledge-cluster-label,
+#methods-view .knowledge-cluster-count,
+#methods-view .knowledge-cluster-toggle,
+#methods-view .knowledge-row-date,
+#methods-view .knowledge-row.method-card small.knowledge-row-date {
+  min-height: 24px;
+  font-size: var(--playbook-meta-size);
+  font-weight: 700;
+}
+
+#methods-view .knowledge-row.method-card h3 {
+  color: rgba(17, 24, 32, 0.66);
+  font-size: 14px;
+  font-weight: 560;
+  line-height: 1.46;
 }
 
 @media (max-width: 640px) {

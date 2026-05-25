@@ -504,6 +504,32 @@ describe("local data repository", () => {
     }
   });
 
+  it("updates AI timeout configuration in the user-owned local config", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
+
+    try {
+      const repository = createRepository({ dataRoot, dbPath: join(dataRoot, "polaris.db") });
+      const project = repository.updateAiConfig({
+        timeoutMs: 240_000,
+        splitTimeoutMs: 45_000,
+      });
+      repository.close();
+      const localConfig = JSON.parse(readFileSync(join(dataRoot, "polaris.local.json"), "utf8"));
+
+      assert.deepEqual(project.localConfig.ai, {
+        timeoutMs: 240_000,
+        splitTimeoutMs: 45_000,
+      });
+      assert.deepEqual(localConfig.ai, {
+        timeoutMs: 240_000,
+        splitTimeoutMs: 45_000,
+      });
+      assert.equal(localConfig.paths.taskNodes, "task-nodes.json");
+    } finally {
+      rmSync(dataRoot, { recursive: true, force: true });
+    }
+  });
+
   it("adds missing AI timeout defaults to legacy local config without using project files", () => {
     const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
     writeFileSync(

@@ -113,6 +113,33 @@ describe("action plan AI", () => {
     assert.deepEqual(plan.steps, ["收集上下文", "生成行动计划", "记录判断"]);
   });
 
+  it("returns quickly when the local generator exceeds the configured timeout", async () => {
+    const serviceRoot = mkdtempSync(join(tmpdir(), "polaris-openclaw-timeout-"));
+    const commandPath = join(serviceRoot, "openclaw");
+    writeFileSync(
+      commandPath,
+      [
+        "#!/usr/bin/env node",
+        "setTimeout(() => { console.log(JSON.stringify({ response: JSON.stringify({ summary: '太晚了', steps: ['不应返回'] }) })); }, 1000);",
+      ].join("\n"),
+    );
+    chmodSync(commandPath, 0o755);
+
+    const startedAt = Date.now();
+    const plan = await generateSuggestedActionPlan({
+      node: createTestNode(),
+      serviceRoot,
+      dataRoot: serviceRoot,
+      timeoutMs: 50,
+      includePath: false,
+    });
+
+    assert.equal(plan.provider, "openclaw");
+    assert.deepEqual(plan.steps, []);
+    assert.match(plan.error, /timed out after 50ms/);
+    assert.ok(Date.now() - startedAt < 700);
+  });
+
   it("runs hermes in quiet query mode so the output is generated text", async () => {
     const serviceRoot = mkdtempSync(join(tmpdir(), "polaris-hermes-"));
     const commandPath = join(serviceRoot, "hermes");

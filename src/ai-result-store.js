@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { renderMarkdownToHtml } from "./markdown-renderer.js";
 
 const aiResultDirName = "ai-results";
@@ -77,9 +77,12 @@ export function writeAiResultDocument({
   output,
   artifact = null,
   actionPlan = null,
+  existingResult = null,
 }) {
   const title = output.title || `${node.title} AI 结果`;
-  const filePath = resolveAiResultDocumentPath({ dataRoot, aiResultsRoot, nodeId: node.id, signature });
+  const filePath =
+    resolveExistingAiResultDocumentPath({ dataRoot, aiResultsRoot, existingResult }) ??
+    resolveAiResultDocumentPath({ dataRoot, aiResultsRoot, nodeId: node.id, signature });
   mkdirSync(dirname(filePath), { recursive: true });
   writeFileSync(filePath, renderAiResultHtml({ title, node, output, artifact, actionPlan }), "utf8");
 
@@ -90,6 +93,16 @@ export function writeAiResultDocument({
     url: `/ai-results/${relativePath.split(/[\\/]/).join("/")}`,
     path: filePath,
   };
+}
+
+function resolveExistingAiResultDocumentPath({ dataRoot, aiResultsRoot = null, existingResult = null }) {
+  if (existingResult?.docType !== "本地 HTML") return null;
+  if (typeof existingResult.path !== "string" || !existingResult.path.trim()) return null;
+  const root = resolveAiResultRoot({ dataRoot, aiResultsRoot });
+  const filePath = resolve(existingResult.path);
+  if (filePath !== root && !filePath.startsWith(`${root}${sep}`)) return null;
+  if (!filePath.endsWith(".html")) return null;
+  return filePath;
 }
 
 export function hasSuggestedActionPlanContent(plan = {}) {

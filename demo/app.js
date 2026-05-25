@@ -22,6 +22,7 @@ import {
 let nodes = [];
 let library = { knowledge: [], skills: [], artifacts: [] };
 let appMetadata = { version: "" };
+let projectConfig = normalizeProjectConfig();
 let selectedNodeId = null;
 let selectedTreeNodeId = null;
 let activeView = "today";
@@ -45,6 +46,9 @@ let nodeEditorDependencyQuery = "";
 let nodeEditorBackdropPointerStarted = false;
 let draggingTreeNodeId = null;
 let treeDropTarget = null;
+let aiConfigDraft = null;
+let aiConfigFeedback = null;
+let refreshingAiNodeId = null;
 const aiAnalyzingText = "AI 正在分析";
 const newRootNodeTitle = "新的 Polaris 目标";
 const newRootNodeDescription = "写清楚这棵目标树最终要推进什么。";
@@ -62,6 +66,7 @@ const elements = {
   currentSummary: document.querySelector("#current-summary"),
   currentPriority: document.querySelector("#current-priority"),
   currentRank: document.querySelector("#current-rank"),
+  refreshAiButton: document.querySelector("#refresh-ai-button"),
   actionPlanSummary: document.querySelector("#action-plan-summary"),
   actionPlanSteps: document.querySelector("#action-plan-steps"),
   preparedResultTitle: document.querySelector("#prepared-result-title"),
@@ -71,6 +76,10 @@ const elements = {
   aiResultLink: document.querySelector("#ai-result-link"),
   completeButton: document.querySelector("#complete-button"),
   manualResultUrl: document.querySelector("#manual-result-url"),
+  aiConfigForm: document.querySelector("#ai-config-form"),
+  aiTimeoutSeconds: document.querySelector("#ai-timeout-seconds"),
+  aiSplitTimeoutSeconds: document.querySelector("#ai-split-timeout-seconds"),
+  aiConfigStatus: document.querySelector("#ai-config-status"),
   treeMap: document.querySelector("#tree-map"),
   nodeEditorDrawer: document.querySelector("#node-editor-drawer"),
   nodeEditorForm: document.querySelector("#node-editor-form"),
@@ -104,6 +113,7 @@ const elements = {
 async function loadAppData() {
   const data = await requestJson("/api/bootstrap");
   appMetadata = normalizeAppMetadata(data.app);
+  projectConfig = normalizeProjectConfig(data.project);
   nodes = hydrateNodes(data.nodes);
   library = normalizeLibrary(data.library);
   selectedTreeNodeId = nodes[0]?.id ?? null;
@@ -126,6 +136,23 @@ function normalizeAppMetadata(rawApp = {}) {
   return {
     version: version ? `v${version.replace(/^v/i, "")}` : "",
   };
+}
+
+function normalizeProjectConfig(rawProject = {}) {
+  const ai = rawProject.localConfig?.ai ?? {};
+  return {
+    localConfig: {
+      ai: {
+        timeoutMs: normalizePositiveInteger(ai.timeoutMs, 120_000),
+        splitTimeoutMs: normalizePositiveInteger(ai.splitTimeoutMs, 60_000),
+      },
+    },
+  };
+}
+
+function normalizePositiveInteger(value, fallback) {
+  const parsedValue = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : fallback;
 }
 
 async function saveNodes() {
@@ -209,6 +236,7 @@ async function init() {
 
 function renderLoadingState() {
   renderView();
+  syncAiRefreshButton(null);
   elements.currentTitle.textContent = "正在加载本地数据";
   elements.currentSummary.textContent = "任务节点、Skill 和知识库会从本地数据层读取。";
   elements.currentPriority.textContent = "SQLite";
@@ -226,6 +254,7 @@ function renderLoadingState() {
 
 function renderFatalState(error) {
   renderView();
+  syncAiRefreshButton(null);
   elements.currentTitle.textContent = "本地数据加载失败";
   elements.currentSummary.textContent = error.message;
   elements.currentPriority.textContent = "需要检查 server";
@@ -339,6 +368,7 @@ function getCurrentItem(queue) {
 
 function render() {
   renderAppVersion();
+  renderAiConfigPanel();
   renderView();
   const queue = getActiveQueue();
   const current = getCurrentItem(queue);
@@ -362,6 +392,20 @@ function renderAppVersion() {
   }
 }
 
+function renderAiConfigPanel() {
+  if (!elements.aiConfigForm) return;
+  if (!aiConfigDraft) {
+    elements.aiTimeoutSeconds.value = formatMillisecondsAsSeconds(projectConfig.localConfig.ai.timeoutMs);
+    elements.aiSplitTimeoutSeconds.value = formatMillisecondsAsSeconds(projectConfig.localConfig.ai.splitTimeoutMs);
+  }
+  elements.aiConfigStatus.textContent = aiConfigFeedback?.message ?? "";
+  elements.aiConfigStatus.classList.toggle("is-error", aiConfigFeedback?.tone === "error");
+}
+
+function formatMillisecondsAsSeconds(milliseconds) {
+  return String(Math.max(1, Math.round(milliseconds / 1000)));
+}
+
 function renderView() {
   for (const [viewName, view] of Object.entries(elements.views)) {
     view.classList.toggle("is-active", viewName === activeView);
@@ -382,16 +426,13 @@ function renderEmptyState() {
   elements.currentPriority.textContent = "队列已清空";
   elements.currentPriority.className = "node-chip muted";
   elements.currentRank.textContent = "队列位置：无";
+  syncAiRefreshButton(null);
   elements.actionPlanSummary.textContent = "队列已经清空，下一步应该让目标树继续产生可执行动作。";
   elements.actionPlanSteps.replaceChildren(...["复盘完成内容", "补充判断结论", "拆出下一批行动"].map(createActionItem));
-  elements.preparedResultTitle.textContent = "Feishu Doc";
-  elements.preparedResultSummary.textContent = "AI 会把已完成的判断和产物整理回知识库，作为后续节点的输入。";
-  elements.preparedResultPoints.replaceChildren(...["整理已完成节点", "补齐判断结论", "生成下一批任务输入"].map(createPreparedPoint));
-  currentPreparedArtifact = {
-    docType: "飞书 Doc",
-    title: "今日复盘草稿",
-    url: "https://example.feishu.cn/docx/daily-review",
-  };
+  elements.preparedResultTitle.textContent = "等待下一批任务";
+  elements.preparedResultSummary.textContent = "没有可执行节点时不会预置 AI 结果。";
+  elements.preparedResultPoints.replaceChildren();
+  currentPreparedArtifact = null;
   updateAiResultLink();
   elements.queueChain.innerHTML = '<div class="empty-state">没有可执行叶子节点</div>';
   renderTree();
@@ -404,6 +445,7 @@ function renderFirstRunEmptyState() {
   elements.currentPriority.textContent = "空数据层";
   elements.currentPriority.className = "node-chip muted";
   elements.currentRank.textContent = "等待根目标";
+  syncAiRefreshButton(null);
   elements.actionPlanSummary.textContent = "先写下根目标，再把它拆成可执行节点。";
   elements.actionPlanSteps.replaceChildren(...["创建根目标", "补充描述", "保存后继续拆分"].map(createActionItem));
   elements.preparedResultTitle.textContent = "User Data";
@@ -424,8 +466,20 @@ function renderCurrent(item, queue) {
   elements.currentPriority.textContent = getPriorityLabel(node.id, queue);
   elements.currentPriority.className = `node-chip ${getPriorityClass(node.id, queue)}`;
   elements.currentRank.textContent = getQueueRankLabel(node.id, queue);
+  syncAiRefreshButton(node);
   renderSuggestedActionPlan(node, reason);
   renderDraftOutput(node, reason);
+}
+
+function syncAiRefreshButton(node) {
+  const button = elements.refreshAiButton;
+  if (!button) return;
+  const isRefreshing = node && refreshingAiNodeId === node.id;
+  button.hidden = !node;
+  button.disabled = !node || isRefreshing;
+  button.classList.toggle("is-refreshing", Boolean(isRefreshing));
+  button.textContent = isRefreshing ? "…" : "↻";
+  button.title = isRefreshing ? "正在生成当前任务 AI 结果" : "生成或重新生成当前任务 AI 结果";
 }
 
 function renderSuggestedActionPlan(node, reason) {
@@ -440,10 +494,12 @@ function renderSuggestedActionPlan(node, reason) {
     renderActionPlan(createAiErrorActionPlan(cached.error));
     return;
   }
+  if (cached?.signature === signature && cached.status === "loading") {
+    renderActionPlan(createAiPendingActionPlan());
+    return;
+  }
 
-  renderActionPlan(createAiPendingActionPlan());
-  if (cached?.signature === signature && cached.status === "loading") return;
-  requestSuggestedActionPlan(node, signature);
+  renderActionPlan(createAiIdleActionPlan());
 }
 
 async function requestSuggestedActionPlan(node, signature) {
@@ -529,6 +585,11 @@ function renderDraftOutput(node, reason) {
     renderAiResultLink(node, artifact, reason, cached);
     return;
   }
+  if (cached?.signature === signature && cached.status === "loading") {
+    renderDraftOutputContent(createAiPendingDraftOutput());
+    renderAiResultLink(node, artifact, reason, cached);
+    return;
+  }
 
   if (suggested?.signature === suggestedSignature && suggested.status === "error") {
     const errorState = {
@@ -541,11 +602,8 @@ function renderDraftOutput(node, reason) {
     return;
   }
 
-  renderDraftOutputContent(createAiPendingDraftOutput());
-  renderAiResultLink(node, artifact, reason, { status: "loading", signature });
-  if (suggested?.signature !== suggestedSignature || suggested.status !== "ready") return;
-  if (cached?.signature === signature && cached.status === "loading") return;
-  requestDraftOutput(node, signature);
+  renderDraftOutputContent(createAiIdleDraftOutput());
+  renderAiResultLink(node, artifact, reason, { status: "idle", signature });
 }
 
 async function requestDraftOutput(node, signature) {
@@ -618,6 +676,13 @@ function createAiPendingActionPlan() {
   };
 }
 
+function createAiIdleActionPlan() {
+  return {
+    summary: "点击上方生成按钮后，AI 才会分析路径并生成行动计划。",
+    steps: [],
+  };
+}
+
 function createAiErrorActionPlan(error) {
   return {
     summary: error ? `AI 分析失败：${error}` : "AI 分析失败，请查看终端日志。",
@@ -629,6 +694,15 @@ function createAiPendingDraftOutput() {
   return {
     title: "",
     summary: aiAnalyzingText,
+    brief: "",
+    points: [],
+  };
+}
+
+function createAiIdleDraftOutput() {
+  return {
+    title: "等待用户触发",
+    summary: "不会预置结果；点击生成按钮后才会创建或更新 AI 结果文档。",
     brief: "",
     points: [],
   };
@@ -677,8 +751,13 @@ function renderAiResultLink(node, artifact, reason, draftState) {
     return;
   }
 
-  if (draftState?.status !== "ready") {
+  if (draftState?.status === "loading") {
     updateAiResultLink({ status: "loading" });
+    return;
+  }
+
+  if (draftState?.status !== "ready") {
+    updateAiResultLink({ status: "idle" });
     return;
   }
 
@@ -693,9 +772,12 @@ function renderAiResultLink(node, artifact, reason, draftState) {
     return;
   }
 
-  updateAiResultLink({ status: "loading" });
-  if (cached?.signature === signature && cached.status === "loading") return;
-  requestAiResult(node, signature);
+  if (cached?.signature === signature && cached.status === "loading") {
+    updateAiResultLink({ status: "loading" });
+    return;
+  }
+
+  updateAiResultLink({ status: "idle" });
 }
 
 async function requestAiResult(node, signature) {
@@ -732,6 +814,73 @@ async function requestAiResult(node, signature) {
   }
 
   render();
+}
+
+async function refreshCurrentAiResult() {
+  const queue = getActiveQueue();
+  const current = getCurrentItem(queue);
+  if (!current || refreshingAiNodeId) return;
+
+  const { node, reason } = current;
+  const artifact = resolvePreparedArtifact(node, library.artifacts);
+  const suggestedSignature = getSuggestedActionPlanSignature(node, reason);
+  const draftSignature = getDraftOutputSignature(node, artifact, reason);
+  const resultSignature = getAiResultSignature(node, artifact, reason);
+
+  refreshingAiNodeId = node.id;
+  suggestedActionPlanCache.set(node.id, { status: "loading", signature: suggestedSignature });
+  draftOutputCache.set(node.id, { status: "loading", signature: draftSignature });
+  aiResultCache.set(node.id, { status: "loading", signature: resultSignature });
+  render();
+
+  try {
+    const payload = await requestJson(`/api/task-nodes/${encodeURIComponent(node.id)}/refresh-ai`, {
+      method: "POST",
+    });
+    const plan = normalizeSuggestedActionPlan(payload.plan);
+    const output = normalizeDraftOutput(payload.output);
+    const result = normalizeAiResult(payload.result);
+    if (plan.error || output.error || result.error) {
+      throw new Error(plan.error || output.error || result.error);
+    }
+
+    suggestedActionPlanCache.set(node.id, {
+      status: "ready",
+      signature: suggestedSignature,
+      plan,
+    });
+    draftOutputCache.set(node.id, {
+      status: "ready",
+      signature: draftSignature,
+      output,
+    });
+    aiResultCache.set(node.id, {
+      status: "ready",
+      signature: resultSignature,
+      result,
+    });
+    attachAiResultToCompletedTask(node.id, result);
+  } catch (error) {
+    console.error("Failed to refresh AI result", error);
+    suggestedActionPlanCache.set(node.id, {
+      status: "error",
+      signature: suggestedSignature,
+      error: error.message,
+    });
+    draftOutputCache.set(node.id, {
+      status: "error",
+      signature: draftSignature,
+      error: error.message,
+    });
+    aiResultCache.set(node.id, {
+      status: "error",
+      signature: resultSignature,
+      error: error.message,
+    });
+  } finally {
+    refreshingAiNodeId = null;
+    render();
+  }
 }
 
 function normalizeAiResult(result = {}) {
@@ -799,6 +948,16 @@ function createPreparedBrief(text) {
 }
 
 function updateAiResultLink(state = {}) {
+  if (state.status === "idle") {
+    clearAutoFilledResultUrl();
+    elements.aiResultLink.removeAttribute("href");
+    elements.aiResultLink.ariaDisabled = "true";
+    elements.aiResultLink.textContent = "AI 结果待生成";
+    elements.aiResultLink.title = "点击上方生成按钮后才会生成 AI 结果";
+    syncCompleteButtonState();
+    return;
+  }
+
   if (state.status === "loading") {
     clearAutoFilledResultUrl();
     elements.aiResultLink.removeAttribute("href");
@@ -865,7 +1024,65 @@ function syncCompleteButtonState() {
     ? "没有可完成的当前任务"
     : hasResultUrl
       ? "完成当前任务并绑定结果链接"
-      : "完成当前任务；AI 结果链接生成后会自动补回";
+      : "完成当前任务；之后可以手动生成或绑定结果链接";
+}
+
+function updateAiConfigDraft() {
+  aiConfigDraft = {
+    timeoutSeconds: elements.aiTimeoutSeconds.value,
+    splitTimeoutSeconds: elements.aiSplitTimeoutSeconds.value,
+  };
+  aiConfigFeedback = null;
+  renderAiConfigPanel();
+}
+
+async function saveAiConfig(event) {
+  event.preventDefault();
+  const timeoutSeconds = readPositiveSeconds(elements.aiTimeoutSeconds.value, "生成超时");
+  const splitTimeoutSeconds = readPositiveSeconds(elements.aiSplitTimeoutSeconds.value, "拆分超时");
+  if (!timeoutSeconds.ok || !splitTimeoutSeconds.ok) {
+    aiConfigFeedback = {
+      tone: "error",
+      message: timeoutSeconds.error || splitTimeoutSeconds.error,
+    };
+    renderAiConfigPanel();
+    return;
+  }
+
+  elements.aiConfigForm.classList.add("is-saving");
+  aiConfigFeedback = { tone: "saving", message: "保存中..." };
+  renderAiConfigPanel();
+
+  try {
+    const payload = await requestJson("/api/ai-config", {
+      method: "PUT",
+      body: JSON.stringify({
+        ai: {
+          timeoutMs: timeoutSeconds.value * 1000,
+          splitTimeoutMs: splitTimeoutSeconds.value * 1000,
+        },
+      }),
+    });
+    projectConfig = normalizeProjectConfig(payload.project);
+    aiConfigDraft = null;
+    aiConfigFeedback = { tone: "success", message: "已保存到本地配置" };
+    clearAiGenerationCaches();
+    render();
+  } catch (error) {
+    console.error("Failed to persist AI config", error);
+    aiConfigFeedback = { tone: "error", message: `保存失败：${error.message}` };
+    renderAiConfigPanel();
+  } finally {
+    elements.aiConfigForm.classList.remove("is-saving");
+  }
+}
+
+function readPositiveSeconds(value, label) {
+  const parsedValue = Number.parseInt(value ?? "", 10);
+  if (Number.isFinite(parsedValue) && parsedValue > 0) {
+    return { ok: true, value: parsedValue };
+  }
+  return { ok: false, error: `${label}必须是正整数秒` };
 }
 
 function createQueueCard(item, index, currentNodeId) {
@@ -928,9 +1145,6 @@ function completeTaskWithResult(result, current = getCurrentItem(getActiveQueue(
   selectedTreeNodeId = completedNodeId;
   elements.manualResultUrl.value = "";
   autoFilledResultUrl = "";
-  if (!completionResult.url) {
-    requestAiResultBackfill(current.node, current.reason);
-  }
   render();
 }
 
@@ -949,24 +1163,10 @@ function normalizeCompletionResult(node, result = {}) {
       (isManual
         ? "用户完成任务时绑定的结果链接。"
         : isPending
-          ? "任务已完成，AI 结果链接生成后会自动补回。"
+          ? "任务已完成，尚未绑定结果链接。"
           : "完成任务时生成并绑定的 AI 结果。"),
     path: prepared?.path,
   };
-}
-
-function requestAiResultBackfill(node, reason = "") {
-  const artifact = currentPreparedArtifact ?? resolvePreparedArtifact(node, library.artifacts);
-  const signature = getAiResultSignature(node, artifact, reason);
-  const cached = aiResultCache.get(node.id);
-
-  if (cached?.signature === signature && cached.status === "loading") return;
-  if (cached?.signature === signature && cached.status === "ready") {
-    attachAiResultToCompletedTask(node.id, cached.result);
-    return;
-  }
-
-  requestAiResult(node, signature);
 }
 
 function attachAiResultToCompletedTask(nodeId, result = {}) {
@@ -2391,6 +2591,10 @@ elements.viewButtons.forEach((button) => {
   });
 });
 elements.completeButton.addEventListener("click", completeSelectedTask);
+elements.refreshAiButton.addEventListener("click", refreshCurrentAiResult);
+elements.aiConfigForm.addEventListener("submit", saveAiConfig);
+elements.aiTimeoutSeconds.addEventListener("input", updateAiConfigDraft);
+elements.aiSplitTimeoutSeconds.addEventListener("input", updateAiConfigDraft);
 elements.nodeEditorForm.addEventListener("submit", saveNodeEditor);
 elements.nodeEditorAiSplit.addEventListener("click", splitSelectedNodeWithAi);
 elements.nodeEditorTitle.addEventListener("input", updateNodeEditorDraftFromFields);

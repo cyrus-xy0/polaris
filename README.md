@@ -120,6 +120,8 @@ polaris-data/
 
 `ai.timeoutMs` controls action-plan, draft-output, and executed AI-result generation. `ai.splitTimeoutMs` controls manual AI child-node generation. These values live in the user-owned data directory and are preserved across project code updates; environment variables can still override them for a single process.
 
+The Focus screen also exposes the same AI timeout values in seconds and saves changes back to `polaris.local.json` in the active data directory. Changes apply to new AI jobs immediately; restart is only needed when editing the JSON file by hand.
+
 To connect your own knowledge or skill folder, stop the server, add another `sources` entry in `polaris.local.json`, and restart. `path` may be relative to the data directory or an absolute local path:
 
 ```json
@@ -247,6 +249,8 @@ If neither `openclaw` nor `hermes` exists locally, or if the provider times out,
 
 Generated Suggest Action Plan, Draft Output, and executed AI Result payloads are persisted to `paths.aiResults` before the browser updates the panel. Draft Output remains the preview card, while the `查看 AI 结果` flow runs a separate execution prompt that produces the actual result body, such as an analysis table, findings, and follow-up actions. Polaris then creates a Feishu document with `lark-cli docs +create --api-version v2 --as user`, persists the returned URL, and fills the completion link input after analysis finishes. If Feishu creation fails locally, Polaris writes a local HTML result page under `<paths.aiResults>/documents/` so the result link still resolves. While generation is in progress, the UI shows `AI 正在分析`.
 
+The browser does not run those AI jobs automatically on page load. Use the small generate/refresh button on the current task card to create or regenerate the action plan, draft, and final result. If the task already has a generated result document, regeneration updates that original document instead of creating a new one.
+
 AI prompts are built from the current task plus its upstream task chain, dependency results, related and global knowhow, skills, artifacts, and prior task results. The persisted cache key includes this context digest, so changed knowledge or accumulated results trigger regeneration.
 
 Draft Output and Feishu result generation are constrained by the saved Suggest Action Plan. The plan is generated or read first, injected into the draft prompt as an implementation checklist, and its digest is included in downstream cache keys.
@@ -258,6 +262,7 @@ Polaris reads AI timeout defaults from the user-owned `polaris.local.json`, so e
 - `ai.timeoutMs` defaults to `120000` for action plans, draft output, and AI result generation. `POLARIS_AI_TIMEOUT_MS` can override it for a single server process.
 - `ai.splitTimeoutMs` defaults to `60000` for manual AI child-node generation. `POLARIS_AI_SPLIT_TIMEOUT_MS` can override it for a single server process.
 - `POLARIS_FEISHU_TIMEOUT_MS` defaults to `8000` per `lark-cli` operation before falling back to local HTML.
+- The browser writes Focus-screen AI timeout edits to the active data directory's `polaris.local.json`, not to files tracked by the repo.
 
 Deployment servers can run with `openclaw` only. Polaris discovers `openclaw` before `hermes`, invokes it as `openclaw agent --agent "${POLARIS_OPENCLAW_AGENT:-main}" --message "<prompt>" --thinking "${POLARIS_OPENCLAW_THINKING:-low}" --json`, and accepts JSON or plain text from the response. `hermes` is only a fallback provider and is not required when `openclaw` is executable in the service root, `bin/`, `<data-dir>/bin`, or `PATH`.
 

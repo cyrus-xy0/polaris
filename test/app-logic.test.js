@@ -137,7 +137,7 @@ describe("app logic", () => {
     assert.equal(nextQueue.available.some((item) => item.node.id === currentId), false);
   });
 
-  it("resolves prepared output from artifacts before falling back", () => {
+  it("resolves prepared output only from explicit artifacts", () => {
     const node = sampleNodes.find((candidate) => candidate.id === "try-demo");
     const artifact = resolvePreparedArtifact(node, [
       {
@@ -149,6 +149,7 @@ describe("app logic", () => {
     ]);
 
     assert.equal(artifact.title, "Demo 草稿");
+    assert.equal(resolvePreparedArtifact(node, []), null);
   });
 
   it("builds AI context from task lineage, knowhow, skills, and accumulated results", () => {

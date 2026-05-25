@@ -46,11 +46,11 @@ if (!hasDataRootOverride({ argv: process.argv.slice(2), env: process.env })) {
 }
 const repository = createRepository({ dataRoot, seedDataRoot: bundledDataRoot, seedTaskNodes: seedDemoData });
 const storage = repository.getStorage();
-const projectConfig = repository.getProject();
+let projectConfig = repository.getProject();
 const aiResultsRoot = storage.aiResultsRoot;
 const inFlightAiJobs = new Map();
-const aiGenerationTimeoutMs = readPositiveIntegerEnv("POLARIS_AI_TIMEOUT_MS", projectConfig.localConfig.ai.timeoutMs);
-const aiSplitTimeoutMs = readPositiveIntegerEnv("POLARIS_AI_SPLIT_TIMEOUT_MS", projectConfig.localConfig.ai.splitTimeoutMs);
+let aiGenerationTimeoutMs = readPositiveIntegerEnv("POLARIS_AI_TIMEOUT_MS", projectConfig.localConfig.ai.timeoutMs);
+let aiSplitTimeoutMs = readPositiveIntegerEnv("POLARIS_AI_SPLIT_TIMEOUT_MS", projectConfig.localConfig.ai.splitTimeoutMs);
 const feishuPublishTimeoutMs = readPositiveIntegerEnv("POLARIS_FEISHU_TIMEOUT_MS", 8_000);
 
 const mimeTypes = {
@@ -141,6 +141,32 @@ function readPositiveIntegerEnv(name, fallback) {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+function refreshRuntimeAiConfig(project = repository.getProject()) {
+  projectConfig = project;
+  aiGenerationTimeoutMs = readPositiveIntegerEnv("POLARIS_AI_TIMEOUT_MS", project.localConfig.ai.timeoutMs);
+  aiSplitTimeoutMs = readPositiveIntegerEnv("POLARIS_AI_SPLIT_TIMEOUT_MS", project.localConfig.ai.splitTimeoutMs);
+}
+
+function serializeAiConfig(project = projectConfig) {
+  return {
+    ai: project.localConfig.ai,
+    effective: {
+      timeoutMs: aiGenerationTimeoutMs,
+      splitTimeoutMs: aiSplitTimeoutMs,
+    },
+    localConfigPath: storage.localConfigPath,
+    envOverrides: {
+      timeoutMs: isPositiveIntegerEnv("POLARIS_AI_TIMEOUT_MS"),
+      splitTimeoutMs: isPositiveIntegerEnv("POLARIS_AI_SPLIT_TIMEOUT_MS"),
+    },
+  };
+}
+
+function isPositiveIntegerEnv(name) {
+  const value = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isFinite(value) && value > 0;
+}
+
 function migrateLegacyDefaultData({ from, to }) {
   const sourceRoot = resolve(from);
   const targetRoot = resolve(to);
@@ -209,6 +235,23 @@ async function handleApiRequest(request, response) {
 
     if (request.method === "GET" && url.pathname === "/api/project") {
       sendJson(response, 200, { project: repository.getProject() });
+      return true;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/ai-config") {
+      sendJson(response, 200, serializeAiConfig());
+      return true;
+    }
+
+    if (request.method === "PUT" && url.pathname === "/api/ai-config") {
+      const body = await readJsonBody(request);
+      const updatedProject = repository.updateAiConfig(readAiConfigPatch(body));
+      refreshRuntimeAiConfig(updatedProject);
+      clearAiJobCache();
+      sendJson(response, 200, {
+        project: updatedProject,
+        ...serializeAiConfig(updatedProject),
+      });
       return true;
     }
 
@@ -385,6 +428,17 @@ async function handleApiRequest(request, response) {
       return true;
     }
 
+    const refreshAiMatch = url.pathname.match(/^\/api\/task-nodes\/([^/]+)\/refresh-ai$/);
+    if (request.method === "POST" && refreshAiMatch) {
+      const nodeId = decodeURIComponent(refreshAiMatch[1]);
+      const refreshed = await refreshTaskNodeAiResult(nodeId);
+      sendJson(response, 200, {
+        ...refreshed,
+        source: "regenerated",
+      });
+      return true;
+    }
+
     const aiResultMatch = url.pathname.match(/^\/api\/task-nodes\/([^/]+)\/ai-result$/);
     if (request.method === "POST" && aiResultMatch) {
       const nodeId = decodeURIComponent(aiResultMatch[1]);
@@ -480,19 +534,19 @@ async function handleApiRequest(request, response) {
   }
 }
 
-async function readOrCreateSuggestedActionPlan({ nodeId, node, library, reason, aiContext, contextDigest }) {
+async function readOrCreateSuggestedActionPlan({ nodeId, node, library, reason, aiContext, contextDigest, force = false }) {
   const signature = createSuggestedActionPlanSignature({ node, reason, contextDigest });
   const saved = readAiResult({ dataRoot, aiResultsRoot, kind: "suggested-action-plan", nodeId, signature });
-  if (saved?.plan && hasSuggestedActionPlanContent(saved.plan)) {
+  if (!force && saved?.plan && hasSuggestedActionPlanContent(saved.plan)) {
     return {
       plan: saved.plan,
       persistedAt: saved.updatedAt,
     };
   }
 
-  return runSharedAiJob(`suggested-action-plan:${nodeId}:${signature}`, async () => {
+  return runAiJob(`suggested-action-plan:${nodeId}:${signature}`, { force }, async () => {
     const latestSaved = readAiResult({ dataRoot, aiResultsRoot, kind: "suggested-action-plan", nodeId, signature });
-    if (latestSaved?.plan && hasSuggestedActionPlanContent(latestSaved.plan)) {
+    if (!force && latestSaved?.plan && hasSuggestedActionPlanContent(latestSaved.plan)) {
       return {
         plan: latestSaved.plan,
         persistedAt: latestSaved.updatedAt,
@@ -527,6 +581,11 @@ async function readOrCreateSuggestedActionPlan({ nodeId, node, library, reason, 
   });
 }
 
+function runAiJob(key, { force = false } = {}, createJob) {
+  if (force) return Promise.resolve().then(createJob);
+  return runSharedAiJob(key, createJob);
+}
+
 function runSharedAiJob(key, createJob) {
   const existing = inFlightAiJobs.get(key);
   if (existing) return existing;
@@ -538,6 +597,86 @@ function runSharedAiJob(key, createJob) {
     });
   inFlightAiJobs.set(key, job);
   return job;
+}
+
+function clearAiJobCache() {
+  inFlightAiJobs.clear();
+}
+
+async function refreshTaskNodeAiResult(nodeId) {
+  const nodes = repository.listTaskNodes();
+  const node = nodes.find((candidate) => candidate.id === nodeId);
+  if (!node) {
+    const error = new Error(`Task node not found: ${nodeId}`);
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const queue = buildActiveQueue(nodes);
+  const queueItem = queue.available.find((item) => item.node.id === nodeId);
+  const reason = queueItem?.reason ?? "";
+  const library = repository.getLibrary();
+  const artifact = resolvePreparedArtifact(node, library.artifacts);
+  const aiContext = buildAiContextForNode({ nodes, library, nodeId, reason });
+  const contextDigest = createAiContextDigest(aiContext);
+  const suggested = await readOrCreateSuggestedActionPlan({
+    nodeId,
+    node,
+    library,
+    reason,
+    aiContext,
+    contextDigest,
+    force: true,
+  });
+  const actionPlanDigest = createAiContextDigest(suggested.plan);
+  const draft = await readOrCreateDraftOutput({
+    nodeId,
+    node,
+    library,
+    artifact,
+    aiContext,
+    contextDigest,
+    actionPlan: suggested.plan,
+    actionPlanDigest,
+    force: true,
+  });
+  const generatedResult = await readOrCreateAiResultOutput({
+    nodeId,
+    node,
+    library,
+    artifact,
+    aiContext,
+    contextDigest,
+    actionPlan: suggested.plan,
+    actionPlanDigest,
+    force: true,
+  });
+
+  const signature = createAiResultSignature({ node, artifact });
+  const saved = readAiResult({ dataRoot, aiResultsRoot, kind: "ai-result", nodeId, signature });
+  const result = await publishAiResult({
+    node,
+    output: generatedResult.output,
+    artifact,
+    actionPlan: suggested.plan,
+    signature,
+    existingResult: saved?.result ?? null,
+  });
+  const persisted = writeAiResult({
+    dataRoot,
+    aiResultsRoot,
+    kind: "ai-result",
+    nodeId,
+    signature,
+    payload: { result, output: generatedResult.output },
+  });
+
+  return {
+    plan: suggested.plan,
+    output: draft.output,
+    result: persisted.result,
+    persistedAt: persisted.updatedAt,
+  };
 }
 
 function createSplitChildren({ parent, splitNodes, existingNodes }) {
@@ -579,7 +718,20 @@ function safeNodeId(value) {
     .slice(0, 80);
 }
 
-async function publishAiResult({ node, output, artifact, actionPlan, signature }) {
+async function publishAiResult({ node, output, artifact, actionPlan, signature, existingResult = null }) {
+  if (existingResult?.docType === "本地 HTML" && existingResult.path) {
+    return writeAiResultDocument({
+      dataRoot,
+      aiResultsRoot,
+      node,
+      signature,
+      output,
+      artifact,
+      actionPlan,
+      existingResult,
+    });
+  }
+
   try {
     return await publishAiResultToFeishu({
       dataRoot,
@@ -588,9 +740,13 @@ async function publishAiResult({ node, output, artifact, actionPlan, signature }
       output,
       artifact,
       actionPlan,
+      existingResult,
       timeoutMs: feishuPublishTimeoutMs,
     });
   } catch (error) {
+    if (existingResult?.docType === "飞书 Doc" && existingResult.url) {
+      throw new Error(`更新原飞书文档失败：${error.message}`);
+    }
     console.warn(`Feishu AI result publish failed, falling back to local HTML: ${error.message}`);
     return writeAiResultDocument({
       dataRoot,
@@ -600,6 +756,7 @@ async function publishAiResult({ node, output, artifact, actionPlan, signature }
       output,
       artifact,
       actionPlan,
+      existingResult,
     });
   }
 }
@@ -613,14 +770,15 @@ async function readOrCreateAiResultOutput({
   contextDigest,
   actionPlan,
   actionPlanDigest,
+  force = false,
 }) {
   const signature = createAiResultSignature({ node, artifact, contextDigest, actionPlanDigest });
   const saved = readAiResult({ dataRoot, aiResultsRoot, kind: "ai-result-output", nodeId, signature });
-  if (saved?.output && hasAiResultOutputContent(saved.output)) return { output: saved.output };
+  if (!force && saved?.output && hasAiResultOutputContent(saved.output)) return { output: saved.output };
 
-  return runSharedAiJob(`ai-result-output:${nodeId}:${signature}`, async () => {
+  return runAiJob(`ai-result-output:${nodeId}:${signature}`, { force }, async () => {
     const latestSaved = readAiResult({ dataRoot, aiResultsRoot, kind: "ai-result-output", nodeId, signature });
-    if (latestSaved?.output && hasAiResultOutputContent(latestSaved.output)) return { output: latestSaved.output };
+    if (!force && latestSaved?.output && hasAiResultOutputContent(latestSaved.output)) return { output: latestSaved.output };
 
     const output = await generateAiResultOutput({
       node,
@@ -657,14 +815,15 @@ async function readOrCreateDraftOutput({
   contextDigest,
   actionPlan,
   actionPlanDigest,
+  force = false,
 }) {
   const signature = createDraftOutputSignature({ node, artifact, contextDigest, actionPlanDigest });
   const saved = readAiResult({ dataRoot, aiResultsRoot, kind: "draft-output", nodeId, signature });
-  if (saved?.output && hasDraftOutputContent(saved.output)) return { output: saved.output };
+  if (!force && saved?.output && hasDraftOutputContent(saved.output)) return { output: saved.output };
 
-  return runSharedAiJob(`draft-output:${nodeId}:${signature}`, async () => {
+  return runAiJob(`draft-output:${nodeId}:${signature}`, { force }, async () => {
     const latestSaved = readAiResult({ dataRoot, aiResultsRoot, kind: "draft-output", nodeId, signature });
-    if (latestSaved?.output && hasDraftOutputContent(latestSaved.output)) return { output: latestSaved.output };
+    if (!force && latestSaved?.output && hasDraftOutputContent(latestSaved.output)) return { output: latestSaved.output };
 
     const output = await generateDraftOutput({
       node,
@@ -711,6 +870,23 @@ async function readJsonBody(request) {
     error.statusCode = 400;
     throw error;
   }
+}
+
+function readAiConfigPatch(body = {}) {
+  const input = body.ai && typeof body.ai === "object" ? body.ai : body;
+  return {
+    timeoutMs: readPositiveIntegerField(input, "timeoutMs", "ai.timeoutMs"),
+    splitTimeoutMs: readPositiveIntegerField(input, "splitTimeoutMs", "ai.splitTimeoutMs"),
+  };
+}
+
+function readPositiveIntegerField(input, fieldName, label) {
+  const value = input?.[fieldName];
+  const parsedValue = Number.parseInt(value ?? "", 10);
+  if (Number.isFinite(parsedValue) && parsedValue > 0) return parsedValue;
+  const error = new Error(`${label} must be a positive integer in milliseconds`);
+  error.statusCode = 400;
+  throw error;
 }
 
 function sendJson(response, statusCode, payload) {

@@ -15,6 +15,7 @@ export async function publishAiResultToFeishu({
   output,
   artifact = null,
   actionPlan = null,
+  existingResult = null,
   timeoutMs = defaultTimeoutMs,
   env = process.env,
 }) {
@@ -28,6 +29,16 @@ export async function publishAiResultToFeishu({
     suffix: "full",
   });
   const title = output.title || `${node.title} AI 结果`;
+
+  if (isExistingFeishuDoc(existingResult)) {
+    await overwriteFeishuDocContent({ url: existingResult.url, contentPath, timeoutMs, env });
+    return {
+      title,
+      docType: existingResult.docType || "飞书 Doc",
+      url: existingResult.url,
+      path: contentPath,
+    };
+  }
 
   if (contentParts.fullContent.length > directCreateMaxXmlLength) {
     return createFeishuDocWithAppend({
@@ -153,6 +164,30 @@ async function appendFeishuDocContent({ url, contentPath, timeoutMs, env }) {
     ],
     { cwd: dirname(contentPath), timeoutMs, env },
   );
+}
+
+async function overwriteFeishuDocContent({ url, contentPath, timeoutMs, env }) {
+  await runLarkCli(
+    [
+      "docs",
+      "+update",
+      "--api-version",
+      "v2",
+      "--as",
+      "user",
+      "--doc",
+      url,
+      "--command",
+      "overwrite",
+      "--content",
+      `@${basename(contentPath)}`,
+    ],
+    { cwd: dirname(contentPath), timeoutMs, env },
+  );
+}
+
+function isExistingFeishuDoc(result) {
+  return result?.docType === "飞书 Doc" && typeof result.url === "string" && result.url.trim();
 }
 
 export function buildFeishuDocContent({ node, output, artifact = null, actionPlan = null }) {
