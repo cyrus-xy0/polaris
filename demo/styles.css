@@ -641,6 +641,13 @@ button {
   transform: translateY(-1px);
 }
 
+.primary-action:disabled,
+.soft-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+  transform: none;
+}
+
 .queue-panel {
   position: relative;
   z-index: 2;
@@ -706,7 +713,7 @@ button {
   position: relative;
   display: grid;
   align-content: start;
-  min-height: 94px;
+  min-height: 124px;
   scroll-margin-top: 96px;
   padding: 20px 20px 18px;
   border: 1px solid rgba(255, 255, 255, 0.8);
@@ -827,6 +834,7 @@ button {
   display: block;
   margin: 0;
   padding-right: 48px;
+  min-height: 1.35em;
   color: rgba(21, 25, 29, 0.9);
   font-size: 18px;
   font-weight: 700;

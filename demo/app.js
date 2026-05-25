@@ -796,6 +796,7 @@ function updateAiResultLink(state = {}) {
     elements.aiResultLink.ariaDisabled = "true";
     elements.aiResultLink.textContent = aiAnalyzingText;
     elements.aiResultLink.title = "AI 结果生成中";
+    syncCompleteButtonState();
     return;
   }
 
@@ -805,6 +806,7 @@ function updateAiResultLink(state = {}) {
     elements.aiResultLink.ariaDisabled = "true";
     elements.aiResultLink.textContent = "AI 结果生成失败";
     elements.aiResultLink.title = state.error || "请查看终端日志后重试。";
+    syncCompleteButtonState();
     return;
   }
 
@@ -815,6 +817,7 @@ function updateAiResultLink(state = {}) {
     elements.aiResultLink.ariaDisabled = "true";
     elements.aiResultLink.textContent = "AI 结果未生成";
     elements.aiResultLink.title = "AI 结果尚未生成";
+    syncCompleteButtonState();
     return;
   }
 
@@ -823,6 +826,7 @@ function updateAiResultLink(state = {}) {
   elements.aiResultLink.textContent = "查看 AI 结果";
   elements.aiResultLink.title = `${result.docType ?? "AI 结果"} · ${result.title}`;
   fillManualResultUrl(result.url);
+  syncCompleteButtonState();
 }
 
 function fillManualResultUrl(url) {
@@ -838,6 +842,18 @@ function clearAutoFilledResultUrl() {
     elements.manualResultUrl.value = "";
   }
   autoFilledResultUrl = "";
+}
+
+function getCompletionUrl() {
+  return elements.manualResultUrl.value.trim() || currentPreparedArtifact?.url || "";
+}
+
+function syncCompleteButtonState() {
+  const hasResultUrl = Boolean(getCompletionUrl());
+  elements.completeButton.disabled = !hasResultUrl;
+  elements.completeButton.title = hasResultUrl
+    ? "完成当前任务并绑定结果链接"
+    : "等待 AI 结果生成，或粘贴 Doc / Base 链接后完成";
 }
 
 function createQueueCard(item, index, currentNodeId) {
@@ -889,9 +905,14 @@ function createQueueDetail(label, value) {
 
 function completeSelectedTask() {
   const manualUrl = elements.manualResultUrl.value.trim();
+  const resultUrl = manualUrl || currentPreparedArtifact?.url || "";
+  if (!resultUrl) {
+    syncCompleteButtonState();
+    return;
+  }
   completeTaskWithResult({
     source: manualUrl && manualUrl !== autoFilledResultUrl ? "manual" : "ai",
-    url: manualUrl || currentPreparedArtifact?.url || "",
+    url: resultUrl,
   });
 }
 
@@ -900,9 +921,17 @@ function completeTaskWithResult(result) {
   const current = getCurrentItem(queue);
   if (!current) return;
 
-  nodes = completeTask(nodes, current.node.id, normalizeCompletionResult(current.node, result));
+  const completedNodeId = current.node.id;
+  const completionResult = normalizeCompletionResult(current.node, result);
+  if (!completionResult.url) {
+    syncCompleteButtonState();
+    return;
+  }
+
+  nodes = completeTask(nodes, completedNodeId, completionResult);
   saveNodes();
   selectedNodeId = null;
+  selectedTreeNodeId = completedNodeId;
   elements.manualResultUrl.value = "";
   autoFilledResultUrl = "";
   render();
@@ -2347,6 +2376,7 @@ elements.manualResultUrl.addEventListener("keydown", (event) => {
     completeSelectedTask();
   }
 });
+elements.manualResultUrl.addEventListener("input", syncCompleteButtonState);
 elements.markdownEditorClose.addEventListener("click", closeMarkdownEditor);
 elements.markdownEditorSave.addEventListener("click", saveMarkdownEditor);
 elements.markdownEditor.addEventListener("click", (event) => {
