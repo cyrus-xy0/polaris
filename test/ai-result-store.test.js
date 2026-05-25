@@ -85,6 +85,108 @@ describe("AI result store", () => {
     );
   });
 
+  it("keeps AI analysis signatures stable when only surrounding context changes", () => {
+    const node = createNode();
+    const artifact = { title: "差异点草稿", docType: "Feishu Doc" };
+
+    assert.equal(
+      createSuggestedActionPlanSignature({ node, reason: "A", contextDigest: "context-a" }),
+      createSuggestedActionPlanSignature({ node, reason: "B", contextDigest: "context-b" }),
+    );
+    assert.equal(
+      createDraftOutputSignature({ node, artifact, contextDigest: "context-a", actionPlanDigest: "plan-a" }),
+      createDraftOutputSignature({ node, artifact, contextDigest: "context-b", actionPlanDigest: "plan-b" }),
+    );
+    assert.equal(
+      createAiResultSignature({ node, artifact, contextDigest: "context-a", actionPlanDigest: "plan-a" }),
+      createAiResultSignature({ node, artifact, contextDigest: "context-b", actionPlanDigest: "plan-b" }),
+    );
+    assert.notEqual(
+      createSuggestedActionPlanSignature({ node }),
+      createSuggestedActionPlanSignature({ node: { ...node, priority: "P0" } }),
+    );
+  });
+
+  it("reuses legacy local results that only differ by context digest", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-ai-legacy-results-"));
+    const node = createNode();
+    const legacySignature = JSON.stringify({
+      version: "rich-context-v3-openclaw-content",
+      id: node.id,
+      title: node.title,
+      tag: node.tag,
+      description: node.description,
+      dependencies: node.dependencies,
+      state: node.state,
+      reason: "旧队列原因",
+      contextDigest: "old-context",
+    });
+
+    writeAiResult({
+      dataRoot,
+      kind: "suggested-action-plan",
+      nodeId: node.id,
+      signature: legacySignature,
+      payload: {
+        plan: {
+          summary: "沿用本地旧分析。",
+          steps: ["不重新生成"],
+        },
+      },
+    });
+
+    const readBack = readAiResult({
+      dataRoot,
+      kind: "suggested-action-plan",
+      nodeId: node.id,
+      signature: createSuggestedActionPlanSignature({ node, reason: "新队列原因", contextDigest: "new-context" }),
+    });
+
+    assert.equal(readBack.plan.summary, "沿用本地旧分析。");
+
+    const artifact = { title: "差异点草稿", docType: "Feishu Doc" };
+    const legacyDraftSignature = JSON.stringify({
+      version: "rich-context-v3-openclaw-content",
+      id: node.id,
+      title: node.title,
+      tag: node.tag,
+      description: node.description,
+      dependencies: node.dependencies,
+      state: node.state,
+      artifactTitle: artifact.title,
+      artifactType: artifact.docType,
+      contextDigest: "old-context",
+      actionPlanDigest: "old-plan",
+    });
+    writeAiResult({
+      dataRoot,
+      kind: "draft-output",
+      nodeId: node.id,
+      signature: legacyDraftSignature,
+      payload: {
+        output: {
+          title: "旧草稿",
+          summary: "沿用本地旧草稿。",
+          points: ["不重新生成"],
+        },
+      },
+    });
+
+    const draftReadBack = readAiResult({
+      dataRoot,
+      kind: "draft-output",
+      nodeId: node.id,
+      signature: createDraftOutputSignature({
+        node,
+        artifact,
+        contextDigest: "new-context",
+        actionPlanDigest: "new-plan",
+      }),
+    });
+
+    assert.equal(draftReadBack.output.summary, "沿用本地旧草稿。");
+  });
+
   it("writes the AI result link target as a local HTML document", () => {
     const dataRoot = mkdtempSync(join(tmpdir(), "polaris-ai-result-document-"));
     const node = createNode();
@@ -142,5 +244,6 @@ function createNode() {
     description: "明确这个方案为什么不是传统 SaaS 加聊天框。",
     dependencies: [],
     state: "待做",
+    priority: "P2",
   };
 }

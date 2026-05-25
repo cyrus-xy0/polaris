@@ -1,4 +1,4 @@
-import { TASK_STATES, buildExecutableQueue, indexNodes } from "./task-nodes.js";
+import { TASK_PRIORITIES, TASK_STATES, buildExecutableQueue, deriveEffectiveStates, indexNodes } from "./task-nodes.js";
 
 const studyRealCasesActions = [
   "定案例筛选口径",
@@ -25,24 +25,143 @@ export function buildActiveQueue(nodes) {
 }
 
 export function rankTaskNode(node) {
-  if (node.id === "study-real-cases") {
-    return {
-      score: 95,
-      reason: "先学习真实案例，可以减少凭空设计。",
-    };
-  }
-
-  if (node.id === "try-demo") {
-    return {
-      score: 88,
-      reason: "demo 能快速验证 pitchdeck 管理场景是否有产品感觉。",
-    };
-  }
-
+  const priorityScore = {
+    [TASK_PRIORITIES.P0]: 1000,
+    [TASK_PRIORITIES.P1]: 700,
+    [TASK_PRIORITIES.P2]: 300,
+  }[node.priority ?? TASK_PRIORITIES.P2];
   return {
-    score: 50,
-    reason: `依赖已满足，可以立即开始：${node.title}`,
+    priority: node.priority ?? TASK_PRIORITIES.P2,
+    score: priorityScore,
+    reason: formatPriorityReason(node),
   };
+}
+
+export function refreshTaskPriorities(nodes = []) {
+  if (!Array.isArray(nodes) || nodes.length === 0) return [];
+
+  const index = indexNodes(nodes);
+  const stateById = deriveEffectiveStates(nodes);
+  const leafScores = scoreExecutableLeafNodes(nodes, index, stateById);
+  const priorityById = new Map(nodes.map((node) => [node.id, TASK_PRIORITIES.P2]));
+
+  leafScores.forEach((entry, index) => {
+    if (index === 0) {
+      priorityById.set(entry.node.id, TASK_PRIORITIES.P0);
+    } else if (entry.score >= 80 || index <= 2) {
+      priorityById.set(entry.node.id, TASK_PRIORITIES.P1);
+    }
+  });
+
+  for (const node of [...nodes].reverse()) {
+    const children = index.childrenByParentId.get(node.id) ?? [];
+    const childPriorities = children.map((child) => priorityById.get(child.id) ?? TASK_PRIORITIES.P2);
+    if (childPriorities.includes(TASK_PRIORITIES.P0)) {
+      priorityById.set(node.id, TASK_PRIORITIES.P0);
+    } else if (childPriorities.includes(TASK_PRIORITIES.P1)) {
+      priorityById.set(node.id, TASK_PRIORITIES.P1);
+    }
+    if (stateById.get(node.id) === TASK_STATES.DONE) {
+      priorityById.set(node.id, TASK_PRIORITIES.P2);
+    }
+  }
+
+  return nodes.map((node) => ({
+    ...node,
+    priority: priorityById.get(node.id) ?? TASK_PRIORITIES.P2,
+  }));
+}
+
+function scoreExecutableLeafNodes(nodes, index, stateById) {
+  const dependentCounts = countTransitiveDependents(nodes);
+  const leafCountsByNodeId = countLeafDescendants(index);
+  const remainingLeavesByParentId = countRemainingLeavesByParent(index, stateById);
+
+  return nodes
+    .filter((node) => {
+      const effectiveState = stateById.get(node.id);
+      const children = index.childrenByParentId.get(node.id) ?? [];
+      return children.length === 0 && effectiveState !== TASK_STATES.DONE && effectiveState !== TASK_STATES.BLOCKED;
+    })
+    .map((node) => ({
+      node,
+      score:
+        40 +
+        Math.min(30, (dependentCounts.get(node.id) ?? 0) * 10) +
+        Math.min(20, (leafCountsByNodeId.get(node.parentId) ?? 0) * 3) +
+        scoreDeadlineSignal(node) +
+        scoreParentCompletionCriticality(node, remainingLeavesByParentId),
+    }))
+    .sort((a, b) => b.score - a.score || a.node.title.localeCompare(b.node.title));
+}
+
+function countTransitiveDependents(nodes) {
+  const directDependentsById = new Map(nodes.map((node) => [node.id, []]));
+  for (const node of nodes) {
+    for (const dependencyId of node.dependencies ?? []) {
+      directDependentsById.get(dependencyId)?.push(node.id);
+    }
+  }
+
+  return new Map(
+    nodes.map((node) => {
+      const seen = new Set();
+      const stack = [...(directDependentsById.get(node.id) ?? [])];
+      while (stack.length > 0) {
+        const dependentId = stack.pop();
+        if (seen.has(dependentId)) continue;
+        seen.add(dependentId);
+        stack.push(...(directDependentsById.get(dependentId) ?? []));
+      }
+      return [node.id, seen.size];
+    }),
+  );
+}
+
+function countLeafDescendants(index) {
+  const counts = new Map();
+  for (const node of index.byId.values()) {
+    counts.set(node.id, countLeavesUnderNode(node, index));
+  }
+  return counts;
+}
+
+function countLeavesUnderNode(node, index) {
+  const children = index.childrenByParentId.get(node.id) ?? [];
+  if (children.length === 0) return 1;
+  return children.reduce((total, child) => total + countLeavesUnderNode(child, index), 0);
+}
+
+function countRemainingLeavesByParent(index, stateById) {
+  const counts = new Map();
+  for (const node of index.byId.values()) {
+    if ((index.childrenByParentId.get(node.id) ?? []).length > 0) continue;
+    if (stateById.get(node.id) === TASK_STATES.DONE) continue;
+    counts.set(node.parentId ?? null, (counts.get(node.parentId ?? null) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function scoreDeadlineSignal(node) {
+  const text = `${node.title} ${node.description} ${(node.aiActions ?? []).join(" ")}`.toLowerCase();
+  if (/(ddl|deadline|截止|到期|今天|今日|马上|立即|紧急|必须|快到|due)/i.test(text)) return 35;
+  if (/(明天|本周|这周|尽快|高优|关键|阻塞|前置)/i.test(text)) return 20;
+  return 0;
+}
+
+function scoreParentCompletionCriticality(node, remainingLeavesByParentId) {
+  if (!node.parentId) return 0;
+  return remainingLeavesByParentId.get(node.parentId) === 1 ? 18 : 0;
+}
+
+function formatPriorityReason(node) {
+  if (node.priority === TASK_PRIORITIES.P0) {
+    return `P0 当前最高优，必须马上做：${node.title}`;
+  }
+  if (node.priority === TASK_PRIORITIES.P1) {
+    return `P1 能早一点完成更好：${node.title}`;
+  }
+  return `P2 其他可执行节点：${node.title}`;
 }
 
 export function getAllRecords(library) {
@@ -204,6 +323,7 @@ function serializeTaskContext(node) {
     tag: node.tag,
     description: node.description,
     state: node.state,
+    priority: node.priority,
     aiActions: node.aiActions,
     conclusion: node.conclusion,
     result: node.result,

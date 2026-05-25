@@ -45,7 +45,7 @@ button {
   position: relative;
   min-height: 100vh;
   overflow: hidden;
-  padding: 80px 42px 44px;
+  padding: 80px 42px 60px;
 }
 
 .topbar {
@@ -65,9 +65,10 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 46px;
+  gap: 10px;
+  min-width: 46px;
   height: 46px;
-  padding: 0;
+  padding: 0 16px 0 12px;
   border-radius: 999px;
   color: rgba(17, 24, 32, 0.88);
   background:
@@ -83,17 +84,16 @@ button {
   backdrop-filter: blur(18px) saturate(1.12);
 }
 
-.brand span:not(.brand-mark) {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  overflow: hidden;
+.brand-name {
+  font-size: 15px;
+  font-weight: 760;
+  line-height: 1;
+  letter-spacing: 0;
   white-space: nowrap;
 }
 
 .brand-mark {
+  flex: 0 0 auto;
   width: 24px;
   height: 24px;
   border-radius: 50%;
@@ -103,6 +103,35 @@ button {
   box-shadow:
     0 8px 26px rgba(47, 128, 117, 0.22),
     inset 0 0 0 1px rgba(255, 255, 255, 0.72);
+}
+
+.app-footer {
+  position: fixed;
+  z-index: 18;
+  right: 42px;
+  bottom: 18px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 11px;
+  border: 1px solid rgba(17, 24, 32, 0.075);
+  border-radius: 999px;
+  color: rgba(21, 25, 29, 0.5);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 253, 247, 0.56)),
+    rgba(255, 255, 255, 0.52);
+  box-shadow:
+    0 10px 28px rgba(66, 61, 48, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  font-size: 12px;
+  font-weight: 720;
+  letter-spacing: 0;
+  pointer-events: none;
+  backdrop-filter: blur(16px) saturate(1.1);
+}
+
+.app-footer[hidden] {
+  display: none;
 }
 
 .nav {
@@ -288,20 +317,20 @@ button {
   font-weight: 650;
 }
 
-.node-chip.priority-p1 {
+.node-chip.priority-p0 {
   border-color: rgba(182, 120, 44, 0.36);
   color: #7d4e16;
   background: linear-gradient(180deg, rgba(255, 246, 227, 0.92), rgba(182, 120, 44, 0.13));
   box-shadow: 0 8px 22px rgba(182, 120, 44, 0.12);
 }
 
-.node-chip.priority-p2 {
+.node-chip.priority-p1 {
   border-color: rgba(47, 128, 117, 0.34);
   color: #245f56;
   background: linear-gradient(180deg, rgba(239, 251, 249, 0.92), rgba(47, 128, 117, 0.12));
 }
 
-.node-chip.priority-p3 {
+.node-chip.priority-p2 {
   border-color: rgba(92, 120, 155, 0.32);
   color: #415a78;
   background: linear-gradient(180deg, rgba(241, 246, 252, 0.92), rgba(92, 120, 155, 0.12));
@@ -719,50 +748,50 @@ button {
   content: attr(data-priority);
 }
 
-.queue-card.priority-p1 {
+.queue-card.priority-p0 {
   border-color: rgba(182, 120, 44, 0.3);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 247, 231, 0.74));
 }
 
-.queue-card.priority-p1::before {
+.queue-card.priority-p0::before {
   border-color: var(--amber);
   box-shadow: 0 0 0 7px rgba(182, 120, 44, 0.12);
 }
 
-.queue-card.priority-p1::after {
+.queue-card.priority-p0::after {
   color: #7d4e16;
   background: rgba(182, 120, 44, 0.13);
 }
 
-.queue-card.priority-p2 {
+.queue-card.priority-p1 {
   border-color: rgba(47, 128, 117, 0.24);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(239, 251, 249, 0.68));
 }
 
-.queue-card.priority-p2::before {
+.queue-card.priority-p1::before {
   border-color: var(--teal);
   box-shadow: 0 0 0 7px rgba(47, 128, 117, 0.11);
 }
 
-.queue-card.priority-p2::after {
+.queue-card.priority-p1::after {
   color: #245f56;
   background: rgba(47, 128, 117, 0.12);
 }
 
-.queue-card.priority-p3 {
+.queue-card.priority-p2 {
   border-color: rgba(92, 120, 155, 0.2);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(244, 248, 252, 0.62));
 }
 
-.queue-card.priority-p3::before {
+.queue-card.priority-p2::before {
   border-color: rgba(92, 120, 155, 0.54);
   box-shadow: 0 0 0 7px rgba(92, 120, 155, 0.09);
 }
 
-.queue-card.priority-p3::after {
+.queue-card.priority-p2::after {
   color: #415a78;
   background: rgba(92, 120, 155, 0.12);
 }
@@ -1594,6 +1623,33 @@ button {
 .tree-node-meta {
   color: rgba(21, 25, 29, 0.44);
   font-size: 12px;
+}
+
+.tree-node-priority {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 780;
+}
+
+.tree-node-priority.priority-p0 {
+  color: #7d4e16;
+  background: rgba(182, 120, 44, 0.14);
+}
+
+.tree-node-priority.priority-p1 {
+  color: #245f56;
+  background: rgba(47, 128, 117, 0.12);
+}
+
+.tree-node-priority.priority-p2 {
+  color: #415a78;
+  background: rgba(92, 120, 155, 0.12);
 }
 
 .tree-node-detail {
@@ -2728,13 +2784,18 @@ a.tree-record-chip:focus-visible {
 
 @media (max-width: 980px) {
   .shell {
-    padding: 72px 22px 22px;
+    padding: 72px 22px 56px;
   }
 
   .topbar {
     top: 22px;
     right: 22px;
     left: 22px;
+  }
+
+  .app-footer {
+    right: 22px;
+    bottom: 14px;
   }
 
   .hero {
@@ -2892,6 +2953,37 @@ a.tree-record-chip:focus-visible {
   .shell {
     padding-right: 18px;
     padding-left: 18px;
+  }
+
+  .brand {
+    gap: 8px;
+    height: 42px;
+    padding-right: 13px;
+    padding-left: 11px;
+  }
+
+  .brand-mark {
+    width: 22px;
+    height: 22px;
+  }
+
+  .brand-name {
+    font-size: 13px;
+  }
+
+  .nav {
+    gap: 4px;
+    padding: 3px;
+  }
+
+  .nav-item {
+    min-width: 0;
+    padding: 7px 9px;
+    font-size: 13px;
+  }
+
+  .app-footer {
+    right: 18px;
   }
 
   #methods-view {

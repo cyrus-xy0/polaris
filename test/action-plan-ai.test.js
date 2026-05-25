@@ -486,6 +486,7 @@ describe("action plan AI", () => {
     assert.match(prompt, /不要只把 AI 当输入框/);
     assert.match(prompt, /必须遵循的 Suggest Action Plan/);
     assert.match(prompt, /1\. 读取上文/);
+    assert.match(prompt, /优先级：P2/);
   });
 
   it("builds AI result prompts for actual task outputs", () => {

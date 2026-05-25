@@ -9,7 +9,6 @@ import {
 } from "/src/task-nodes.js";
 import {
   buildActiveQueue,
-  buildAiContextForNode,
   completeTask,
   deleteTaskNode,
   getAncestorIds,
@@ -21,6 +20,7 @@ import {
 
 let nodes = [];
 let library = { knowledge: [], skills: [], artifacts: [] };
+let appMetadata = { version: "" };
 let selectedNodeId = null;
 let selectedTreeNodeId = null;
 let activeView = "today";
@@ -88,10 +88,13 @@ const elements = {
   markdownEditorTextarea: document.querySelector("#markdown-editor-textarea"),
   markdownEditorClose: document.querySelector("#markdown-editor-close"),
   markdownEditorSave: document.querySelector("#markdown-editor-save"),
+  appFooter: document.querySelector("#app-footer"),
+  appVersion: document.querySelector("#app-version"),
 };
 
 async function loadAppData() {
   const data = await requestJson("/api/bootstrap");
+  appMetadata = normalizeAppMetadata(data.app);
   nodes = hydrateNodes(data.nodes);
   library = normalizeLibrary(data.library);
   selectedTreeNodeId = nodes[0]?.id ?? null;
@@ -109,12 +112,22 @@ function normalizeLibrary(rawLibrary = {}) {
   };
 }
 
+function normalizeAppMetadata(rawApp = {}) {
+  const version = String(rawApp.version ?? "").trim();
+  return {
+    version: version ? `v${version.replace(/^v/i, "")}` : "",
+  };
+}
+
 async function saveNodes() {
   try {
-    await requestJson("/api/task-nodes", {
+    const payload = await requestJson("/api/task-nodes", {
       method: "PUT",
       body: JSON.stringify({ nodes }),
     });
+    nodes = hydrateNodes(payload.nodes);
+    clearAiGenerationCaches();
+    render();
     return { ok: true };
   } catch (error) {
     console.error("Failed to persist task nodes", error);
@@ -253,6 +266,7 @@ function getCurrentItem(queue) {
 }
 
 function render() {
+  renderAppVersion();
   renderView();
   const queue = getActiveQueue();
   const current = getCurrentItem(queue);
@@ -266,6 +280,14 @@ function render() {
   renderQueue(queue, current.node.id);
   renderTree();
   renderMethods();
+}
+
+function renderAppVersion() {
+  if (!elements.appVersion) return;
+  elements.appVersion.textContent = appMetadata.version;
+  if (elements.appFooter) {
+    elements.appFooter.hidden = !appMetadata.version;
+  }
 }
 
 function renderView() {
@@ -407,14 +429,14 @@ function normalizeSuggestedActionPlan(plan = {}) {
 
 function getSuggestedActionPlanSignature(node, reason) {
   return JSON.stringify({
+    version: "task-card-v1",
     id: node.id,
     title: node.title,
     tag: node.tag,
     description: node.description,
-    dependencies: node.dependencies,
+    dependencies: normalizeSignatureArray(node.dependencies),
     state: node.state,
-    reason,
-    aiContext: getAiContextSignature(node, reason),
+    priority: node.priority ?? "P2",
   });
 }
 
@@ -518,15 +540,6 @@ function normalizeDraftOutput(output = {}) {
   };
 }
 
-function getAiContextSignature(node, reason) {
-  return buildAiContextForNode({
-    nodes,
-    library,
-    nodeId: node.id,
-    reason,
-  });
-}
-
 function createAiPendingActionPlan() {
   return {
     summary: aiAnalyzingText,
@@ -561,16 +574,21 @@ function createAiErrorDraftOutput(error) {
 
 function getDraftOutputSignature(node, artifact, reason = "") {
   return JSON.stringify({
+    version: "task-card-v1",
     id: node.id,
     title: node.title,
     tag: node.tag,
     description: node.description,
-    dependencies: node.dependencies,
+    dependencies: normalizeSignatureArray(node.dependencies),
     state: node.state,
+    priority: node.priority ?? "P2",
     artifactTitle: artifact?.title ?? "",
     artifactType: artifact?.docType ?? "",
-    aiContext: getAiContextSignature(node, reason),
   });
+}
+
+function normalizeSignatureArray(value) {
+  return Array.isArray(value) ? [...value].map((item) => String(item)).sort() : [];
 }
 
 function clearAiGenerationCaches() {
@@ -664,9 +682,13 @@ function getAiResultSignature(node, artifact, reason = "") {
 }
 
 function getPriorityLabel(nodeId, queue) {
-  const index = queue.available.findIndex((item) => item.node.id === nodeId);
-  if (index < 0) return "候选任务";
-  return index === 0 ? "优先级 P1 · 当前推荐" : `优先级 P${index + 1}`;
+  const node = queue.available.find((item) => item.node.id === nodeId)?.node ?? nodes.find((item) => item.id === nodeId);
+  if (!node) return "优先级 P2";
+  return {
+    P0: "P0 · 必须马上做",
+    P1: "P1 · 尽早完成",
+    P2: "P2 · 其他节点",
+  }[node.priority] ?? "P2 · 其他节点";
 }
 
 function getQueueRankLabel(nodeId, queue) {
@@ -676,10 +698,8 @@ function getQueueRankLabel(nodeId, queue) {
 }
 
 function getPriorityClass(nodeId, queue) {
-  const index = queue.available.findIndex((item) => item.node.id === nodeId);
-  if (index <= 0) return "priority-p1";
-  if (index === 1) return "priority-p2";
-  return "priority-p3";
+  const node = queue.available.find((item) => item.node.id === nodeId)?.node ?? nodes.find((item) => item.id === nodeId);
+  return `priority-${String(node?.priority ?? "P2").toLowerCase()}`;
 }
 
 function renderQueue(queue, currentNodeId) {
@@ -761,9 +781,9 @@ function clearAutoFilledResultUrl() {
 function createQueueCard(item, index, currentNodeId) {
   const { node, reason } = item;
   const card = document.createElement("article");
-  const priorityClass = index === 0 ? "priority-p1" : index === 1 ? "priority-p2" : "priority-p3";
+  const priorityClass = `priority-${String(node.priority ?? "P2").toLowerCase()}`;
   card.className = `queue-card ${priorityClass}`;
-  card.dataset.priority = index < 9 ? `P${index + 1}` : "P9+";
+  card.dataset.priority = node.priority ?? "P2";
   if (node.id === currentNodeId) card.classList.add("is-current");
   if (node.id === selectedNodeId) card.classList.add("is-selected");
   card.style.opacity = `${Math.max(0.74, 1 - index * 0.08)}`;
@@ -1247,6 +1267,10 @@ function createTreeNode(node, focus, depth) {
   meta.className = "tree-node-meta";
   meta.textContent = childCount > 0 ? `${childCount} 个子节点` : "叶子行动";
 
+  const priority = document.createElement("span");
+  priority.className = `tree-node-priority priority-${String(node.priority ?? "P2").toLowerCase()}`;
+  priority.textContent = node.priority ?? "P2";
+
   const stateToggle = document.createElement("button");
   stateToggle.className = "tree-state-toggle";
   stateToggle.type = "button";
@@ -1259,7 +1283,7 @@ function createTreeNode(node, focus, depth) {
 
   const detail = document.createElement("span");
   detail.className = "tree-node-detail";
-  detail.append(meta, stateToggle);
+  detail.append(meta, priority, stateToggle);
 
   header.append(title);
   content.append(header, detail);

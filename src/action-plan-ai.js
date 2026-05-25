@@ -165,6 +165,7 @@ export function buildSuggestedActionPlanPrompt({ node, reason = "", relatedRecor
     'JSON 格式：{"summary":"一句话说明推荐逻辑","steps":["具体步骤 1","具体步骤 2"]}',
     "要求：",
     "- steps 生成 3 到 6 条，必须是可执行动作。",
+    "- 任务优先级含义：P0 是必须马上做，P1 是能早一点完成更好，P2 是其他节点。",
     "- 不要复述节点标题，不要写空泛动作。",
     "- 如果上下文不足，也要根据节点描述生成最小可执行步骤。",
     "",
@@ -172,6 +173,7 @@ export function buildSuggestedActionPlanPrompt({ node, reason = "", relatedRecor
     `- id：${node.id}`,
     `- 标题：${node.title}`,
     `- 标签：${node.tag}`,
+    `- 优先级：${node.priority ?? "P2"}`,
     `- 描述：${node.description}`,
     reason ? `- 推荐原因：${reason}` : null,
     "",
@@ -200,6 +202,7 @@ export function buildDraftOutputPrompt({ node, artifact = null, relatedRecords =
     'JSON 格式：{"title":"结果标题","summary":"一句话说明 AI 结果解决了什么","brief":"AI 结果 brief"}',
     "要求：",
     "- 必须严格按照 Suggest Action Plan 的 steps 逐步实施，brief 要体现这些步骤的执行结果。",
+    "- 任务优先级含义：P0 是必须马上做，P1 是能早一点完成更好，P2 是其他节点。",
     "- 不要跳过、替换或重新发明行动计划；如果某一步无法实施，要在 brief 里说明阻塞和下一步处理。",
     "- title 用 8 到 18 个中文字符，像真实产物标题，不要写文件类型。",
     "- summary 说明这个 AI 结果回答的关键问题和判断价值，不要写“AI 会读取”。",
@@ -211,6 +214,7 @@ export function buildDraftOutputPrompt({ node, artifact = null, relatedRecords =
     `- id：${node.id}`,
     `- 标题：${node.title}`,
     `- 标签：${node.tag}`,
+    `- 优先级：${node.priority ?? "P2"}`,
     `- 描述：${node.description}`,
     "",
     "关联产物：",
@@ -243,6 +247,7 @@ export function buildAiResultOutputPrompt({ node, artifact = null, relatedRecord
     'JSON 格式：{"title":"实际产物标题","summary":"一句话结果结论","resultType":"analysis","markdown":"完整结果正文，优先用 Markdown 表格/清单/结论","points":["关键结论"],"nextActions":["后续动作"],"shouldContinue":true}',
     "要求：",
     "- 必须严格按照 Suggest Action Plan 的 steps 执行；无法执行的步骤要在 markdown 中说明阻塞、缺口和下一步补救。",
+    "- 任务优先级含义：P0 是必须马上做，P1 是能早一点完成更好，P2 是其他节点。",
     "- markdown 必须承载实际完成结果：分析表、筛选清单、判断结论、迁移建议、执行记录或可验收产物，不要只写摘要。",
     "- 如果任务包含“案例、筛选、分析、表、清单、对比”等语义，markdown 必须包含一张 Markdown 表格。",
     "- 如果关联产物提供了表格、文档或分析结果链接，要在 markdown 中引用它，并说明本次结果与该产物的关系。",
@@ -255,6 +260,7 @@ export function buildAiResultOutputPrompt({ node, artifact = null, relatedRecord
     `- id：${node.id}`,
     `- 标题：${node.title}`,
     `- 标签：${node.tag}`,
+    `- 优先级：${node.priority ?? "P2"}`,
     `- 描述：${node.description}`,
     "",
     "关联产物：",
@@ -276,6 +282,7 @@ export function buildTaskNodeSplitPrompt({ node, relatedRecords = [], aiContext 
     'JSON 格式：{"summary":"一句话说明拆分逻辑","nodes":[{"title":"子节点标题","description":"子节点要推进什么","tag":"思考","aiActions":["明确输入","执行最小动作","记录判断"]}]}',
     "要求：",
     "- nodes 生成 3 到 5 个，必须覆盖从理解、执行到验证或沉淀的完整路径。",
+    "- 任务优先级含义：P0 是必须马上做，P1 是能早一点完成更好，P2 是其他节点。",
     "- title 用 4 到 18 个中文字符，像任务节点，不要写编号。",
     "- description 用一句话说明这个子节点的完成标准。",
     "- tag 只能从 思考、执行、沟通、验证、整理 中选择。",
@@ -286,6 +293,7 @@ export function buildTaskNodeSplitPrompt({ node, relatedRecords = [], aiContext 
     `- id：${node.id}`,
     `- 标题：${node.title}`,
     `- 标签：${node.tag}`,
+    `- 优先级：${node.priority ?? "P2"}`,
     `- 描述：${node.description}`,
     "",
     "AI 上下文：",
@@ -591,7 +599,8 @@ function formatTaskSection(title, tasks = []) {
   const lines = (tasks ?? []).map((task) => {
     const result = formatTaskResult(task);
     const actions = Array.isArray(task.aiActions) && task.aiActions.length > 0 ? `\n  已知动作：${task.aiActions.join(" / ")}` : "";
-    return `- ${task.title}（${task.tag ?? "任务"}，${task.state ?? "未知状态"}）\n  ${task.description ?? ""}${actions}${result}`;
+    const priority = task.priority ? `，${task.priority}` : "";
+    return `- ${task.title}（${task.tag ?? "任务"}，${task.state ?? "未知状态"}${priority}）\n  ${task.description ?? ""}${actions}${result}`;
   });
   if (lines.length === 0) return "";
   return `${title}：\n${lines.join("\n")}`;

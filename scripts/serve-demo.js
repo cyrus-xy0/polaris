@@ -1,4 +1,4 @@
-import { cpSync, createReadStream, existsSync, mkdirSync, statSync } from "node:fs";
+import { cpSync, createReadStream, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, join, normalize, resolve } from "node:path";
 import {
@@ -27,6 +27,7 @@ import { CREATED_FROM, TASK_STATES, createNode } from "../src/task-nodes.js";
 
 const root = resolve(import.meta.dirname, "..");
 const preferredPort = 4173;
+const packageMetadata = readPackageMetadata();
 const bundledDataRoot = join(root, "data");
 const dataRoot = resolveDataRoot({
   argv: process.argv.slice(2),
@@ -109,6 +110,19 @@ function createDemoServer(port) {
 
 createDemoServer(preferredPort);
 
+function readPackageMetadata() {
+  const fallback = { name: "polaris", version: "0.0.0" };
+  try {
+    return {
+      ...fallback,
+      ...JSON.parse(readFileSync(join(root, "package.json"), "utf8")),
+    };
+  } catch (error) {
+    console.warn(`Unable to read package metadata: ${error.message}`);
+    return fallback;
+  }
+}
+
 function migrateLegacyDefaultData({ from, to }) {
   const sourceRoot = resolve(from);
   const targetRoot = resolve(to);
@@ -165,7 +179,13 @@ async function handleApiRequest(request, response) {
 
   try {
     if (request.method === "GET" && url.pathname === "/api/bootstrap") {
-      sendJson(response, 200, repository.getBootstrap());
+      sendJson(response, 200, {
+        ...repository.getBootstrap(),
+        app: {
+          name: packageMetadata.name,
+          version: packageMetadata.version,
+        },
+      });
       return true;
     }
 
@@ -271,6 +291,17 @@ async function handleApiRequest(request, response) {
 
       const library = repository.getLibrary();
       const artifact = resolvePreparedArtifact(node, library.artifacts);
+      const signature = createDraftOutputSignature({ node, artifact });
+      const saved = readAiResult({ dataRoot, kind: "draft-output", nodeId, signature });
+      if (saved?.output && hasDraftOutputContent(saved.output)) {
+        sendJson(response, 200, {
+          output: saved.output,
+          persistedAt: saved.updatedAt,
+          source: "filesystem",
+        });
+        return true;
+      }
+
       const queue = buildActiveQueue(nodes);
       const queueItem = queue.available.find((item) => item.node.id === nodeId);
       const reason = queueItem?.reason ?? "";
@@ -283,17 +314,6 @@ async function handleApiRequest(request, response) {
         return true;
       }
       const actionPlanDigest = createAiContextDigest(suggested.plan);
-      const signature = createDraftOutputSignature({ node, artifact, contextDigest, actionPlanDigest });
-      const saved = readAiResult({ dataRoot, kind: "draft-output", nodeId, signature });
-      if (saved?.output && hasDraftOutputContent(saved.output)) {
-        sendJson(response, 200, {
-          output: saved.output,
-          persistedAt: saved.updatedAt,
-          source: "filesystem",
-        });
-        return true;
-      }
-
       const draft = await runSharedAiJob(`draft-output:${nodeId}:${signature}`, async () => {
         const latestSaved = readAiResult({ dataRoot, kind: "draft-output", nodeId, signature });
         if (latestSaved?.output && hasDraftOutputContent(latestSaved.output)) {
@@ -354,6 +374,17 @@ async function handleApiRequest(request, response) {
 
       const library = repository.getLibrary();
       const artifact = resolvePreparedArtifact(node, library.artifacts);
+      const signature = createAiResultSignature({ node, artifact });
+      const saved = readAiResult({ dataRoot, kind: "ai-result", nodeId, signature });
+      if (saved?.result?.url) {
+        sendJson(response, 200, {
+          result: saved.result,
+          persistedAt: saved.updatedAt,
+          source: "filesystem",
+        });
+        return true;
+      }
+
       const queue = buildActiveQueue(nodes);
       const queueItem = queue.available.find((item) => item.node.id === nodeId);
       const reason = queueItem?.reason ?? "";
@@ -366,17 +397,6 @@ async function handleApiRequest(request, response) {
         return true;
       }
       const actionPlanDigest = createAiContextDigest(suggested.plan);
-      const signature = createAiResultSignature({ node, artifact, contextDigest, actionPlanDigest });
-      const saved = readAiResult({ dataRoot, kind: "ai-result", nodeId, signature });
-      if (saved?.result?.url) {
-        sendJson(response, 200, {
-          result: saved.result,
-          persistedAt: saved.updatedAt,
-          source: "filesystem",
-        });
-        return true;
-      }
-
       const generatedResult = await readOrCreateAiResultOutput({
         nodeId,
         node,

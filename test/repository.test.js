@@ -57,6 +57,55 @@ describe("local data repository", () => {
     }
   });
 
+  it("refreshes node priorities on task-tree save and preserves them on restart", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
+    const dbPath = join(dataRoot, "polaris.db");
+
+    try {
+      const repository = createRepository({ dataRoot, dbPath, seedTaskNodes: true });
+      const savedNodes = repository.saveTaskNodes(repository.listTaskNodes());
+      const snapshotPath = join(dataRoot, "task-nodes.json");
+      const snapshot = JSON.parse(readFileSync(snapshotPath, "utf8"));
+
+      assert.equal(savedNodes.some((node) => node.priority === "P0"), true);
+      assert.equal(snapshot.nodes.some((node) => node.priority === "P0"), true);
+
+      snapshot.nodes = snapshot.nodes.map((node) => ({ ...node, priority: "P2" }));
+      writeFileSync(snapshotPath, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
+      repository.close();
+
+      const reopenedRepository = createRepository({ dataRoot, dbPath });
+      assert.equal(reopenedRepository.listTaskNodes().every((node) => node.priority === "P2"), true);
+      reopenedRepository.close();
+    } finally {
+      rmSync(dataRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("initializes missing portable priority data once", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
+    const dbPath = join(dataRoot, "polaris.db");
+
+    try {
+      const repository = createRepository({ dataRoot, dbPath, seedTaskNodes: true });
+      const snapshotPath = join(dataRoot, "task-nodes.json");
+      const snapshot = JSON.parse(readFileSync(snapshotPath, "utf8"));
+      snapshot.nodes = snapshot.nodes.map(({ priority, ...node }) => node);
+      writeFileSync(snapshotPath, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
+      repository.close();
+
+      const reopenedRepository = createRepository({ dataRoot, dbPath });
+      const reopenedNodes = reopenedRepository.listTaskNodes();
+      const rewrittenSnapshot = JSON.parse(readFileSync(snapshotPath, "utf8"));
+
+      assert.equal(reopenedNodes.some((node) => node.priority === "P0"), true);
+      assert.equal(rewrittenSnapshot.nodes.every((node) => typeof node.priority === "string"), true);
+      reopenedRepository.close();
+    } finally {
+      rmSync(dataRoot, { recursive: true, force: true });
+    }
+  });
+
   it("uses task-nodes.json as the portable task tree source on restart", () => {
     const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
     const dbPath = join(dataRoot, "polaris.db");

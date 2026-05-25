@@ -6,15 +6,28 @@ import {
   buildAiContextForNode,
   completeTask,
   getRecordsForNode,
+  refreshTaskPriorities,
   resolvePreparedArtifact,
 } from "../src/app-logic.js";
+import { TASK_PRIORITIES } from "../src/task-nodes.js";
 
 describe("app logic", () => {
   it("ranks the strongest next task from the task data", () => {
-    const queue = buildActiveQueue(sampleNodes);
+    const prioritizedNodes = refreshTaskPriorities(sampleNodes);
+    const queue = buildActiveQueue(prioritizedNodes);
 
-    assert.equal(queue.current.node.id, "study-real-cases");
-    assert.equal(queue.current.score, 95);
+    assert.equal(queue.current.node.priority, TASK_PRIORITIES.P0);
+    assert.equal(queue.current.priority, TASK_PRIORITIES.P0);
+    assert.ok(queue.current.score > queue.available.at(-1).score);
+  });
+
+  it("refreshes priorities into P0, P1, and P2 buckets", () => {
+    const prioritizedNodes = refreshTaskPriorities(sampleNodes);
+    const priorities = new Set(prioritizedNodes.map((node) => node.priority));
+
+    assert.equal(priorities.has(TASK_PRIORITIES.P0), true);
+    assert.equal(priorities.has(TASK_PRIORITIES.P1), true);
+    assert.equal(priorities.has(TASK_PRIORITIES.P2), true);
   });
 
   it("matches library records to related task nodes", () => {
@@ -80,6 +93,7 @@ describe("app logic", () => {
           aiActions: [],
           dependencies: [],
           state: "完成",
+          priority: "P2",
           result: { source: "ai", url: "https://example.feishu.cn/docx/result" },
         },
         {
@@ -91,6 +105,7 @@ describe("app logic", () => {
           aiActions: ["读取上下文"],
           dependencies: ["previous"],
           state: "待做",
+          priority: "P0",
         },
       ],
       library: {
@@ -109,5 +124,6 @@ describe("app logic", () => {
     assert.equal(context.knowledge[0].title, "AI-native 原则");
     assert.equal(context.skills[0].title, "反证优先");
     assert.equal(context.accumulatedResults[0].result.url, "https://example.feishu.cn/docx/result");
+    assert.equal(context.taskLineage.at(-1).priority, "P0");
   });
 });

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { libraryItems } from "../../data/seed/library.js";
 import { sampleNodes } from "../../data/seed/task-nodes.js";
+import { refreshTaskPriorities } from "../app-logic.js";
 import { createNode, indexNodes } from "../task-nodes.js";
 
 const repoRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -61,7 +62,7 @@ export function createRepository(options = {}) {
     },
 
     saveTaskNodes(nodes) {
-      const normalizedNodes = normalizeTaskNodes(nodes);
+      const normalizedNodes = refreshTaskPriorities(normalizeTaskNodes(nodes));
       writeTaskNodesFile(dataRoot, normalizedNodes);
       replaceTaskNodes(db, normalizedNodes);
       return this.listTaskNodes();
@@ -151,7 +152,12 @@ export function normalizeTaskNodes(nodes) {
 function syncTaskNodesWithPortableFile(db, dataRoot) {
   const filePath = join(dataRoot, taskNodesFileName);
   if (existsSync(filePath)) {
-    replaceTaskNodes(db, readTaskNodesFile(filePath));
+    const portableTaskNodes = readTaskNodesFileRecord(filePath);
+    const nodes = portableTaskNodes.hasPriority ? portableTaskNodes.nodes : refreshTaskPriorities(portableTaskNodes.nodes);
+    if (!portableTaskNodes.hasPriority) {
+      writeTaskNodesFile(dataRoot, nodes);
+    }
+    replaceTaskNodes(db, nodes);
     return;
   }
 
@@ -162,11 +168,19 @@ function syncTaskNodesWithPortableFile(db, dataRoot) {
 }
 
 function readTaskNodesFile(filePath) {
+  return readTaskNodesFileRecord(filePath).nodes;
+}
+
+function readTaskNodesFileRecord(filePath) {
   const payload = parseJson(readFileSync(filePath, "utf8"), null);
   const nodes = Array.isArray(payload) ? payload : payload?.nodes;
+  const hasPriority = Array.isArray(nodes) && nodes.every((node) => typeof node?.priority === "string");
 
   try {
-    return normalizeTaskNodes(nodes);
+    return {
+      hasPriority,
+      nodes: normalizeTaskNodes(nodes),
+    };
   } catch (error) {
     throw new Error(`Invalid ${taskNodesFileName}: ${error.message}`);
   }
@@ -187,7 +201,7 @@ function writeTaskNodesFile(dataRoot, nodes) {
 function readTaskNodesFromDb(db) {
   const rows = db
     .prepare(
-      `SELECT id, parent_id, title, tag, description, ai_actions, dependencies, state, conclusion, result, created_from
+      `SELECT id, parent_id, title, tag, description, ai_actions, dependencies, state, priority, conclusion, result, created_from
        FROM task_nodes
        ORDER BY position ASC, rowid ASC`,
     )
@@ -203,6 +217,7 @@ function readTaskNodesFromDb(db) {
       aiActions: parseJson(row.ai_actions, []),
       dependencies: parseJson(row.dependencies, []),
       state: row.state,
+      priority: row.priority,
       conclusion: parseJson(row.conclusion, null),
       result: parseJson(row.result, null),
       createdFrom: row.created_from,
@@ -220,6 +235,7 @@ function serializeTaskNodes(nodes) {
     aiActions: node.aiActions,
     dependencies: node.dependencies,
     state: node.state,
+    priority: node.priority,
     conclusion: node.conclusion ?? null,
     result: node.result ?? null,
     createdFrom: node.createdFrom,
@@ -237,6 +253,7 @@ function ensureSchema(db) {
       ai_actions TEXT NOT NULL,
       dependencies TEXT NOT NULL,
       state TEXT NOT NULL,
+      priority TEXT NOT NULL DEFAULT 'P2',
       conclusion TEXT,
       result TEXT,
       created_from TEXT NOT NULL,
@@ -261,7 +278,15 @@ function ensureSchema(db) {
       position INTEGER NOT NULL
     );
   `);
+  ensureTaskNodeColumns(db);
   ensureLibraryItemColumns(db);
+}
+
+function ensureTaskNodeColumns(db) {
+  const columns = new Set(db.prepare("PRAGMA table_info(task_nodes)").all().map((column) => column.name));
+  if (!columns.has("priority")) {
+    db.exec("ALTER TABLE task_nodes ADD COLUMN priority TEXT NOT NULL DEFAULT 'P2'");
+  }
 }
 
 function ensureLibraryItemColumns(db) {
@@ -812,8 +837,8 @@ function findMarkdownSource(project, kind, libraryPath, markdownPath) {
 function replaceTaskNodes(db, nodes) {
   const insert = db.prepare(`
     INSERT INTO task_nodes (
-      id, parent_id, title, tag, description, ai_actions, dependencies, state, conclusion, result, created_from, position
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      id, parent_id, title, tag, description, ai_actions, dependencies, state, priority, conclusion, result, created_from, position
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   db.exec("BEGIN");
@@ -829,6 +854,7 @@ function replaceTaskNodes(db, nodes) {
         JSON.stringify(node.aiActions),
         JSON.stringify(node.dependencies),
         node.state,
+        node.priority,
         JSON.stringify(node.conclusion),
         JSON.stringify(node.result),
         node.createdFrom,

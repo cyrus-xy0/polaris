@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   TASK_STATES,
+  TASK_PRIORITIES,
   buildExecutableQueue,
   buildTree,
   createNode,
@@ -11,6 +12,18 @@ import {
 import { sampleNodes } from "../src/sample-tree.js";
 
 describe("task node structure v1", () => {
+  it("defaults new nodes to P2 priority", () => {
+    const node = createNode({
+      id: "new-node",
+      title: "新节点",
+      tag: "思考",
+      description: "默认优先级。",
+      aiActions: ["明确输入"],
+    });
+
+    assert.equal(node.priority, TASK_PRIORITIES.P2);
+  });
+
   it("builds the sample as a recursive tree", () => {
     const tree = buildTree(sampleNodes);
 

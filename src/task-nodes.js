@@ -13,6 +13,12 @@ export const TASK_STATES = Object.freeze({
   BLOCKED: "阻塞",
 });
 
+export const TASK_PRIORITIES = Object.freeze({
+  P0: "P0",
+  P1: "P1",
+  P2: "P2",
+});
+
 export const CREATED_FROM = Object.freeze({
   USER: "user",
   AI_SPLIT: "ai_split",
@@ -21,6 +27,7 @@ export const CREATED_FROM = Object.freeze({
 
 const VALID_TAGS = new Set(Object.values(TASK_TAGS));
 const VALID_STATES = new Set(Object.values(TASK_STATES));
+const VALID_PRIORITIES = new Set(Object.values(TASK_PRIORITIES));
 const VALID_CREATED_FROM = new Set(Object.values(CREATED_FROM));
 
 export function validateNode(node) {
@@ -34,6 +41,9 @@ export function validateNode(node) {
   if (!node.title) errors.push("title is required");
   if (!VALID_TAGS.has(node.tag)) errors.push(`tag must be one of: ${[...VALID_TAGS].join(", ")}`);
   if (!VALID_STATES.has(node.state)) errors.push(`state must be one of: ${[...VALID_STATES].join(", ")}`);
+  if (!VALID_PRIORITIES.has(node.priority)) {
+    errors.push(`priority must be one of: ${[...VALID_PRIORITIES].join(", ")}`);
+  }
   if (!VALID_CREATED_FROM.has(node.createdFrom)) {
     errors.push(`createdFrom must be one of: ${[...VALID_CREATED_FROM].join(", ")}`);
   }
@@ -61,6 +71,7 @@ export function createNode(input) {
     aiActions: input.aiActions ?? ["明确下一步", "执行最小动作", "记录判断"],
     dependencies: input.dependencies ?? [],
     state: input.state ?? TASK_STATES.TODO,
+    priority: input.priority ?? TASK_PRIORITIES.P2,
     conclusion: input.conclusion ?? null,
     result: input.result ?? null,
     createdFrom: input.createdFrom ?? CREATED_FROM.USER,
@@ -200,6 +211,7 @@ export function buildExecutableQueue(nodes, options = {}) {
       reason: recommendation.reason,
       aiActions: node.aiActions,
       score: recommendation.score,
+      priority: recommendation.priority ?? node.priority,
     });
   }
 

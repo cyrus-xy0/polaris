@@ -5,7 +5,8 @@ import { renderMarkdownToHtml } from "./markdown-renderer.js";
 
 const aiResultDirName = "ai-results";
 
-const aiContextVersion = "rich-context-v3-openclaw-content";
+const legacyAiContextVersion = "rich-context-v3-openclaw-content";
+const aiAnalysisCacheVersion = "task-card-v1";
 const aiResultVersion = "executed-ai-result-v2";
 
 export function createAiContextDigest(aiContext = null) {
@@ -14,48 +15,27 @@ export function createAiContextDigest(aiContext = null) {
 
 export function createSuggestedActionPlanSignature({ node, reason = "", contextDigest = "" }) {
   return JSON.stringify({
-    version: aiContextVersion,
-    id: node.id,
-    title: node.title,
-    tag: node.tag,
-    description: node.description,
-    dependencies: node.dependencies,
-    state: node.state,
-    reason,
-    contextDigest,
+    version: aiAnalysisCacheVersion,
+    ...serializeTaskCardSignature(node),
   });
 }
 
 export function createDraftOutputSignature({ node, artifact = null, contextDigest = "", actionPlanDigest = "" }) {
   return JSON.stringify({
-    version: aiContextVersion,
-    id: node.id,
-    title: node.title,
-    tag: node.tag,
-    description: node.description,
-    dependencies: node.dependencies,
-    state: node.state,
+    version: aiAnalysisCacheVersion,
+    ...serializeTaskCardSignature(node),
     artifactTitle: artifact?.title ?? "",
     artifactType: artifact?.docType ?? "",
-    contextDigest,
-    actionPlanDigest,
   });
 }
 
 export function createAiResultSignature({ node, artifact = null, contextDigest = "", actionPlanDigest = "" }) {
   return JSON.stringify({
-    version: aiContextVersion,
+    version: aiAnalysisCacheVersion,
     resultVersion: aiResultVersion,
-    id: node.id,
-    title: node.title,
-    tag: node.tag,
-    description: node.description,
-    dependencies: node.dependencies,
-    state: node.state,
+    ...serializeTaskCardSignature(node),
     artifactTitle: artifact?.title ?? "",
     artifactType: artifact?.docType ?? "",
-    contextDigest,
-    actionPlanDigest,
   });
 }
 
@@ -65,7 +45,7 @@ export function readAiResult({ dataRoot, kind, nodeId, signature = null }) {
 
   const record = JSON.parse(readFileSync(filePath, "utf8"));
   if (record.kind !== kind || record.nodeId !== nodeId) return null;
-  if (signature !== null && record.signature !== signature) return null;
+  if (signature !== null && !signaturesMatchForCache(kind, record.signature, signature)) return null;
   return {
     ...record,
     filePath,
@@ -136,6 +116,70 @@ function hasMeaningfulAiText(value) {
 
 function resolveAiResultPath({ dataRoot, kind, nodeId }) {
   return join(resolve(dataRoot), aiResultDirName, safePathSegment(kind), `${createNodeFileName(nodeId)}.json`);
+}
+
+function serializeTaskCardSignature(node) {
+  return {
+    id: node.id,
+    title: node.title,
+    tag: node.tag,
+    description: node.description,
+    dependencies: normalizeSignatureArray(node.dependencies),
+    state: node.state,
+    priority: node.priority ?? "P2",
+  };
+}
+
+function signaturesMatchForCache(kind, savedSignature, requestedSignature) {
+  if (savedSignature === requestedSignature) return true;
+
+  const saved = parseSignature(savedSignature);
+  const requested = parseSignature(requestedSignature);
+  if (!saved || !requested) return false;
+  if (!isCompatibleSignatureVersion(saved.version, requested.version)) return false;
+  if (!sameSignatureValue(saved.id, requested.id)) return false;
+  if (!sameSignatureValue(saved.title, requested.title)) return false;
+  if (!sameSignatureValue(saved.tag, requested.tag)) return false;
+  if (!sameSignatureValue(saved.description, requested.description)) return false;
+  if (!sameSignatureValue(saved.state, requested.state)) return false;
+  if (!sameSignatureValue(saved.priority ?? "P2", requested.priority ?? "P2")) return false;
+  if (!sameSignatureArray(saved.dependencies, requested.dependencies)) return false;
+
+  if (kind === "draft-output" || kind === "ai-result" || kind === "ai-result-output") {
+    if (!sameSignatureValue(saved.artifactTitle, requested.artifactTitle)) return false;
+    if (!sameSignatureValue(saved.artifactType, requested.artifactType)) return false;
+  }
+
+  if (kind === "ai-result" || kind === "ai-result-output") {
+    if (!sameSignatureValue(saved.resultVersion, requested.resultVersion)) return false;
+  }
+
+  return true;
+}
+
+function parseSignature(signature) {
+  try {
+    return JSON.parse(signature);
+  } catch {
+    return null;
+  }
+}
+
+function isCompatibleSignatureVersion(savedVersion, requestedVersion) {
+  if (savedVersion === requestedVersion) return true;
+  return requestedVersion === aiAnalysisCacheVersion && savedVersion === legacyAiContextVersion;
+}
+
+function sameSignatureValue(left, right) {
+  return (left ?? "") === (right ?? "");
+}
+
+function sameSignatureArray(left, right) {
+  return JSON.stringify(normalizeSignatureArray(left)) === JSON.stringify(normalizeSignatureArray(right));
+}
+
+function normalizeSignatureArray(value) {
+  return Array.isArray(value) ? [...value].map((item) => String(item)).sort() : [];
 }
 
 function resolveAiResultDocumentPath({ dataRoot, nodeId, signature }) {
