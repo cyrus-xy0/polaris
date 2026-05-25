@@ -110,6 +110,41 @@ describe("local data repository", () => {
     }
   });
 
+  it("persists manual task priority overrides across restarts", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
+    const dbPath = join(dataRoot, "polaris.db");
+
+    try {
+      const repository = createRepository({ dataRoot, dbPath, seedTaskNodes: true });
+      const nodes = repository.listTaskNodes();
+      repository.saveTaskNodes(
+        nodes.map((node) =>
+          node.id === "try-demo"
+            ? {
+                ...node,
+                priority: "P0",
+                priorityOverride: true,
+              }
+            : node,
+        ),
+      );
+      repository.close();
+
+      const snapshot = JSON.parse(readFileSync(join(dataRoot, "task-nodes.json"), "utf8"));
+      const snapshotNode = snapshot.nodes.find((node) => node.id === "try-demo");
+      const reopenedRepository = createRepository({ dataRoot, dbPath });
+      const reopenedNode = reopenedRepository.listTaskNodes().find((node) => node.id === "try-demo");
+      reopenedRepository.close();
+
+      assert.equal(snapshotNode.priority, "P0");
+      assert.equal(snapshotNode.priorityOverride, true);
+      assert.equal(reopenedNode.priority, "P0");
+      assert.equal(reopenedNode.priorityOverride, true);
+    } finally {
+      rmSync(dataRoot, { recursive: true, force: true });
+    }
+  });
+
   it("uses task-nodes.json as the portable task tree source on restart", () => {
     const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
     const dbPath = join(dataRoot, "polaris.db");
@@ -143,6 +178,86 @@ describe("local data repository", () => {
     }
   });
 
+  it("stores task nodes in the configured local task-node directory", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
+    const taskNodeRoot = mkdtempSync(join(tmpdir(), "polaris-task-nodes-"));
+    const dbPath = join(dataRoot, "polaris.db");
+    writeFileSync(join(dataRoot, "polaris.project.json"), JSON.stringify({ name: "Custom Task Project" }, null, 2));
+    writeFileSync(
+      join(dataRoot, "polaris.local.json"),
+      JSON.stringify(
+        {
+          version: 1,
+          paths: {
+            taskNodes: taskNodeRoot,
+            database: "polaris.db",
+            aiResults: "ai-results",
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    try {
+      const repository = createRepository({ dataRoot, dbPath, seedTaskNodes: true });
+      const nodes = repository.listTaskNodes();
+      const project = repository.getProject();
+      repository.saveTaskNodes(
+        nodes.map((node) =>
+          node.id === "polaris"
+            ? {
+                ...node,
+                title: "外部目录里的任务节点",
+              }
+            : node,
+        ),
+      );
+      repository.close();
+
+      assert.equal(project.taskNodes.path, taskNodeRoot);
+      assert.equal(project.taskNodes.fileName, "task-nodes.json");
+      assert.equal(project.localConfig.fileName, "polaris.local.json");
+      assert.equal(existsSync(join(dataRoot, "task-nodes.json")), false);
+      assert.equal(existsSync(join(taskNodeRoot, "task-nodes.json")), true);
+
+      const reopenedRepository = createRepository({ dataRoot, dbPath });
+      assert.equal(reopenedRepository.listTaskNodes()[0].title, "外部目录里的任务节点");
+      reopenedRepository.close();
+    } finally {
+      rmSync(dataRoot, { recursive: true, force: true });
+      rmSync(taskNodeRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("copies legacy root task nodes into a newly configured task-node directory", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
+    const dbPath = join(dataRoot, "polaris.db");
+    const legacySnapshotPath = join(dataRoot, "task-nodes.json");
+    const configuredSnapshotPath = join(dataRoot, "tasks/task-nodes.json");
+
+    try {
+      const repository = createRepository({ dataRoot, dbPath, seedTaskNodes: true });
+      repository.close();
+
+      const localConfig = JSON.parse(readFileSync(join(dataRoot, "polaris.local.json"), "utf8"));
+      localConfig.paths.taskNodes = "tasks";
+      writeFileSync(join(dataRoot, "polaris.local.json"), `${JSON.stringify(localConfig, null, 2)}\n`, "utf8");
+
+      const reopenedRepository = createRepository({ dataRoot, dbPath });
+      reopenedRepository.close();
+
+      assert.equal(existsSync(legacySnapshotPath), true);
+      assert.equal(existsSync(configuredSnapshotPath), true);
+      assert.deepEqual(
+        JSON.parse(readFileSync(configuredSnapshotPath, "utf8")).nodes.map((node) => node.id),
+        JSON.parse(readFileSync(legacySnapshotPath, "utf8")).nodes.map((node) => node.id),
+      );
+    } finally {
+      rmSync(dataRoot, { recursive: true, force: true });
+    }
+  });
+
   it("exports existing sqlite task nodes to task-nodes.json for legacy data directories", () => {
     const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
     const dbPath = join(dataRoot, "polaris.db");
@@ -168,6 +283,70 @@ describe("local data repository", () => {
 
       const snapshot = JSON.parse(readFileSync(snapshotPath, "utf8"));
       assert.equal(snapshot.nodes[0].title, "旧 SQLite 里的目标");
+    } finally {
+      rmSync(dataRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("migrates legacy sqlite task-node tag columns out of the runtime schema", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
+    const dbPath = join(dataRoot, "polaris.db");
+
+    try {
+      const db = new DatabaseSync(dbPath);
+      db.exec(`
+        CREATE TABLE task_nodes (
+          id TEXT PRIMARY KEY,
+          parent_id TEXT,
+          title TEXT NOT NULL,
+          tag TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          ai_actions TEXT NOT NULL,
+          dependencies TEXT NOT NULL,
+          state TEXT NOT NULL,
+          priority TEXT NOT NULL DEFAULT 'P2',
+          conclusion TEXT,
+          result TEXT,
+          created_from TEXT NOT NULL,
+          position INTEGER NOT NULL
+        );
+      `);
+      db.prepare(
+        `INSERT INTO task_nodes (
+          id, parent_id, title, tag, description, ai_actions, dependencies, state, priority, conclusion, result, created_from, position
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        "legacy-node",
+        null,
+        "旧节点",
+        "思考",
+        "旧库仍然带 tag。",
+        JSON.stringify(["确认输入"]),
+        JSON.stringify([]),
+        "待做",
+        "P2",
+        null,
+        null,
+        "user",
+        0,
+      );
+      db.close();
+
+      const repository = createRepository({ dataRoot, dbPath });
+      const [node] = repository.listTaskNodes();
+      repository.close();
+
+      const migratedDb = new DatabaseSync(dbPath);
+      const columns = migratedDb.prepare("PRAGMA table_info(task_nodes)").all().map((column) => column.name);
+      migratedDb.close();
+      const snapshot = JSON.parse(readFileSync(join(dataRoot, "task-nodes.json"), "utf8"));
+
+      assert.equal(node.title, "旧节点");
+      assert.equal(Object.hasOwn(node, "tag"), false);
+      assert.equal(columns.includes("tag"), false);
+      assert.equal(columns.includes("priority_override"), true);
+      assert.equal(Object.hasOwn(snapshot.nodes[0], "tag"), false);
+      assert.equal(snapshot.nodes[0].priorityOverride, false);
     } finally {
       rmSync(dataRoot, { recursive: true, force: true });
     }
@@ -254,7 +433,21 @@ describe("local data repository", () => {
       const project = repository.getBootstrap().project;
 
       assert.equal(project.name, "Polaris");
+      assert.deepEqual(project.taskNodes, {
+        label: "Task Nodes",
+        path: ".",
+        fileName: "task-nodes.json",
+      });
+      assert.deepEqual(project.localConfig, {
+        fileName: "polaris.local.json",
+        paths: {
+          taskNodes: ".",
+          database: "polaris.db",
+          aiResults: "ai-results",
+        },
+      });
       assert.ok(existsSync(join(dataRoot, "polaris.project.json")));
+      assert.ok(existsSync(join(dataRoot, "polaris.local.json")));
       assert.deepEqual(
         project.sources.map((source) => [source.id, source.kind, source.path]),
         [
@@ -271,11 +464,17 @@ describe("local data repository", () => {
   it("imports knowledge tag files from project sources outside the data directory", () => {
     const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
     const sourceRoot = mkdtempSync(join(tmpdir(), "polaris-source-"));
+    writeFileSync(join(dataRoot, "polaris.project.json"), JSON.stringify({ name: "Client Project" }, null, 2));
     writeFileSync(
-      join(dataRoot, "polaris.project.json"),
+      join(dataRoot, "polaris.local.json"),
       JSON.stringify(
         {
-          name: "Client Project",
+          version: 1,
+          paths: {
+            taskNodes: ".",
+            database: "polaris.db",
+            aiResults: "ai-results",
+          },
           sources: [
             {
               id: "client-knowledge",
@@ -421,6 +620,38 @@ describe("local data repository", () => {
       repository.close();
 
       assert.ok(existsSync(join(dataRoot, "polaris.db")));
+    } finally {
+      rmSync(dataRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("uses local config paths for sqlite and AI result storage", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
+    writeFileSync(
+      join(dataRoot, "polaris.local.json"),
+      JSON.stringify(
+        {
+          version: 1,
+          paths: {
+            taskNodes: "tasks",
+            database: "storage/polaris.db",
+            aiResults: "storage/ai-results",
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    try {
+      const repository = createRepository({ dataRoot });
+      const storage = repository.getStorage();
+      repository.close();
+
+      assert.ok(existsSync(join(dataRoot, "storage/polaris.db")));
+      assert.equal(storage.taskNodesFilePath, join(dataRoot, "tasks/task-nodes.json"));
+      assert.equal(storage.aiResultsRoot, join(dataRoot, "storage/ai-results"));
+      assert.ok(existsSync(join(dataRoot, "storage/ai-results")));
     } finally {
       rmSync(dataRoot, { recursive: true, force: true });
     }

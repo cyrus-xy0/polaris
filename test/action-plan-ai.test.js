@@ -17,7 +17,7 @@ import {
   parseDraftOutput,
   parseTaskNodeSplitOutput,
 } from "../src/action-plan-ai.js";
-import { CREATED_FROM, TASK_STATES, TASK_TAGS, createNode } from "../src/task-nodes.js";
+import { CREATED_FROM, TASK_STATES, createNode } from "../src/task-nodes.js";
 
 describe("action plan AI", () => {
   it("leaves the suggested action plan blank when no local generator exists", async () => {
@@ -377,7 +377,7 @@ describe("action plan AI", () => {
         "const prompt = process.argv[process.argv.indexOf('--message') + 1] || '';",
         "if (!prompt.includes('任务节点拆解助手')) process.exit(4);",
         "if (!prompt.includes('测试节点')) process.exit(5);",
-        "console.log(JSON.stringify({ response: JSON.stringify({ summary: '先理解，再执行，再验证', nodes: [{ title: '明确判断口径', description: '确认输入和完成标准。', tag: '思考', aiActions: ['读取输入', '写出口径'] }, { title: '执行最小验证', description: '完成一个可检查的验证动作。', tag: '验证', aiActions: ['执行验证', '记录结果'] }] }) }));",
+        "console.log(JSON.stringify({ response: JSON.stringify({ summary: '先理解，再执行，再验证', nodes: [{ title: '明确判断口径', description: '确认输入和完成标准。', aiActions: ['读取输入', '写出口径'] }, { title: '执行最小验证', description: '完成一个可检查的验证动作。', aiActions: ['执行验证', '记录结果'] }] }) }));",
       ].join("\n"),
     );
     chmodSync(commandPath, 0o755);
@@ -395,7 +395,6 @@ describe("action plan AI", () => {
       split.nodes.map((node) => node.title),
       ["明确判断口径", "执行最小验证"],
     );
-    assert.equal(split.nodes[0].tag, "思考");
   });
 
   it("parses plain text generator output as ordered action steps", () => {
@@ -470,12 +469,12 @@ describe("action plan AI", () => {
         steps: ["读取上文", "应用 knowhow", "生成结果"],
       },
       aiContext: {
-        taskLineage: [{ title: "北极星目标", tag: "思考", state: "待做", description: "找到 ToB AI 场景。" }],
-        upstreamTasks: [{ title: "前置判断", tag: "验证", state: "完成", description: "已验证。", result: { url: "https://example.feishu.cn/docx/result" } }],
+        taskLineage: [{ title: "北极星目标", state: "待做", description: "找到 ToB AI 场景。" }],
+        upstreamTasks: [{ title: "前置判断", state: "完成", description: "已验证。", result: { url: "https://example.feishu.cn/docx/result" } }],
         knowledge: [{ type: "Knowhow", title: "AI-native 原则", description: "读上下文、执行动作、沉淀结果。", markdown: "不要只把 AI 当输入框。" }],
         skills: [{ type: "Skill", title: "反证优先", description: "先找失败证据。" }],
         artifacts: [{ type: "产物", title: "前置结果", description: "已完成材料。", url: "https://example.feishu.cn/docx/result" }],
-        accumulatedResults: [{ title: "已完成任务", tag: "整理", state: "完成", description: "沉淀结论。", conclusion: { shouldContinue: true } }],
+        accumulatedResults: [{ title: "已完成任务", state: "完成", description: "沉淀结论。", conclusion: { shouldContinue: true } }],
       },
     });
 
@@ -510,7 +509,7 @@ describe("action plan AI", () => {
     const prompt = buildTaskNodeSplitPrompt({
       node: createTestNode(),
       aiContext: {
-        taskLineage: [{ title: "北极星目标", tag: "思考", state: "待做", description: "找到 ToB AI 场景。" }],
+        taskLineage: [{ title: "北极星目标", state: "待做", description: "找到 ToB AI 场景。" }],
       },
     });
 
@@ -525,7 +524,6 @@ function createTestNode() {
   return createNode({
     id: "test-node",
     title: "测试节点",
-    tag: TASK_TAGS.EXECUTE,
     description: "验证本地生成器能根据节点上下文生成建议步骤。",
     aiActions: ["旧步骤"],
     dependencies: [],

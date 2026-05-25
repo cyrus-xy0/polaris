@@ -1,4 +1,4 @@
-import { TASK_PRIORITIES, TASK_STATES, buildExecutableQueue, deriveEffectiveStates, indexNodes } from "./task-nodes.js";
+import { TASK_PRIORITIES, TASK_STATES, buildExecutableQueue, createNode, deriveEffectiveStates, indexNodes } from "./task-nodes.js";
 
 const studyRealCasesActions = [
   "定案例筛选口径",
@@ -55,14 +55,19 @@ export function refreshTaskPriorities(nodes = []) {
 
   for (const node of [...nodes].reverse()) {
     const children = index.childrenByParentId.get(node.id) ?? [];
+    if (stateById.get(node.id) === TASK_STATES.DONE) {
+      priorityById.set(node.id, TASK_PRIORITIES.P2);
+      continue;
+    }
+    if (node.priorityOverride) {
+      priorityById.set(node.id, node.priority ?? TASK_PRIORITIES.P2);
+      continue;
+    }
     const childPriorities = children.map((child) => priorityById.get(child.id) ?? TASK_PRIORITIES.P2);
     if (childPriorities.includes(TASK_PRIORITIES.P0)) {
       priorityById.set(node.id, TASK_PRIORITIES.P0);
     } else if (childPriorities.includes(TASK_PRIORITIES.P1)) {
       priorityById.set(node.id, TASK_PRIORITIES.P1);
-    }
-    if (stateById.get(node.id) === TASK_STATES.DONE) {
-      priorityById.set(node.id, TASK_PRIORITIES.P2);
     }
   }
 
@@ -262,6 +267,59 @@ export function toggleTaskNodeState(nodes, nodeId, isCurrentlyDone) {
   };
 }
 
+export function moveTaskNode(nodes, { nodeId, targetId, position = "inside" } = {}) {
+  const normalizedPosition = normalizeMovePosition(position);
+  const index = indexNodes(nodes);
+  const movingNode = index.byId.get(nodeId);
+  const targetNode = index.byId.get(targetId);
+
+  if (!movingNode || !targetNode || movingNode.id === targetNode.id) return nodes;
+
+  const movingIds = getNodeAndDescendantIds(nodes, movingNode.id);
+  if (movingIds.has(targetNode.id)) return nodes;
+
+  const targetIdsToPass = getNodeAndDescendantIds(nodes, targetNode.id);
+  const remainingNodes = nodes.filter((node) => !movingIds.has(node.id));
+  const movingNodes = nodes.filter((node) => movingIds.has(node.id));
+  const finalPosition = !targetNode.parentId && normalizedPosition !== "inside" ? "inside" : normalizedPosition;
+  const nextParentId = finalPosition === "inside" ? targetNode.id : targetNode.parentId;
+  const insertIndex = getMoveInsertIndex(remainingNodes, targetNode.id, finalPosition, targetIdsToPass);
+
+  if (insertIndex < 0) return nodes;
+
+  const nextMovingNodes = movingNodes.map((node) =>
+    node.id === movingNode.id
+      ? createNode({
+          ...node,
+          parentId: nextParentId ?? null,
+        })
+      : node,
+  );
+
+  return [
+    ...remainingNodes.slice(0, insertIndex),
+    ...nextMovingNodes,
+    ...remainingNodes.slice(insertIndex),
+  ];
+}
+
+function normalizeMovePosition(position) {
+  if (position === "before" || position === "after" || position === "inside") return position;
+  return "inside";
+}
+
+function getMoveInsertIndex(nodes, targetId, position, targetIdsToPass) {
+  const targetIndex = nodes.findIndex((node) => node.id === targetId);
+  if (targetIndex < 0) return -1;
+  if (position === "before") return targetIndex;
+
+  let lastIndex = targetIndex;
+  for (let index = targetIndex; index < nodes.length; index += 1) {
+    if (targetIdsToPass.has(nodes[index].id)) lastIndex = index;
+  }
+  return lastIndex + 1;
+}
+
 export function getNodeAndDescendantIds(nodes, nodeId) {
   const index = indexNodes(nodes);
   const ids = new Set([nodeId]);
@@ -320,7 +378,6 @@ function serializeTaskContext(node) {
   return {
     id: node.id,
     title: node.title,
-    tag: node.tag,
     description: node.description,
     state: node.state,
     priority: node.priority,

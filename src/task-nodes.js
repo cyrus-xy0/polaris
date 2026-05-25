@@ -1,11 +1,3 @@
-export const TASK_TAGS = Object.freeze({
-  THINK: "思考",
-  EXECUTE: "执行",
-  COMMUNICATE: "沟通",
-  VERIFY: "验证",
-  ORGANIZE: "整理",
-});
-
 export const TASK_STATES = Object.freeze({
   TODO: "待做",
   IN_PROGRESS: "进行中",
@@ -25,7 +17,6 @@ export const CREATED_FROM = Object.freeze({
   REVIEW: "review",
 });
 
-const VALID_TAGS = new Set(Object.values(TASK_TAGS));
 const VALID_STATES = new Set(Object.values(TASK_STATES));
 const VALID_PRIORITIES = new Set(Object.values(TASK_PRIORITIES));
 const VALID_CREATED_FROM = new Set(Object.values(CREATED_FROM));
@@ -39,10 +30,12 @@ export function validateNode(node) {
 
   if (!node.id) errors.push("id is required");
   if (!node.title) errors.push("title is required");
-  if (!VALID_TAGS.has(node.tag)) errors.push(`tag must be one of: ${[...VALID_TAGS].join(", ")}`);
   if (!VALID_STATES.has(node.state)) errors.push(`state must be one of: ${[...VALID_STATES].join(", ")}`);
   if (!VALID_PRIORITIES.has(node.priority)) {
     errors.push(`priority must be one of: ${[...VALID_PRIORITIES].join(", ")}`);
+  }
+  if (typeof node.priorityOverride !== "boolean") {
+    errors.push("priorityOverride must be a boolean");
   }
   if (!VALID_CREATED_FROM.has(node.createdFrom)) {
     errors.push(`createdFrom must be one of: ${[...VALID_CREATED_FROM].join(", ")}`);
@@ -66,12 +59,12 @@ export function createNode(input) {
     id: input.id,
     parentId: input.parentId ?? null,
     title: input.title,
-    tag: input.tag,
     description: input.description ?? "",
     aiActions: input.aiActions ?? ["明确下一步", "执行最小动作", "记录判断"],
     dependencies: input.dependencies ?? [],
     state: input.state ?? TASK_STATES.TODO,
     priority: input.priority ?? TASK_PRIORITIES.P2,
+    priorityOverride: input.priorityOverride === true,
     conclusion: input.conclusion ?? null,
     result: input.result ?? null,
     createdFrom: input.createdFrom ?? CREATED_FROM.USER,

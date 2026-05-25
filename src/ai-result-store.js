@@ -39,8 +39,8 @@ export function createAiResultSignature({ node, artifact = null, contextDigest =
   });
 }
 
-export function readAiResult({ dataRoot, kind, nodeId, signature = null }) {
-  const filePath = resolveAiResultPath({ dataRoot, kind, nodeId });
+export function readAiResult({ dataRoot, aiResultsRoot = null, kind, nodeId, signature = null }) {
+  const filePath = resolveAiResultPath({ dataRoot, aiResultsRoot, kind, nodeId });
   if (!existsSync(filePath)) return null;
 
   const record = JSON.parse(readFileSync(filePath, "utf8"));
@@ -52,8 +52,8 @@ export function readAiResult({ dataRoot, kind, nodeId, signature = null }) {
   };
 }
 
-export function writeAiResult({ dataRoot, kind, nodeId, signature, payload }) {
-  const filePath = resolveAiResultPath({ dataRoot, kind, nodeId });
+export function writeAiResult({ dataRoot, aiResultsRoot = null, kind, nodeId, signature, payload }) {
+  const filePath = resolveAiResultPath({ dataRoot, aiResultsRoot, kind, nodeId });
   mkdirSync(dirname(filePath), { recursive: true });
 
   const record = {
@@ -66,20 +66,28 @@ export function writeAiResult({ dataRoot, kind, nodeId, signature, payload }) {
   const tmpPath = `${filePath}.${process.pid}.tmp`;
   writeFileSync(tmpPath, `${JSON.stringify(record, null, 2)}\n`, "utf8");
   renameSync(tmpPath, filePath);
-  return readAiResult({ dataRoot, kind, nodeId, signature });
+  return readAiResult({ dataRoot, aiResultsRoot, kind, nodeId, signature });
 }
 
-export function writeAiResultDocument({ dataRoot, node, signature, output, artifact = null, actionPlan = null }) {
+export function writeAiResultDocument({
+  dataRoot,
+  aiResultsRoot = null,
+  node,
+  signature,
+  output,
+  artifact = null,
+  actionPlan = null,
+}) {
   const title = output.title || `${node.title} AI 结果`;
-  const filePath = resolveAiResultDocumentPath({ dataRoot, nodeId: node.id, signature });
+  const filePath = resolveAiResultDocumentPath({ dataRoot, aiResultsRoot, nodeId: node.id, signature });
   mkdirSync(dirname(filePath), { recursive: true });
   writeFileSync(filePath, renderAiResultHtml({ title, node, output, artifact, actionPlan }), "utf8");
 
-  const relativePath = relative(join(resolve(dataRoot), aiResultDirName), filePath);
+  const relativePath = relative(resolveAiResultRoot({ dataRoot, aiResultsRoot }), filePath);
   return {
     title,
     docType: "本地 HTML",
-    url: `/ai-results/${relativePath.split("/").join("/")}`,
+    url: `/ai-results/${relativePath.split(/[\\/]/).join("/")}`,
     path: filePath,
   };
 }
@@ -114,15 +122,21 @@ function hasMeaningfulAiText(value) {
   return true;
 }
 
-function resolveAiResultPath({ dataRoot, kind, nodeId }) {
-  return join(resolve(dataRoot), aiResultDirName, safePathSegment(kind), `${createNodeFileName(nodeId)}.json`);
+function resolveAiResultRoot({ dataRoot, aiResultsRoot = null }) {
+  if (typeof aiResultsRoot === "string" && aiResultsRoot.trim()) {
+    return resolve(aiResultsRoot);
+  }
+  return join(resolve(dataRoot), aiResultDirName);
+}
+
+function resolveAiResultPath({ dataRoot, aiResultsRoot = null, kind, nodeId }) {
+  return join(resolveAiResultRoot({ dataRoot, aiResultsRoot }), safePathSegment(kind), `${createNodeFileName(nodeId)}.json`);
 }
 
 function serializeTaskCardSignature(node) {
   return {
     id: node.id,
     title: node.title,
-    tag: node.tag,
     description: node.description,
     dependencies: normalizeSignatureArray(node.dependencies),
     state: node.state,
@@ -139,7 +153,6 @@ function signaturesMatchForCache(kind, savedSignature, requestedSignature) {
   if (!isCompatibleSignatureVersion(saved.version, requested.version)) return false;
   if (!sameSignatureValue(saved.id, requested.id)) return false;
   if (!sameSignatureValue(saved.title, requested.title)) return false;
-  if (!sameSignatureValue(saved.tag, requested.tag)) return false;
   if (!sameSignatureValue(saved.description, requested.description)) return false;
   if (!sameSignatureValue(saved.state, requested.state)) return false;
   if (!sameSignatureValue(saved.priority ?? "P2", requested.priority ?? "P2")) return false;
@@ -182,9 +195,9 @@ function normalizeSignatureArray(value) {
   return Array.isArray(value) ? [...value].map((item) => String(item)).sort() : [];
 }
 
-function resolveAiResultDocumentPath({ dataRoot, nodeId, signature }) {
+function resolveAiResultDocumentPath({ dataRoot, aiResultsRoot = null, nodeId, signature }) {
   const signatureHash = createHash("sha256").update(signature).digest("hex").slice(0, 10);
-  return join(resolve(dataRoot), aiResultDirName, "documents", `${createNodeFileName(nodeId)}-${signatureHash}.html`);
+  return join(resolveAiResultRoot({ dataRoot, aiResultsRoot }), "documents", `${createNodeFileName(nodeId)}-${signatureHash}.html`);
 }
 
 function createNodeFileName(nodeId) {

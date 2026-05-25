@@ -1,6 +1,6 @@
 {
   "name": "polaris",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Polaris local demo for AI-native task-node workflows",
   "private": true,
   "type": "module",

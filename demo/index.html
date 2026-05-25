@@ -103,21 +103,36 @@
                 <textarea id="node-editor-description" name="description"></textarea>
               </label>
 
+              <label class="node-editor-field">
+                <span>优先级</span>
+                <select id="node-editor-priority" name="priority">
+                  <option value="auto">AI 自动判断</option>
+                  <option value="P0">P0 · 必须马上做</option>
+                  <option value="P1">P1 · 尽早完成</option>
+                  <option value="P2">P2 · 其他节点</option>
+                </select>
+              </label>
+
               <div class="node-editor-field node-dependency-field">
-                <span id="node-editor-dependencies-label">依赖节点</span>
-                <input
-                  id="node-editor-dependency-search"
-                  type="search"
-                  placeholder="搜索节点"
-                  autocomplete="off"
-                  aria-labelledby="node-editor-dependencies-label"
-                />
-                <div class="node-dependency-selected" id="node-editor-dependency-selected" aria-live="polite"></div>
+                <span id="node-editor-dependencies-label">前置依赖节点</span>
+                <div class="node-dependency-add-row">
+                  <input
+                    id="node-editor-dependency-search"
+                    type="search"
+                    placeholder="搜索节点"
+                    autocomplete="off"
+                    list="node-editor-dependency-options"
+                    aria-labelledby="node-editor-dependencies-label"
+                  />
+                  <button class="node-dependency-add" id="node-editor-dependency-add" type="button">添加</button>
+                </div>
+                <datalist id="node-editor-dependency-options"></datalist>
                 <div
-                  class="node-dependency-results"
-                  id="node-editor-dependencies"
+                  class="node-dependency-selected"
+                  id="node-editor-dependency-selected"
                   role="list"
-                  aria-labelledby="node-editor-dependencies-label"
+                  aria-label="当前前置依赖节点"
+                  aria-live="polite"
                 ></div>
               </div>
 

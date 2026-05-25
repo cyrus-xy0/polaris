@@ -6,10 +6,11 @@ import {
   buildAiContextForNode,
   completeTask,
   getRecordsForNode,
+  moveTaskNode,
   refreshTaskPriorities,
   resolvePreparedArtifact,
 } from "../src/app-logic.js";
-import { TASK_PRIORITIES } from "../src/task-nodes.js";
+import { TASK_PRIORITIES, buildTree, createNode } from "../src/task-nodes.js";
 
 describe("app logic", () => {
   it("ranks the strongest next task from the task data", () => {
@@ -28,6 +29,69 @@ describe("app logic", () => {
     assert.equal(priorities.has(TASK_PRIORITIES.P0), true);
     assert.equal(priorities.has(TASK_PRIORITIES.P1), true);
     assert.equal(priorities.has(TASK_PRIORITIES.P2), true);
+  });
+
+  it("preserves user priority overrides when task priorities refresh", () => {
+    const automaticNodes = refreshTaskPriorities(sampleNodes);
+    const automaticCurrentId = automaticNodes.find((node) => node.priority === TASK_PRIORITIES.P0).id;
+    const manualNodes = automaticNodes.map((node) =>
+      node.id === automaticCurrentId
+        ? {
+            ...node,
+            priority: TASK_PRIORITIES.P2,
+            priorityOverride: true,
+          }
+        : node,
+    );
+
+    const refreshedNodes = refreshTaskPriorities(manualNodes);
+    const overriddenNode = refreshedNodes.find((node) => node.id === automaticCurrentId);
+
+    assert.equal(overriddenNode.priority, TASK_PRIORITIES.P2);
+    assert.equal(overriddenNode.priorityOverride, true);
+  });
+
+  it("reorders sibling task nodes by moving the full node block", () => {
+    const nodes = [
+      createNode({ id: "root", title: "Root" }),
+      createNode({ id: "a", parentId: "root", title: "A" }),
+      createNode({ id: "b", parentId: "root", title: "B" }),
+      createNode({ id: "c", parentId: "root", title: "C" }),
+    ];
+
+    const movedNodes = moveTaskNode(nodes, { nodeId: "c", targetId: "a", position: "before" });
+    const rootChildren = buildTree(movedNodes)[0].children.map((node) => node.id);
+
+    assert.deepEqual(rootChildren, ["c", "a", "b"]);
+  });
+
+  it("reparents a task node with its child subtree intact", () => {
+    const nodes = [
+      createNode({ id: "root", title: "Root" }),
+      createNode({ id: "a", parentId: "root", title: "A" }),
+      createNode({ id: "a1", parentId: "a", title: "A1" }),
+      createNode({ id: "b", parentId: "root", title: "B" }),
+    ];
+
+    const movedNodes = moveTaskNode(nodes, { nodeId: "a", targetId: "b", position: "inside" });
+    const tree = buildTree(movedNodes)[0];
+    const b = tree.children.find((node) => node.id === "b");
+
+    assert.deepEqual(tree.children.map((node) => node.id), ["b"]);
+    assert.deepEqual(b.children.map((node) => node.id), ["a"]);
+    assert.deepEqual(b.children[0].children.map((node) => node.id), ["a1"]);
+  });
+
+  it("does not move a node into its own descendant", () => {
+    const nodes = [
+      createNode({ id: "root", title: "Root" }),
+      createNode({ id: "a", parentId: "root", title: "A" }),
+      createNode({ id: "a1", parentId: "a", title: "A1" }),
+    ];
+
+    const movedNodes = moveTaskNode(nodes, { nodeId: "a", targetId: "a1", position: "inside" });
+
+    assert.strictEqual(movedNodes, nodes);
   });
 
   it("matches library records to related task nodes", () => {
@@ -78,7 +142,6 @@ describe("app logic", () => {
           id: "root",
           parentId: null,
           title: "北极星",
-          tag: "思考",
           description: "找到 ToB AI 场景。",
           aiActions: [],
           dependencies: [],
@@ -88,7 +151,6 @@ describe("app logic", () => {
           id: "previous",
           parentId: "root",
           title: "前置判断",
-          tag: "验证",
           description: "已经验证过的判断。",
           aiActions: [],
           dependencies: [],
@@ -100,7 +162,6 @@ describe("app logic", () => {
           id: "current",
           parentId: "root",
           title: "当前任务",
-          tag: "执行",
           description: "要生成行动方案。",
           aiActions: ["读取上下文"],
           dependencies: ["previous"],

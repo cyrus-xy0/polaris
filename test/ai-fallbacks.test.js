@@ -62,8 +62,8 @@ describe("AI fallbacks", () => {
     assert.equal(split.provider, "local-fallback");
     assert.equal(split.nodes.length, 3);
     assert.deepEqual(
-      split.nodes.map((node) => node.tag),
-      ["思考", "执行", "验证"],
+      split.nodes.map((node) => node.title),
+      ["明确输入和边界", "执行最小动作", "验证结果可用性"],
     );
   });
 });
@@ -72,7 +72,6 @@ function createNode(overrides = {}) {
   return {
     id: "define-ai-native-difference",
     title: "定义 AI-native 差异点",
-    tag: "思考",
     description: "明确这个方案为什么不是传统 SaaS 加聊天框。",
     aiActions: ["明确判断口径", "执行反证"],
     dependencies: [],

@@ -16,12 +16,12 @@ describe("task node structure v1", () => {
     const node = createNode({
       id: "new-node",
       title: "新节点",
-      tag: "思考",
       description: "默认优先级。",
       aiActions: ["明确输入"],
     });
 
     assert.equal(node.priority, TASK_PRIORITIES.P2);
+    assert.equal(node.priorityOverride, false);
   });
 
   it("builds the sample as a recursive tree", () => {

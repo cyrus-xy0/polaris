@@ -1,7 +1,7 @@
 import {
   CREATED_FROM,
+  TASK_PRIORITIES,
   TASK_STATES,
-  TASK_TAGS,
   buildTree,
   createNode,
   deriveEffectiveStates,
@@ -14,6 +14,7 @@ import {
   getAncestorIds,
   getNodeAndDescendantIds,
   migrateTaskNodes,
+  moveTaskNode,
   resolvePreparedArtifact,
   toggleTaskNodeState,
 } from "/src/app-logic.js";
@@ -41,6 +42,8 @@ let nodeEditorDependencyNodeId = null;
 let nodeEditorDependencyIds = new Set();
 let nodeEditorDependencyQuery = "";
 let nodeEditorBackdropPointerStarted = false;
+let draggingTreeNodeId = null;
+let treeDropTarget = null;
 const aiAnalyzingText = "AI 正在分析";
 const newRootNodeTitle = "新的 Polaris 目标";
 const newRootNodeDescription = "写清楚这棵目标树最终要推进什么。";
@@ -74,9 +77,11 @@ const elements = {
   nodeEditorMeta: document.querySelector("#node-editor-meta"),
   nodeEditorTitle: document.querySelector("#node-editor-title"),
   nodeEditorDescription: document.querySelector("#node-editor-description"),
+  nodeEditorPriority: document.querySelector("#node-editor-priority"),
   nodeEditorDependencySearch: document.querySelector("#node-editor-dependency-search"),
+  nodeEditorDependencyAdd: document.querySelector("#node-editor-dependency-add"),
+  nodeEditorDependencyOptions: document.querySelector("#node-editor-dependency-options"),
   nodeEditorDependencySelected: document.querySelector("#node-editor-dependency-selected"),
-  nodeEditorDependencies: document.querySelector("#node-editor-dependencies"),
   nodeEditorAiSplit: document.querySelector("#node-editor-ai-split"),
   nodeEditorStatus: document.querySelector("#node-editor-status"),
   nodeEditorClose: document.querySelector("#node-editor-close"),
@@ -435,7 +440,6 @@ function getSuggestedActionPlanSignature(node, reason) {
     version: "task-card-v1",
     id: node.id,
     title: node.title,
-    tag: node.tag,
     description: node.description,
     dependencies: normalizeSignatureArray(node.dependencies),
     state: node.state,
@@ -580,7 +584,6 @@ function getDraftOutputSignature(node, artifact, reason = "") {
     version: "task-card-v1",
     id: node.id,
     title: node.title,
-    tag: node.tag,
     description: node.description,
     dependencies: normalizeSignatureArray(node.dependencies),
     state: node.state,
@@ -795,11 +798,12 @@ function createQueueCard(item, index, currentNodeId) {
   title.textContent = node.title;
 
   const description = document.createElement("p");
+  description.className = "queue-card-description";
   description.textContent = node.description;
 
   const capsule = document.createElement("div");
   capsule.className = "queue-capsule";
-  capsule.innerHTML = `<div><strong>为什么：</strong>${reason}</div><div><strong>下一步：</strong>${node.aiActions[0]}</div>`;
+  capsule.append(createQueueDetail("为什么", reason), createQueueDetail("下一步", node.aiActions[0] ?? ""));
 
   card.append(title, description, capsule);
   card.addEventListener("click", () => {
@@ -808,6 +812,22 @@ function createQueueCard(item, index, currentNodeId) {
   });
 
   return card;
+}
+
+function createQueueDetail(label, value) {
+  const detail = document.createElement("div");
+  detail.className = "queue-detail";
+
+  const labelElement = document.createElement("span");
+  labelElement.className = "queue-detail-label";
+  labelElement.textContent = `${label}：`;
+
+  const valueElement = document.createElement("span");
+  valueElement.className = "queue-detail-value";
+  valueElement.textContent = value;
+
+  detail.append(labelElement, valueElement);
+  return detail;
 }
 
 function completeSelectedTask() {
@@ -881,12 +901,14 @@ function renderNodeEditor(focus) {
   const fields = [
     elements.nodeEditorTitle,
     elements.nodeEditorDescription,
+    elements.nodeEditorPriority,
     elements.nodeEditorDependencySearch,
   ];
 
   if (!isNodeEditorOpen || !selected) {
     elements.nodeEditorHeading.textContent = "未选择节点";
     elements.nodeEditorMeta.textContent = "";
+    elements.nodeEditorMeta.hidden = true;
     fields.forEach((field) => {
       field.disabled = true;
     });
@@ -904,9 +926,11 @@ function renderNodeEditor(focus) {
   const draft = ensureNodeEditorDraft(selected);
 
   elements.nodeEditorHeading.textContent = draft.title.trim() || selected.title;
-  elements.nodeEditorMeta.textContent = selected.parentId ? `ID · ${selected.id}` : "根节点";
+  elements.nodeEditorMeta.textContent = selected.parentId ? "" : "根节点";
+  elements.nodeEditorMeta.hidden = Boolean(selected.parentId);
   syncNodeEditorField(elements.nodeEditorTitle, draft.title);
   syncNodeEditorField(elements.nodeEditorDescription, draft.description);
+  syncNodeEditorField(elements.nodeEditorPriority, draft.priorityOverride ? draft.priority : "auto");
   renderDependencyOptions(selected);
   renderAiSplitButton(selected, draft);
 
@@ -942,6 +966,8 @@ function ensureNodeEditorDraft(selected) {
     nodeId: selected.id,
     title: selected.title,
     description: selected.description,
+    priority: selected.priority ?? TASK_PRIORITIES.P2,
+    priorityOverride: selected.priorityOverride === true,
   };
   return nodeEditorDraft;
 }
@@ -952,7 +978,13 @@ function updateNodeEditorDraftFromFields() {
     nodeId: selectedTreeNodeId,
     title: elements.nodeEditorTitle.value,
     description: elements.nodeEditorDescription.value,
+    priority: normalizePriorityInput(elements.nodeEditorPriority.value, TASK_PRIORITIES.P2),
+    priorityOverride: elements.nodeEditorPriority.value !== "auto",
   };
+}
+
+function normalizePriorityInput(value, fallback = TASK_PRIORITIES.P2) {
+  return Object.values(TASK_PRIORITIES).includes(value) ? value : fallback;
 }
 
 function syncNodeEditorField(field, value) {
@@ -968,42 +1000,83 @@ function renderDependencyOptions(selected) {
     nodeEditorDependencyQuery = "";
     elements.nodeEditorDependencySearch.value = "";
     elements.nodeEditorDependencySearch.disabled = true;
+    elements.nodeEditorDependencyAdd.disabled = true;
     elements.nodeEditorDependencySelected.replaceChildren();
-    elements.nodeEditorDependencies.replaceChildren();
-    elements.nodeEditorDependencies.ariaDisabled = "true";
+    elements.nodeEditorDependencyOptions.replaceChildren();
     return;
   }
 
   ensureDependencyDraft(selected);
   elements.nodeEditorDependencySearch.disabled = false;
   syncNodeEditorField(elements.nodeEditorDependencySearch, nodeEditorDependencyQuery);
-  elements.nodeEditorDependencies.ariaDisabled = "false";
-  const blockedIds = new Set([
-    selected.id,
-    ...getAncestorIds(nodes, selected.id),
-    ...getNodeAndDescendantIds(nodes, selected.id),
-  ]);
-  const candidateNodes = nodes.filter((node) => !blockedIds.has(node.id));
+  const candidateNodes = getCandidateDependencyNodes(selected);
   const selectedNodes = [...nodeEditorDependencyIds]
     .map((nodeId) => nodes.find((node) => node.id === nodeId))
     .filter(Boolean);
-  const query = nodeEditorDependencyQuery.trim().toLowerCase();
-  const resultNodes = query
-    ? candidateNodes
-        .filter((node) => dependencySearchText(node).includes(query))
-        .slice(0, 8)
-    : [];
+  const query = nodeEditorDependencyQuery.trim();
+  const optionNodes = getMatchingDependencyNodes(candidateNodes, query).slice(0, 8);
+  const dependencyToAdd = findDependencyCandidate(candidateNodes, query);
+  elements.nodeEditorDependencyAdd.disabled = !dependencyToAdd;
+  elements.nodeEditorDependencyAdd.title = dependencyToAdd ? `添加前置依赖：${dependencyToAdd.title}` : "输入关键词后添加匹配节点";
+  renderDependencyOptionsList(optionNodes);
 
   elements.nodeEditorDependencySelected.replaceChildren(
     ...(selectedNodes.length > 0
       ? selectedNodes.map((node) => createSelectedDependencyItem(node))
-      : [createDependencyEmptyState("暂无依赖")]),
+      : [createDependencyEmptyState(query ? "还没有添加前置依赖" : "暂无前置依赖")]),
   );
-  elements.nodeEditorDependencies.replaceChildren(
-    ...(resultNodes.length > 0
-      ? resultNodes.map((node) => createDependencyResultItem(node))
-      : [createDependencyEmptyState(query ? "没有匹配节点" : "输入关键词搜索节点")]),
+}
+
+function getCandidateDependencyNodes(selected) {
+  const blockedIds = new Set([
+    selected.id,
+    ...getAncestorIds(nodes, selected.id),
+    ...getNodeAndDescendantIds(nodes, selected.id),
+    ...nodeEditorDependencyIds,
+  ]);
+  return nodes.filter((node) => !blockedIds.has(node.id));
+}
+
+function getMatchingDependencyNodes(candidateNodes, query) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return candidateNodes;
+  return candidateNodes.filter((node) => dependencySearchText(node).includes(normalizedQuery));
+}
+
+function findDependencyCandidate(candidateNodes, query) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return null;
+  const matches = getMatchingDependencyNodes(candidateNodes, query);
+  return (
+    matches.find((node) => node.title.toLowerCase() === normalizedQuery) ??
+    matches.find((node) => node.id.toLowerCase() === normalizedQuery) ??
+    matches[0] ??
+    null
   );
+}
+
+function renderDependencyOptionsList(optionNodes) {
+  elements.nodeEditorDependencyOptions.replaceChildren(
+    ...optionNodes.map((node) => {
+      const option = document.createElement("option");
+      option.value = node.title;
+      option.label = node.description ? `${node.title} · ${node.description}` : node.title;
+      return option;
+    }),
+  );
+}
+
+function addDependencyFromSearch() {
+  const selected = selectedTreeNodeId ? indexNodes(nodes).byId.get(selectedTreeNodeId) : null;
+  if (!selected) return;
+
+  const dependencyToAdd = findDependencyCandidate(getCandidateDependencyNodes(selected), nodeEditorDependencyQuery);
+  if (!dependencyToAdd) return;
+
+  nodeEditorDependencyIds.add(dependencyToAdd.id);
+  nodeEditorDependencyQuery = "";
+  elements.nodeEditorDependencySearch.value = "";
+  renderDependencyOptions(selected);
 }
 
 function ensureDependencyDraft(selected) {
@@ -1020,16 +1093,8 @@ function dependencySearchText(node) {
 function createSelectedDependencyItem(node) {
   const item = document.createElement("div");
   item.className = "node-dependency-item is-selected";
-  item.append(createDependencyTitle(node), createDependencyToggleButton(node, false));
-  return item;
-}
-
-function createDependencyResultItem(node) {
-  const isSelected = nodeEditorDependencyIds.has(node.id);
-  const item = document.createElement("div");
-  item.className = `node-dependency-item ${isSelected ? "is-selected" : ""}`;
   item.role = "listitem";
-  item.append(createDependencyTitle(node), createDependencyToggleButton(node, !isSelected));
+  item.append(createDependencyTitle(node), createDependencyRemoveButton(node));
   return item;
 }
 
@@ -1040,18 +1105,14 @@ function createDependencyTitle(node) {
   return title;
 }
 
-function createDependencyToggleButton(node, shouldAdd) {
+function createDependencyRemoveButton(node) {
   const button = document.createElement("button");
-  button.className = `node-dependency-toggle ${shouldAdd ? "is-add" : "is-remove"}`;
+  button.className = "node-dependency-toggle is-remove";
   button.type = "button";
-  button.textContent = shouldAdd ? "+" : "−";
-  button.ariaLabel = `${shouldAdd ? "添加" : "移除"}依赖：${node.title}`;
+  button.textContent = "−";
+  button.ariaLabel = `移除依赖：${node.title}`;
   button.addEventListener("click", () => {
-    if (shouldAdd) {
-      nodeEditorDependencyIds.add(node.id);
-    } else {
-      nodeEditorDependencyIds.delete(node.id);
-    }
+    nodeEditorDependencyIds.delete(node.id);
     const selectedNode = selectedTreeNodeId ? indexNodes(nodes).byId.get(selectedTreeNodeId) : null;
     renderDependencyOptions(selectedNode);
   });
@@ -1214,6 +1275,115 @@ function cloneTreeDisplayNode(node, children, index, displayMode = "normal") {
   };
 }
 
+function isTreeDragInteractiveTarget(target) {
+  return target instanceof Element && Boolean(target.closest("button, a, input, textarea, select, [contenteditable='true']"));
+}
+
+function startTreeNodeDrag(event, nodeId) {
+  if (isTreeDragInteractiveTarget(event.target)) {
+    event.preventDefault();
+    return;
+  }
+
+  draggingTreeNodeId = nodeId;
+  treeDropTarget = null;
+  event.currentTarget.classList.add("is-dragging");
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", nodeId);
+  }
+}
+
+function handleTreeNodeDragOver(event, targetId) {
+  if (!draggingTreeNodeId) return;
+
+  const position = getTreeNodeDropPosition(event, event.currentTarget, targetId);
+  if (!canMoveTreeNodeTo(draggingTreeNodeId, targetId, position)) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+  treeDropTarget = { targetId, position };
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+  markTreeDropTarget(event.currentTarget, position);
+}
+
+function handleTreeNodeDragLeave(event) {
+  if (!event.currentTarget.contains(event.relatedTarget)) {
+    event.currentTarget.classList.remove("is-drop-before", "is-drop-after", "is-drop-inside");
+  }
+}
+
+function dropTreeNode(event, targetId) {
+  if (!draggingTreeNodeId) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+  const draggedId = draggingTreeNodeId;
+  const position =
+    treeDropTarget?.targetId === targetId
+      ? treeDropTarget.position
+      : getTreeNodeDropPosition(event, event.currentTarget, targetId);
+
+  finishTreeDrag(event.currentTarget);
+  if (!canMoveTreeNodeTo(draggedId, targetId, position)) return;
+
+  runTreeTransition(() => {
+    const movedNodes = moveTaskNode(nodes, { nodeId: draggedId, targetId, position });
+    if (movedNodes === nodes) return;
+
+    nodes = movedNodes;
+    selectedTreeNodeId = draggedId;
+    selectedNodeId = null;
+    nodeEditorFeedback = null;
+    saveNodes();
+  });
+}
+
+function finishTreeDrag(activeCard = null) {
+  activeCard?.classList.remove("is-dragging");
+  draggingTreeNodeId = null;
+  treeDropTarget = null;
+  clearTreeDropTargets();
+  for (const card of elements.treeMap.querySelectorAll(".tree-node-card.is-dragging")) {
+    card.classList.remove("is-dragging");
+  }
+}
+
+function clearTreeDropTargets() {
+  for (const card of elements.treeMap.querySelectorAll(".tree-node-card.is-drop-before, .tree-node-card.is-drop-after, .tree-node-card.is-drop-inside")) {
+    card.classList.remove("is-drop-before", "is-drop-after", "is-drop-inside");
+  }
+}
+
+function getTreeNodeDropPosition(event, card, targetId) {
+  const targetNode = indexNodes(nodes).byId.get(targetId);
+  if (!targetNode?.parentId) return "inside";
+
+  const rect = card.getBoundingClientRect();
+  const ratio = (event.clientY - rect.top) / Math.max(rect.height, 1);
+  if (ratio < 0.28) return "before";
+  if (ratio > 0.72) return "after";
+  return "inside";
+}
+
+function canMoveTreeNodeTo(nodeId, targetId, position) {
+  try {
+    const index = indexNodes(nodes);
+    const movingNode = index.byId.get(nodeId);
+    const targetNode = index.byId.get(targetId);
+    if (!movingNode || !targetNode || movingNode.id === targetNode.id) return false;
+    if (position !== "inside" && !targetNode.parentId) return false;
+    return !getNodeAndDescendantIds(nodes, nodeId).has(targetId);
+  } catch {
+    return false;
+  }
+}
+
+function markTreeDropTarget(card, position) {
+  clearTreeDropTargets();
+  card.classList.add(`is-drop-${position}`);
+}
+
 function createTreeNode(node, focus, depth) {
   const wrapper = document.createElement("div");
   const hasChildren = node.children.length > 0;
@@ -1252,6 +1422,7 @@ function createTreeNode(node, focus, depth) {
   card.role = "button";
   card.tabIndex = 0;
   card.ariaPressed = String(isSelected);
+  card.draggable = true;
   card.style.viewTransitionName = getTreeTransitionName(node.id);
 
   const content = document.createElement("div");
@@ -1275,6 +1446,7 @@ function createTreeNode(node, focus, depth) {
   const stateToggle = document.createElement("button");
   stateToggle.className = "tree-state-toggle";
   stateToggle.type = "button";
+  stateToggle.draggable = false;
   stateToggle.textContent = isDone ? "已完成" : "待完成";
   stateToggle.ariaLabel = `${node.title} 当前状态：${isDone ? "已完成" : "待完成"}，点击切换`;
   stateToggle.addEventListener("click", (event) => {
@@ -1326,6 +1498,11 @@ function createTreeNode(node, focus, depth) {
       selectedTreeNodeId = node.id;
     });
   });
+  card.addEventListener("dragstart", (event) => startTreeNodeDrag(event, node.id));
+  card.addEventListener("dragover", (event) => handleTreeNodeDragOver(event, node.id));
+  card.addEventListener("dragleave", handleTreeNodeDragLeave);
+  card.addEventListener("drop", (event) => dropTreeNode(event, node.id));
+  card.addEventListener("dragend", (event) => finishTreeDrag(event.currentTarget));
   card.addEventListener("keydown", (event) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
@@ -1371,6 +1548,7 @@ function createTreeActionButton(label, title, onClick, tone = "default") {
   const button = document.createElement("button");
   button.className = `tree-node-action ${tone === "danger" ? "is-danger" : ""}`;
   button.type = "button";
+  button.draggable = false;
   button.textContent = label;
   button.title = title;
   button.ariaLabel = title;
@@ -1399,7 +1577,6 @@ function addChildNode(parentId) {
     id: `node-${Date.now()}`,
     parentId,
     title: newNodeTitle,
-    tag: TASK_TAGS.THINK,
     description: newNodeDescription,
     aiActions: ["明确输入", "做最小动作", "记录判断"],
     state: TASK_STATES.TODO,
@@ -1424,7 +1601,6 @@ function addRootNode() {
   const root = createNode({
     id: `goal-${Date.now()}`,
     title: newRootNodeTitle,
-    tag: TASK_TAGS.THINK,
     description: newRootNodeDescription,
     aiActions: ["明确目标", "拆解路径", "记录判断"],
     state: TASK_STATES.TODO,
@@ -1478,6 +1654,9 @@ async function persistNodeEditorDraft({ splitAfterSave = false } = {}) {
 
   const title = elements.nodeEditorTitle.value.trim();
   const description = elements.nodeEditorDescription.value.trim();
+  const priorityInput = elements.nodeEditorPriority.value;
+  const priorityOverride = priorityInput !== "auto";
+  const priority = priorityOverride ? normalizePriorityInput(priorityInput) : selected.priority ?? TASK_PRIORITIES.P2;
   const dependencies = [...nodeEditorDependencyIds];
   const shouldSplit = splitAfterSave && !hasChildNodes(selected.id);
 
@@ -1491,14 +1670,15 @@ async function persistNodeEditorDraft({ splitAfterSave = false } = {}) {
       ...selected,
       title,
       description,
-      tag: selected.tag ?? TASK_TAGS.THINK,
+      priority,
+      priorityOverride,
       dependencies,
     });
     nodes = nodes.map((node) => (node.id === selected.id ? nextNode : node));
     suggestedActionPlanCache.delete(selected.id);
     draftOutputCache.delete(selected.id);
     aiResultCache.delete(selected.id);
-    nodeEditorDraft = { nodeId: selected.id, title, description };
+    nodeEditorDraft = { nodeId: selected.id, title, description, priority, priorityOverride };
     nodeEditorFeedback = { nodeId: selected.id, tone: "success", message: "正在保存..." };
     render();
     const saveResult = await saveNodes();
@@ -2056,10 +2236,17 @@ elements.nodeEditorForm.addEventListener("submit", saveNodeEditor);
 elements.nodeEditorAiSplit.addEventListener("click", splitSelectedNodeWithAi);
 elements.nodeEditorTitle.addEventListener("input", updateNodeEditorDraftFromFields);
 elements.nodeEditorDescription.addEventListener("input", updateNodeEditorDraftFromFields);
+elements.nodeEditorPriority.addEventListener("change", updateNodeEditorDraftFromFields);
+elements.nodeEditorDependencyAdd.addEventListener("click", addDependencyFromSearch);
 elements.nodeEditorDependencySearch.addEventListener("input", () => {
   nodeEditorDependencyQuery = elements.nodeEditorDependencySearch.value;
   const selected = selectedTreeNodeId ? indexNodes(nodes).byId.get(selectedTreeNodeId) : null;
   renderDependencyOptions(selected);
+});
+elements.nodeEditorDependencySearch.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  addDependencyFromSearch();
 });
 elements.nodeEditorClose.addEventListener("click", closeNodeEditor);
 elements.nodeEditorDrawer.addEventListener("pointerdown", rememberNodeEditorBackdropPointer);

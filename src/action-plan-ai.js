@@ -5,7 +5,6 @@ import { delimiter, join, resolve } from "node:path";
 const generatorNames = ["openclaw", "hermes"];
 const maxSteps = 8;
 const maxSplitNodes = 6;
-const validTaskTags = new Set(["思考", "执行", "沟通", "验证", "整理"]);
 const defaultEnv = process.env;
 
 export async function generateSuggestedActionPlan({
@@ -172,7 +171,6 @@ export function buildSuggestedActionPlanPrompt({ node, reason = "", relatedRecor
     "任务节点：",
     `- id：${node.id}`,
     `- 标题：${node.title}`,
-    `- 标签：${node.tag}`,
     `- 优先级：${node.priority ?? "P2"}`,
     `- 描述：${node.description}`,
     reason ? `- 推荐原因：${reason}` : null,
@@ -213,7 +211,6 @@ export function buildDraftOutputPrompt({ node, artifact = null, relatedRecords =
     "任务节点：",
     `- id：${node.id}`,
     `- 标题：${node.title}`,
-    `- 标签：${node.tag}`,
     `- 优先级：${node.priority ?? "P2"}`,
     `- 描述：${node.description}`,
     "",
@@ -259,7 +256,6 @@ export function buildAiResultOutputPrompt({ node, artifact = null, relatedRecord
     "任务节点：",
     `- id：${node.id}`,
     `- 标题：${node.title}`,
-    `- 标签：${node.tag}`,
     `- 优先级：${node.priority ?? "P2"}`,
     `- 描述：${node.description}`,
     "",
@@ -279,20 +275,18 @@ export function buildTaskNodeSplitPrompt({ node, relatedRecords = [], aiContext 
     "你是 Polaris 本地任务节点拆解助手。",
     "请根据当前节点标题、描述和上下文，把这个节点预拆分成一组可执行子节点。",
     "只输出 JSON，不要输出 Markdown 或解释文字。",
-    'JSON 格式：{"summary":"一句话说明拆分逻辑","nodes":[{"title":"子节点标题","description":"子节点要推进什么","tag":"思考","aiActions":["明确输入","执行最小动作","记录判断"]}]}',
+    'JSON 格式：{"summary":"一句话说明拆分逻辑","nodes":[{"title":"子节点标题","description":"子节点要推进什么","aiActions":["明确输入","执行最小动作","记录判断"]}]}',
     "要求：",
     "- nodes 生成 3 到 5 个，必须覆盖从理解、执行到验证或沉淀的完整路径。",
     "- 任务优先级含义：P0 是必须马上做，P1 是能早一点完成更好，P2 是其他节点。",
     "- title 用 4 到 18 个中文字符，像任务节点，不要写编号。",
     "- description 用一句话说明这个子节点的完成标准。",
-    "- tag 只能从 思考、执行、沟通、验证、整理 中选择。",
     "- aiActions 生成 2 到 4 条短动作，不能空泛。",
     "- 不要生成与当前节点同名的子节点。",
     "",
     "当前节点：",
     `- id：${node.id}`,
     `- 标题：${node.title}`,
-    `- 标签：${node.tag}`,
     `- 优先级：${node.priority ?? "P2"}`,
     `- 描述：${node.description}`,
     "",
@@ -600,7 +594,7 @@ function formatTaskSection(title, tasks = []) {
     const result = formatTaskResult(task);
     const actions = Array.isArray(task.aiActions) && task.aiActions.length > 0 ? `\n  已知动作：${task.aiActions.join(" / ")}` : "";
     const priority = task.priority ? `，${task.priority}` : "";
-    return `- ${task.title}（${task.tag ?? "任务"}，${task.state ?? "未知状态"}${priority}）\n  ${task.description ?? ""}${actions}${result}`;
+    return `- ${task.title}（${task.state ?? "未知状态"}${priority}）\n  ${task.description ?? ""}${actions}${result}`;
   });
   if (lines.length === 0) return "";
   return `${title}：\n${lines.join("\n")}`;
@@ -764,19 +758,16 @@ function normalizeSplitNodes(nodes) {
         return {
           title,
           description: title ? `完成「${title}」并记录判断。` : "",
-          tag: "执行",
           aiActions: ["明确输入", "执行最小动作", "记录结果"],
         };
       }
 
       const title = typeof node?.title === "string" ? node.title.trim() : "";
       const description = typeof node?.description === "string" ? node.description.trim() : "";
-      const tag = validTaskTags.has(node?.tag) ? node.tag : "执行";
       const aiActions = normalizeSteps(node?.aiActions ?? node?.actions ?? node?.steps ?? []);
       return {
         title,
         description: description || (title ? `完成「${title}」并记录判断。` : ""),
-        tag,
         aiActions: aiActions.length > 0 ? aiActions.slice(0, 4) : ["明确输入", "执行最小动作", "记录结果"],
       };
     })

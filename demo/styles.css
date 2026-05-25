@@ -704,6 +704,8 @@ button {
 
 .queue-card {
   position: relative;
+  display: grid;
+  align-content: start;
   min-height: 94px;
   padding: 20px 20px 18px;
   border: 1px solid rgba(255, 255, 255, 0.8);
@@ -820,23 +822,35 @@ button {
 
 .queue-card h3 {
   margin: 0;
+  padding-right: 48px;
   color: rgba(21, 25, 29, 0.9);
   font-size: 18px;
   font-weight: 700;
   line-height: 1.35;
   letter-spacing: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
-.queue-card p {
+.queue-card-description {
   margin: 9px 0 0;
   color: rgba(21, 25, 29, 0.52);
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 1.55;
+  min-height: 43px;
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .queue-capsule {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   max-height: 0;
   margin-top: 0;
   padding: 0 14px;
@@ -860,16 +874,35 @@ button {
 
 .queue-card:hover .queue-capsule,
 .queue-card.is-selected .queue-capsule {
-  max-height: 110px;
+  max-height: 126px;
   margin-top: 14px;
   padding: 12px 14px;
   opacity: 1;
   transform: translateY(0);
 }
 
-.queue-capsule strong {
+.queue-detail {
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.queue-detail-label {
   color: #15191d;
   font-weight: 760;
+}
+
+.queue-detail-value {
+  min-width: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .empty-state {
@@ -1152,7 +1185,8 @@ button {
 
 .node-editor-field > input,
 .node-editor-field > select,
-.node-editor-field > textarea {
+.node-editor-field > textarea,
+.node-dependency-add-row > input {
   width: 100%;
   min-width: 0;
   border: 1px solid rgba(21, 25, 29, 0.085);
@@ -1168,7 +1202,8 @@ button {
 }
 
 .node-editor-field > input,
-.node-editor-field > select {
+.node-editor-field > select,
+.node-dependency-add-row > input {
   min-height: 40px;
   padding: 0 12px;
 }
@@ -1179,17 +1214,41 @@ button {
   padding: 11px 12px;
 }
 
-#node-editor-dependencies {
+.node-dependency-add-row {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px;
   gap: 8px;
-  max-height: 156px;
-  overflow: auto;
-  padding: 4px 2px 4px 0;
+  min-width: 0;
+}
+
+.node-dependency-add {
+  display: inline-grid;
+  place-items: center;
+  min-height: 40px;
+  border: 1px solid rgba(47, 128, 117, 0.18);
+  border-radius: 16px;
+  color: #245f56;
+  background: rgba(239, 249, 247, 0.74);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.node-dependency-add:disabled {
+  color: rgba(21, 25, 29, 0.34);
+  border-color: rgba(21, 25, 29, 0.08);
+  background: rgba(255, 255, 255, 0.48);
+  cursor: not-allowed;
 }
 
 .node-dependency-selected {
   display: grid;
   gap: 8px;
+  max-height: 142px;
+  overflow: auto;
+  padding: 2px 2px 2px 0;
 }
 
 .node-dependency-item {
@@ -1236,10 +1295,6 @@ button {
   line-height: 1;
 }
 
-.node-dependency-toggle.is-add {
-  color: #2f8075;
-}
-
 .node-dependency-toggle.is-remove {
   color: #9a5a2b;
 }
@@ -1257,6 +1312,8 @@ button {
 .node-editor-field > input:focus,
 .node-editor-field > select:focus,
 .node-editor-field > textarea:focus,
+.node-dependency-add-row > input:focus,
+.node-dependency-add:focus-visible,
 .node-dependency-toggle:focus-visible {
   border-color: rgba(47, 128, 117, 0.34);
   box-shadow:
@@ -1431,6 +1488,52 @@ button {
   box-shadow: 0 20px 48px rgba(66, 61, 48, 0.13);
 }
 
+.tree-node-card[draggable="true"] {
+  cursor: grab;
+}
+
+.tree-node-card.is-dragging {
+  transform: scale(0.982);
+  opacity: 0.46;
+  filter: saturate(0.72);
+  cursor: grabbing;
+}
+
+.tree-node-card.is-drop-inside {
+  transform: translateY(-3px) scale(1.012);
+  border-color: rgba(47, 128, 117, 0.72);
+  box-shadow:
+    0 0 0 5px rgba(47, 128, 117, 0.13),
+    0 22px 54px rgba(47, 128, 117, 0.15);
+}
+
+.tree-node-card.is-drop-before,
+.tree-node-card.is-drop-after {
+  border-color: rgba(47, 128, 117, 0.48);
+}
+
+.tree-node-card.is-drop-before .tree-node-content::before,
+.tree-node-card.is-drop-after .tree-node-content::after {
+  position: absolute;
+  right: 14px;
+  left: 14px;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(47, 128, 117, 0), rgba(47, 128, 117, 0.92), rgba(47, 128, 117, 0));
+  box-shadow: 0 0 0 4px rgba(47, 128, 117, 0.12);
+  content: "";
+  pointer-events: none;
+  z-index: 4;
+}
+
+.tree-node-card.is-drop-before .tree-node-content::before {
+  top: -9px;
+}
+
+.tree-node-card.is-drop-after .tree-node-content::after {
+  bottom: -9px;
+}
+
 .tree-node-card.is-selected {
   z-index: 2;
   border-color: var(--node-state-border);
@@ -1441,6 +1544,13 @@ button {
   box-shadow:
     0 0 0 5px var(--node-state-ring),
     0 26px 64px rgba(66, 61, 48, 0.16);
+}
+
+.tree-node-card.is-selected.is-drop-inside {
+  border-color: rgba(47, 128, 117, 0.72);
+  box-shadow:
+    0 0 0 5px rgba(47, 128, 117, 0.13),
+    0 22px 54px rgba(47, 128, 117, 0.15);
 }
 
 .tree-node-card.is-selected::after {

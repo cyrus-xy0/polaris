@@ -87,19 +87,16 @@ export function createFallbackTaskNodeSplit(node) {
       {
         title: "明确输入和边界",
         description: `确认「${title}」需要依赖的输入、约束和完成边界。`,
-        tag: "思考",
         aiActions: ["列出输入", "标记约束", "写完成标准"],
       },
       {
         title: "执行最小动作",
         description: `围绕「${title}」完成一个可检查的最小行动。`,
-        tag: "执行",
         aiActions: ["选择最小路径", "完成核心动作", "记录过程"],
       },
       {
         title: "验证结果可用性",
         description: `检查「${title}」的结果是否能支撑下一步推进。`,
-        tag: "验证",
         aiActions: ["检查结果", "发现缺口", "给出下一步"],
       },
     ],

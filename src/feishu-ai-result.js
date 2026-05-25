@@ -10,6 +10,7 @@ const appendChunkMaxXmlLength = 4_500;
 
 export async function publishAiResultToFeishu({
   dataRoot,
+  aiResultsRoot = null,
   node,
   output,
   artifact = null,
@@ -20,6 +21,7 @@ export async function publishAiResultToFeishu({
   const contentParts = buildFeishuDocContentParts({ node, output, artifact, actionPlan });
   const contentPath = writeFeishuDocSource({
     dataRoot,
+    aiResultsRoot,
     node,
     output,
     content: contentParts.fullContent,
@@ -30,6 +32,7 @@ export async function publishAiResultToFeishu({
   if (contentParts.fullContent.length > directCreateMaxXmlLength) {
     return createFeishuDocWithAppend({
       dataRoot,
+      aiResultsRoot,
       node,
       output,
       contentPath,
@@ -52,6 +55,7 @@ export async function publishAiResultToFeishu({
     try {
       return await createFeishuDocWithAppend({
         dataRoot,
+        aiResultsRoot,
         node,
         output,
         contentPath,
@@ -66,9 +70,20 @@ export async function publishAiResultToFeishu({
   }
 }
 
-async function createFeishuDocWithAppend({ dataRoot, node, output, contentPath, contentParts, timeoutMs, env, title }) {
+async function createFeishuDocWithAppend({
+  dataRoot,
+  aiResultsRoot = null,
+  node,
+  output,
+  contentPath,
+  contentParts,
+  timeoutMs,
+  env,
+  title,
+}) {
   const skeletonPath = writeFeishuDocSource({
     dataRoot,
+    aiResultsRoot,
     node,
     output,
     content: contentParts.skeletonContent,
@@ -80,6 +95,7 @@ async function createFeishuDocWithAppend({ dataRoot, node, output, contentPath, 
   for (const [index, chunk] of chunks.entries()) {
     const chunkPath = writeFeishuDocSource({
       dataRoot,
+      aiResultsRoot,
       node,
       output,
       content: chunk,
@@ -190,14 +206,14 @@ function buildFeishuDocContentParts({ node, output, artifact = null, actionPlan 
   };
 }
 
-function writeFeishuDocSource({ dataRoot, node, output, content, suffix = "full" }) {
-  const filePath = resolveFeishuDocSourcePath({ dataRoot, nodeId: node.id, title: output.title, suffix });
+function writeFeishuDocSource({ dataRoot, aiResultsRoot = null, node, output, content, suffix = "full" }) {
+  const filePath = resolveFeishuDocSourcePath({ dataRoot, aiResultsRoot, nodeId: node.id, title: output.title, suffix });
   mkdirSync(dirname(filePath), { recursive: true });
   writeFileSync(filePath, content, "utf8");
   return filePath;
 }
 
-function resolveFeishuDocSourcePath({ dataRoot, nodeId, title, suffix }) {
+function resolveFeishuDocSourcePath({ dataRoot, aiResultsRoot = null, nodeId, title, suffix }) {
   const raw = `${nodeId}:${title ?? ""}:${suffix ?? ""}`;
   const hash = createHash("sha256").update(raw).digest("hex").slice(0, 10);
   const safeNodeId = String(nodeId ?? "node")
@@ -210,7 +226,14 @@ function resolveFeishuDocSourcePath({ dataRoot, nodeId, title, suffix }) {
     .replace(/[^a-zA-Z0-9._-]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 40);
-  return join(resolve(dataRoot), "ai-results", "feishu-doc-source", `${safeNodeId || "node"}-${safeSuffix}-${hash}.xml`);
+  return join(resolveAiResultRoot({ dataRoot, aiResultsRoot }), "feishu-doc-source", `${safeNodeId || "node"}-${safeSuffix}-${hash}.xml`);
+}
+
+function resolveAiResultRoot({ dataRoot, aiResultsRoot = null }) {
+  if (typeof aiResultsRoot === "string" && aiResultsRoot.trim()) {
+    return resolve(aiResultsRoot);
+  }
+  return join(resolve(dataRoot), "ai-results");
 }
 
 function runLarkCli(args, { cwd, timeoutMs, env }) {

@@ -114,7 +114,6 @@ describe("AI result store", () => {
       version: "rich-context-v3-openclaw-content",
       id: node.id,
       title: node.title,
-      tag: node.tag,
       description: node.description,
       dependencies: node.dependencies,
       state: node.state,
@@ -149,7 +148,6 @@ describe("AI result store", () => {
       version: "rich-context-v3-openclaw-content",
       id: node.id,
       title: node.title,
-      tag: node.tag,
       description: node.description,
       dependencies: node.dependencies,
       state: node.state,
@@ -219,6 +217,37 @@ describe("AI result store", () => {
     assert.match(html, /自动读取上下文/);
   });
 
+  it("can store AI results in a configured directory outside the data root", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-ai-result-data-"));
+    const aiResultsRoot = mkdtempSync(join(tmpdir(), "polaris-ai-result-custom-"));
+    const node = createNode();
+    const signature = createSuggestedActionPlanSignature({ node });
+
+    const saved = writeAiResult({
+      dataRoot,
+      aiResultsRoot,
+      kind: "suggested-action-plan",
+      nodeId: node.id,
+      signature,
+      payload: {
+        plan: {
+          summary: "写入自定义目录。",
+          steps: ["确认路径"],
+        },
+      },
+    });
+    const readBack = readAiResult({
+      dataRoot,
+      aiResultsRoot,
+      kind: "suggested-action-plan",
+      nodeId: node.id,
+      signature,
+    });
+
+    assert.match(saved.filePath, new RegExp(aiResultsRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.equal(readBack.plan.summary, "写入自定义目录。");
+  });
+
   it("does not treat terminal status or HTML as usable AI content", () => {
     assert.equal(hasSuggestedActionPlanContent({ summary: "completed", steps: [] }), false);
     assert.equal(hasSuggestedActionPlanContent({ summary: "", steps: ["completed"] }), false);
@@ -240,7 +269,6 @@ function createNode() {
   return {
     id: "define-ai-native-difference",
     title: "定义 AI-native 差异点",
-    tag: "思考",
     description: "明确这个方案为什么不是传统 SaaS 加聊天框。",
     dependencies: [],
     state: "待做",

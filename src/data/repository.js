@@ -14,8 +14,18 @@ const defaultSources = [
   { id: "default-knowledge", kind: "knowledge", label: "Knowledge", path: "knowledge", defaultType: "本地知识" },
   { id: "default-skills", kind: "skills", label: "Skill", path: "skills", defaultType: "本地能力" },
 ];
+const defaultTaskNodesStorage = {
+  label: "Task Nodes",
+  path: ".",
+};
 const projectFileName = "polaris.project.json";
+const localConfigFileName = "polaris.local.json";
 const taskNodesFileName = "task-nodes.json";
+const defaultLocalPaths = {
+  taskNodes: defaultTaskNodesStorage.path,
+  database: "polaris.db",
+  aiResults: "ai-results",
+};
 const markdownMetadataColumns = {
   brief: "TEXT",
   date: "TEXT",
@@ -24,7 +34,7 @@ const markdownMetadataColumns = {
 
 export const bundledSeedDataRoot = join(repoRoot, "data");
 export const defaultDataRoot = getDefaultDataRoot();
-export const defaultDbPath = join(defaultDataRoot, "polaris.db");
+export const defaultDbPath = join(defaultDataRoot, defaultLocalPaths.database);
 
 export function createRepository(options = {}) {
   const dataRoot = resolve(options.dataRoot ?? defaultDataRoot);
@@ -32,15 +42,18 @@ export function createRepository(options = {}) {
   const seedTaskNodes = options.seedTaskNodes === true;
   const seedMarkdownLibrary = options.seedMarkdownLibrary === true || seedTaskNodes;
   mkdirSync(dataRoot, { recursive: true });
-  ensureDataFiles(dataRoot, seedDataRoot, { seedMarkdownLibrary });
   const project = loadProject(dataRoot);
-  const dbPath = resolve(options.dbPath ?? join(dataRoot, "polaris.db"));
+  ensureDataFiles(dataRoot, seedDataRoot, { seedMarkdownLibrary });
+  ensureSourceDirectories(project.sources);
+  ensureTaskNodesDirectory(project.taskNodes);
+  ensureAiResultsDirectory(project.aiResults);
+  const dbPath = resolve(options.dbPath ?? project.database.filePath);
   mkdirSync(dirname(dbPath), { recursive: true });
 
   const db = new DatabaseSync(dbPath);
   db.exec("PRAGMA foreign_keys = ON");
   ensureSchema(db);
-  syncTaskNodesWithPortableFile(db, dataRoot);
+  syncTaskNodesWithPortableFile(db, project.taskNodes.filePath, { legacyFilePath: join(dataRoot, taskNodesFileName) });
 
   const repository = {
     close() {
@@ -59,13 +72,17 @@ export function createRepository(options = {}) {
       return serializeProject(project);
     },
 
+    getStorage() {
+      return serializeStorage(dataRoot, dbPath, project);
+    },
+
     listTaskNodes() {
       return readTaskNodesFromDb(db);
     },
 
     saveTaskNodes(nodes) {
       const normalizedNodes = refreshTaskPriorities(normalizeTaskNodes(nodes));
-      writeTaskNodesFile(dataRoot, normalizedNodes);
+      writeTaskNodesFile(project.taskNodes.filePath, normalizedNodes);
       replaceTaskNodes(db, normalizedNodes);
       return this.listTaskNodes();
     },
@@ -151,21 +168,42 @@ export function normalizeTaskNodes(nodes) {
   return normalizedNodes;
 }
 
-function syncTaskNodesWithPortableFile(db, dataRoot) {
-  const filePath = join(dataRoot, taskNodesFileName);
+function ensureTaskNodesDirectory(taskNodes) {
+  mkdirSync(taskNodes.rootPath, { recursive: true });
+}
+
+function ensureSourceDirectories(sources) {
+  for (const source of sources) {
+    mkdirSync(source.rootPath, { recursive: true });
+  }
+}
+
+function ensureAiResultsDirectory(aiResults) {
+  mkdirSync(aiResults.rootPath, { recursive: true });
+}
+
+function syncTaskNodesWithPortableFile(db, filePath, { legacyFilePath = null } = {}) {
   if (existsSync(filePath)) {
     const portableTaskNodes = readTaskNodesFileRecord(filePath);
     const nodes = portableTaskNodes.hasPriority ? portableTaskNodes.nodes : refreshTaskPriorities(portableTaskNodes.nodes);
     if (!portableTaskNodes.hasPriority) {
-      writeTaskNodesFile(dataRoot, nodes);
+      writeTaskNodesFile(filePath, nodes);
     }
+    replaceTaskNodes(db, nodes);
+    return;
+  }
+
+  if (legacyFilePath && resolve(legacyFilePath) !== resolve(filePath) && existsSync(legacyFilePath)) {
+    const portableTaskNodes = readTaskNodesFileRecord(legacyFilePath);
+    const nodes = portableTaskNodes.hasPriority ? portableTaskNodes.nodes : refreshTaskPriorities(portableTaskNodes.nodes);
+    writeTaskNodesFile(filePath, nodes);
     replaceTaskNodes(db, nodes);
     return;
   }
 
   const nodes = readTaskNodesFromDb(db);
   if (nodes.length > 0) {
-    writeTaskNodesFile(dataRoot, nodes);
+    writeTaskNodesFile(filePath, nodes);
   }
 }
 
@@ -188,8 +226,8 @@ function readTaskNodesFileRecord(filePath) {
   }
 }
 
-function writeTaskNodesFile(dataRoot, nodes) {
-  const filePath = join(dataRoot, taskNodesFileName);
+function writeTaskNodesFile(filePath, nodes) {
+  mkdirSync(dirname(filePath), { recursive: true });
   const record = {
     version: 1,
     updatedAt: new Date().toISOString(),
@@ -203,7 +241,7 @@ function writeTaskNodesFile(dataRoot, nodes) {
 function readTaskNodesFromDb(db) {
   const rows = db
     .prepare(
-      `SELECT id, parent_id, title, tag, description, ai_actions, dependencies, state, priority, conclusion, result, created_from
+      `SELECT id, parent_id, title, description, ai_actions, dependencies, state, priority, priority_override, conclusion, result, created_from
        FROM task_nodes
        ORDER BY position ASC, rowid ASC`,
     )
@@ -214,12 +252,12 @@ function readTaskNodesFromDb(db) {
       id: row.id,
       parentId: row.parent_id,
       title: row.title,
-      tag: row.tag,
       description: row.description,
       aiActions: parseJson(row.ai_actions, []),
       dependencies: parseJson(row.dependencies, []),
       state: row.state,
       priority: row.priority,
+      priorityOverride: row.priority_override === 1,
       conclusion: parseJson(row.conclusion, null),
       result: parseJson(row.result, null),
       createdFrom: row.created_from,
@@ -232,12 +270,12 @@ function serializeTaskNodes(nodes) {
     id: node.id,
     parentId: node.parentId ?? null,
     title: node.title,
-    tag: node.tag,
     description: node.description,
     aiActions: node.aiActions,
     dependencies: node.dependencies,
     state: node.state,
     priority: node.priority,
+    priorityOverride: node.priorityOverride,
     conclusion: node.conclusion ?? null,
     result: node.result ?? null,
     createdFrom: node.createdFrom,
@@ -250,12 +288,12 @@ function ensureSchema(db) {
       id TEXT PRIMARY KEY,
       parent_id TEXT,
       title TEXT NOT NULL,
-      tag TEXT NOT NULL,
       description TEXT NOT NULL DEFAULT '',
       ai_actions TEXT NOT NULL,
       dependencies TEXT NOT NULL,
       state TEXT NOT NULL,
       priority TEXT NOT NULL DEFAULT 'P2',
+      priority_override INTEGER NOT NULL DEFAULT 0,
       conclusion TEXT,
       result TEXT,
       created_from TEXT NOT NULL,
@@ -289,6 +327,42 @@ function ensureTaskNodeColumns(db) {
   if (!columns.has("priority")) {
     db.exec("ALTER TABLE task_nodes ADD COLUMN priority TEXT NOT NULL DEFAULT 'P2'");
   }
+  if (!columns.has("priority_override")) {
+    db.exec("ALTER TABLE task_nodes ADD COLUMN priority_override INTEGER NOT NULL DEFAULT 0");
+  }
+  const currentColumns = new Set(db.prepare("PRAGMA table_info(task_nodes)").all().map((column) => column.name));
+  if (currentColumns.has("tag")) {
+    migrateTaskNodesWithoutTag(db);
+  }
+}
+
+function migrateTaskNodesWithoutTag(db) {
+  db.exec(`
+    CREATE TABLE task_nodes_next (
+      id TEXT PRIMARY KEY,
+      parent_id TEXT,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      ai_actions TEXT NOT NULL,
+      dependencies TEXT NOT NULL,
+      state TEXT NOT NULL,
+      priority TEXT NOT NULL DEFAULT 'P2',
+      priority_override INTEGER NOT NULL DEFAULT 0,
+      conclusion TEXT,
+      result TEXT,
+      created_from TEXT NOT NULL,
+      position INTEGER NOT NULL
+    );
+
+    INSERT INTO task_nodes_next (
+      id, parent_id, title, description, ai_actions, dependencies, state, priority, priority_override, conclusion, result, created_from, position
+    )
+    SELECT id, parent_id, title, description, ai_actions, dependencies, state, priority, priority_override, conclusion, result, created_from, position
+    FROM task_nodes;
+
+    DROP TABLE task_nodes;
+    ALTER TABLE task_nodes_next RENAME TO task_nodes;
+  `);
 }
 
 function ensureLibraryItemColumns(db) {
@@ -333,24 +407,53 @@ function ensureDataFiles(dataRoot, seedDataRoot, { seedMarkdownLibrary = false }
 
 function loadProject(dataRoot) {
   const projectPath = join(dataRoot, projectFileName);
+  const localConfigPath = join(dataRoot, localConfigFileName);
+  const hasProjectFile = existsSync(projectPath);
   let rawProject = {};
-  if (existsSync(projectPath)) {
+  if (hasProjectFile) {
     rawProject = parseJson(readFileSync(projectPath, "utf8"), {});
   } else {
     rawProject = createDefaultProject();
     writeFileSync(projectPath, `${JSON.stringify(rawProject, null, 2)}\n`, "utf8");
   }
 
-  return {
+  const hasLocalConfigFile = existsSync(localConfigPath);
+  const rawLocalConfig = hasLocalConfigFile
+    ? parseJson(readFileSync(localConfigPath, "utf8"), {})
+    : createDefaultLocalConfig(rawProject);
+  const localConfig = normalizeLocalConfig(rawLocalConfig, rawProject, dataRoot);
+  const taskNodeLabel =
+    rawLocalConfig?.taskNodes?.label ?? rawProject?.taskNodes?.label ?? defaultTaskNodesStorage.label;
+  const project = {
     name: normalizeProjectName(rawProject.name),
-    sources: normalizeProjectSources(rawProject.sources, dataRoot),
+    taskNodes: normalizeTaskNodesStorage({ label: taskNodeLabel, path: localConfig.paths.taskNodes }, dataRoot),
+    database: normalizeFileStorage(localConfig.paths.database, dataRoot, defaultLocalPaths.database),
+    aiResults: normalizeDirectoryStorage(localConfig.paths.aiResults, dataRoot, defaultLocalPaths.aiResults),
+    sources: localConfig.sources,
   };
+
+  if (!hasLocalConfigFile) {
+    writeFileSync(localConfigPath, `${JSON.stringify(serializeLocalConfig(project), null, 2)}\n`, "utf8");
+  }
+
+  return project;
 }
 
 function createDefaultProject() {
   return {
     name: "Polaris",
-    sources: defaultSources,
+  };
+}
+
+function createDefaultLocalConfig(legacyProject = {}) {
+  return {
+    version: 1,
+    paths: {
+      taskNodes: legacyProject?.taskNodes?.path ?? defaultLocalPaths.taskNodes,
+      database: defaultLocalPaths.database,
+      aiResults: defaultLocalPaths.aiResults,
+    },
+    sources: legacyProject?.sources ?? defaultSources,
   };
 }
 
@@ -359,6 +462,52 @@ function normalizeProjectName(name) {
     return name.trim();
   }
   return "Polaris";
+}
+
+function normalizeLocalConfig(config, legacyProject, dataRoot) {
+  const rawPaths = config?.paths && typeof config.paths === "object" ? config.paths : {};
+  return {
+    version: 1,
+    paths: {
+      taskNodes: normalizeStoragePath(rawPaths.taskNodes ?? legacyProject?.taskNodes?.path, defaultLocalPaths.taskNodes),
+      database: normalizeStoragePath(rawPaths.database, defaultLocalPaths.database),
+      aiResults: normalizeStoragePath(rawPaths.aiResults, defaultLocalPaths.aiResults),
+    },
+    sources: normalizeProjectSources(config?.sources ?? legacyProject?.sources, dataRoot),
+  };
+}
+
+function normalizeStoragePath(value, fallback) {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function normalizeFileStorage(filePath, dataRoot, fallback) {
+  const storagePath = normalizeStoragePath(filePath, fallback);
+  return {
+    path: storagePath,
+    filePath: resolve(dataRoot, storagePath),
+  };
+}
+
+function normalizeDirectoryStorage(directoryPath, dataRoot, fallback) {
+  const storagePath = normalizeStoragePath(directoryPath, fallback);
+  return {
+    path: storagePath,
+    rootPath: resolve(dataRoot, storagePath),
+  };
+}
+
+function normalizeTaskNodesStorage(taskNodes, dataRoot) {
+  const input = taskNodes && typeof taskNodes === "object" ? taskNodes : defaultTaskNodesStorage;
+  const storagePath = typeof input.path === "string" && input.path.trim() ? input.path.trim() : defaultTaskNodesStorage.path;
+  const rootPath = resolve(dataRoot, storagePath);
+
+  return {
+    label: typeof input.label === "string" && input.label.trim() ? input.label.trim() : defaultTaskNodesStorage.label,
+    path: storagePath,
+    rootPath,
+    filePath: join(rootPath, taskNodesFileName),
+  };
 }
 
 function normalizeProjectSources(sources, dataRoot) {
@@ -395,6 +544,25 @@ function createSourceId(kind, sourcePath) {
 function serializeProject(project) {
   return {
     name: project.name,
+    localConfig: {
+      fileName: localConfigFileName,
+      paths: {
+        taskNodes: project.taskNodes.path,
+        database: project.database.path,
+        aiResults: project.aiResults.path,
+      },
+    },
+    taskNodes: {
+      label: project.taskNodes.label,
+      path: project.taskNodes.path,
+      fileName: taskNodesFileName,
+    },
+    database: {
+      path: project.database.path,
+    },
+    aiResults: {
+      path: project.aiResults.path,
+    },
     sources: project.sources.map(({ id, kind, label, path, defaultType }) => ({
       id,
       kind,
@@ -402,6 +570,37 @@ function serializeProject(project) {
       path,
       defaultType,
     })),
+  };
+}
+
+function serializeLocalConfig(project) {
+  return {
+    version: 1,
+    paths: {
+      taskNodes: project.taskNodes.path,
+      database: project.database.path,
+      aiResults: project.aiResults.path,
+    },
+    sources: project.sources.map(({ id, kind, label, path, defaultType }) => ({
+      id,
+      kind,
+      label,
+      path,
+      defaultType,
+    })),
+  };
+}
+
+function serializeStorage(dataRoot, dbPath, project) {
+  return {
+    dataRoot,
+    dbPath,
+    projectConfigPath: join(dataRoot, projectFileName),
+    localConfigPath: join(dataRoot, localConfigFileName),
+    taskNodesRoot: project.taskNodes.rootPath,
+    taskNodesFilePath: project.taskNodes.filePath,
+    aiResultsRoot: project.aiResults.rootPath,
+    sources: project.sources.map(({ id, kind, rootPath }) => ({ id, kind, rootPath })),
   };
 }
 
@@ -816,7 +1015,7 @@ function findMarkdownSource(project, kind, libraryPath, markdownPath) {
 function replaceTaskNodes(db, nodes) {
   const insert = db.prepare(`
     INSERT INTO task_nodes (
-      id, parent_id, title, tag, description, ai_actions, dependencies, state, priority, conclusion, result, created_from, position
+      id, parent_id, title, description, ai_actions, dependencies, state, priority, priority_override, conclusion, result, created_from, position
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
@@ -828,12 +1027,12 @@ function replaceTaskNodes(db, nodes) {
         node.id,
         node.parentId,
         node.title,
-        node.tag,
         node.description,
         JSON.stringify(node.aiActions),
         JSON.stringify(node.dependencies),
         node.state,
         node.priority,
+        node.priorityOverride ? 1 : 0,
         JSON.stringify(node.conclusion),
         JSON.stringify(node.result),
         node.createdFrom,
