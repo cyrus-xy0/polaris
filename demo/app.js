@@ -1964,7 +1964,7 @@ function toggleWorkbenchSection(sectionName) {
 function getWorkbenchSectionLabel(sectionName) {
   return (
     {
-      output: "Completed Output",
+      output: "Artifacts",
       skill: "Skill",
       knowledge: "Knowledge",
     }[sectionName] ?? "Section"
@@ -1993,7 +1993,7 @@ function createArtifactCards(items) {
 
   const empty = document.createElement("article");
   empty.className = "artifact-card catalog-empty";
-  empty.innerHTML = "<h3>还没有已完成任务结果</h3><p>完成任务并生成或绑定链接后，会出现在这里。</p>";
+  empty.innerHTML = "<h3>还没有产物</h3><p>完成任务并生成或绑定链接后，会出现在这里。</p>";
   return [empty];
 }
 
@@ -2001,20 +2001,45 @@ function createArtifactCard(item) {
   const card = document.createElement("article");
   card.className = "artifact-card method-card output-result-card";
 
+  const header = document.createElement("div");
+  header.className = "output-result-header";
+
   const taskTitle = document.createElement("p");
   taskTitle.className = "output-task-name";
   taskTitle.textContent = item.taskTitle ?? getNodeTitle(item.relatedNodeIds?.[0]);
+
+  const typeTag = document.createElement("span");
+  typeTag.className = "output-doc-type";
+  typeTag.textContent = getArtifactTypeLabel(item);
+
+  header.append(taskTitle, typeTag);
 
   const link = document.createElement("a");
   link.className = "output-doc-link";
   link.href = item.url;
   link.target = "_blank";
   link.rel = "noreferrer";
-  link.textContent = item.title;
+  link.textContent = getArtifactLinkLabel(item);
   link.title = `打开结果：${item.title}`;
 
-  card.append(taskTitle, link);
+  card.append(header, link);
   return card;
+}
+
+function getArtifactLinkLabel(item) {
+  const docType = item.docType || "结果文档";
+  return `查看${docType}`;
+}
+
+function getArtifactTypeLabel(item) {
+  const rawType = String(item.docType || item.source || "Link").trim();
+  const normalizedType = rawType.toLowerCase();
+  if (normalizedType.includes("base")) return "Base";
+  if (normalizedType.includes("sheet")) return "Sheet";
+  if (normalizedType.includes("html")) return "HTML";
+  if (normalizedType.includes("doc")) return "Doc";
+  if (normalizedType.includes("link") || normalizedType.includes("链接")) return "Link";
+  return rawType.replace(/^飞书\s*/i, "").replace(/^手动\s*/i, "") || "Link";
 }
 
 function createSkillCards(items) {
@@ -2223,10 +2248,12 @@ function toggleKnowledgeGroupCollapsed(groupType) {
 }
 
 function createKnowledgeCard(item, options = {}) {
+  const knowledgeTitle = item.brief || item.title || "未命名知识";
   const card = document.createElement("article");
   card.className = "knowledge-row method-card is-md-file";
   card.role = "button";
   card.tabIndex = 0;
+  card.setAttribute("aria-label", `打开知识详情：${knowledgeTitle}`);
 
   const date = document.createElement("small");
   date.className = "knowledge-row-date";
@@ -2236,12 +2263,9 @@ function createKnowledgeCard(item, options = {}) {
   body.className = "knowledge-row-body";
 
   const title = document.createElement("h3");
-  title.textContent = item.brief || item.title;
+  title.textContent = knowledgeTitle;
 
-  const description = document.createElement("p");
-  description.textContent = item.description;
-
-  body.append(title, description);
+  body.append(title);
   card.append(date, body);
   card.addEventListener("click", () => openMarkdownEditor(item));
   card.addEventListener("keydown", (event) => {
