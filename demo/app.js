@@ -37,6 +37,7 @@ let isNodeEditorOpen = false;
 const suggestedActionPlanCache = new Map();
 const draftOutputCache = new Map();
 const aiResultCache = new Map();
+let saveNodesRequestId = 0;
 const splittingNodeIds = new Set();
 let nodeEditorDependencyNodeId = null;
 let nodeEditorDependencyIds = new Set();
@@ -128,14 +129,17 @@ function normalizeAppMetadata(rawApp = {}) {
 }
 
 async function saveNodes() {
+  const requestId = ++saveNodesRequestId;
   try {
     const payload = await requestJson("/api/task-nodes", {
       method: "PUT",
       body: JSON.stringify({ nodes }),
     });
-    nodes = hydrateNodes(payload.nodes);
-    clearAiGenerationCaches();
-    render();
+    if (requestId === saveNodesRequestId) {
+      nodes = hydrateNodes(payload.nodes);
+      clearAiGenerationCaches();
+      render();
+    }
     return { ok: true };
   } catch (error) {
     console.error("Failed to persist task nodes", error);
@@ -250,9 +254,12 @@ function getOutputRecordsForNode(nodeId) {
   return dedupeOutputRecords([createTaskResultRecord(node), ...getRecordsForNode(nodeId)].filter(Boolean));
 }
 
-function getAllOutputRecords() {
-  const taskResults = nodes.map(createTaskResultRecord).filter(Boolean);
-  return dedupeOutputRecords([...taskResults, ...(library.artifacts ?? [])]);
+function getCompletedTaskResultRecords() {
+  const taskResults = nodes
+    .filter((node) => node.state === TASK_STATES.DONE)
+    .map(createTaskResultRecord)
+    .filter(Boolean);
+  return dedupeOutputRecords(taskResults);
 }
 
 function createTaskResultRecord(node) {
@@ -285,6 +292,7 @@ function createTaskResultRecord(node) {
     url,
     path: result.path,
     relatedNodeIds: [node.id],
+    taskTitle: node.title,
     isTaskResult: true,
   };
 }
@@ -713,6 +721,7 @@ async function requestAiResult(node, signature) {
       signature,
       result,
     });
+    attachAiResultToCompletedTask(node.id, result);
   } catch (error) {
     console.error("Failed to generate AI result link", error);
     aiResultCache.set(node.id, {
@@ -849,11 +858,14 @@ function getCompletionUrl() {
 }
 
 function syncCompleteButtonState() {
+  const hasCurrentTask = Boolean(getCurrentItem(getActiveQueue()));
   const hasResultUrl = Boolean(getCompletionUrl());
-  elements.completeButton.disabled = !hasResultUrl;
-  elements.completeButton.title = hasResultUrl
-    ? "完成当前任务并绑定结果链接"
-    : "等待 AI 结果生成，或粘贴 Doc / Base 链接后完成";
+  elements.completeButton.disabled = !hasCurrentTask;
+  elements.completeButton.title = !hasCurrentTask
+    ? "没有可完成的当前任务"
+    : hasResultUrl
+      ? "完成当前任务并绑定结果链接"
+      : "完成当前任务；AI 结果链接生成后会自动补回";
 }
 
 function createQueueCard(item, index, currentNodeId) {
@@ -884,29 +896,31 @@ function createQueueCard(item, index, currentNodeId) {
 }
 
 function completeSelectedTask() {
-  const manualUrl = elements.manualResultUrl.value.trim();
-  const resultUrl = manualUrl || currentPreparedArtifact?.url || "";
-  if (!resultUrl) {
+  const queue = getActiveQueue();
+  const current = getCurrentItem(queue);
+  if (!current) {
     syncCompleteButtonState();
     return;
   }
-  completeTaskWithResult({
-    source: manualUrl && manualUrl !== autoFilledResultUrl ? "manual" : "ai",
-    url: resultUrl,
-  });
+
+  const manualUrl = elements.manualResultUrl.value.trim();
+  const preparedUrl = currentPreparedArtifact?.url ?? "";
+  const resultUrl = manualUrl || preparedUrl;
+  completeTaskWithResult(
+    {
+      source: manualUrl && manualUrl !== autoFilledResultUrl ? "manual" : resultUrl ? "ai" : "pending-ai",
+      url: resultUrl,
+      prepared: resultUrl && manualUrl !== resultUrl ? currentPreparedArtifact : null,
+    },
+    current,
+  );
 }
 
-function completeTaskWithResult(result) {
-  const queue = getActiveQueue();
-  const current = getCurrentItem(queue);
+function completeTaskWithResult(result, current = getCurrentItem(getActiveQueue())) {
   if (!current) return;
 
   const completedNodeId = current.node.id;
   const completionResult = normalizeCompletionResult(current.node, result);
-  if (!completionResult.url) {
-    syncCompleteButtonState();
-    return;
-  }
 
   nodes = completeTask(nodes, completedNodeId, completionResult);
   saveNodes();
@@ -914,21 +928,71 @@ function completeTaskWithResult(result) {
   selectedTreeNodeId = completedNodeId;
   elements.manualResultUrl.value = "";
   autoFilledResultUrl = "";
+  if (!completionResult.url) {
+    requestAiResultBackfill(current.node, current.reason);
+  }
   render();
 }
 
 function normalizeCompletionResult(node, result = {}) {
-  const prepared = result.source === "ai" ? currentPreparedArtifact : null;
+  const source = result.source || (result.url ? "manual" : "pending-ai");
+  const prepared = result.prepared ?? (source === "ai" ? currentPreparedArtifact : null);
+  const isManual = source === "manual";
+  const isPending = source === "pending-ai" || !result.url;
   return {
-    source: result.source,
-    url: result.url,
+    source,
+    url: result.url ?? "",
     title: prepared?.title ?? `${node.title} 结果`,
-    docType: prepared?.docType ?? (result.source === "manual" ? "手动链接" : "AI 结果"),
+    docType: prepared?.docType ?? (isManual ? "手动链接" : isPending ? "待补链接" : "AI 结果"),
     description:
       prepared?.description ??
-      (result.source === "manual" ? "用户完成任务时绑定的结果链接。" : "完成任务时生成并绑定的 AI 结果。"),
+      (isManual
+        ? "用户完成任务时绑定的结果链接。"
+        : isPending
+          ? "任务已完成，AI 结果链接生成后会自动补回。"
+          : "完成任务时生成并绑定的 AI 结果。"),
     path: prepared?.path,
   };
+}
+
+function requestAiResultBackfill(node, reason = "") {
+  const artifact = currentPreparedArtifact ?? resolvePreparedArtifact(node, library.artifacts);
+  const signature = getAiResultSignature(node, artifact, reason);
+  const cached = aiResultCache.get(node.id);
+
+  if (cached?.signature === signature && cached.status === "loading") return;
+  if (cached?.signature === signature && cached.status === "ready") {
+    attachAiResultToCompletedTask(node.id, cached.result);
+    return;
+  }
+
+  requestAiResult(node, signature);
+}
+
+function attachAiResultToCompletedTask(nodeId, result = {}) {
+  const normalizedResult = normalizeAiResult(result);
+  if (!normalizedResult.url) return false;
+
+  let didUpdate = false;
+  nodes = nodes.map((node) => {
+    if (node.id !== nodeId || node.state !== TASK_STATES.DONE) return node;
+    const existingUrl = typeof node.result?.url === "string" ? node.result.url.trim() : "";
+    if (existingUrl) return node;
+
+    didUpdate = true;
+    return {
+      ...node,
+      result: normalizeCompletionResult(node, {
+        source: "ai",
+        url: normalizedResult.url,
+        prepared: normalizedResult,
+      }),
+    };
+  });
+
+  if (!didUpdate) return false;
+  saveNodes();
+  return true;
 }
 
 function renderTree() {
@@ -1857,14 +1921,9 @@ function closeNodeEditorFromBackdrop(event) {
 }
 
 function renderMethods() {
-  const queue = getActiveQueue();
-  const current = getCurrentItem(queue);
-  const selectedNode = selectedTreeNodeId ? nodes.find((node) => node.id === selectedTreeNodeId) : null;
-  const selectedOutputs = selectedNode ? getOutputRecordsForNode(selectedNode.id) : [];
-  const outputNode = selectedOutputs.length > 0 ? selectedNode : current?.node;
-  const currentArtifacts = outputNode ? getOutputRecordsForNode(outputNode.id) : getAllOutputRecords();
+  const completedTaskResults = getCompletedTaskResultRecords();
 
-  elements.intermediateGrid.replaceChildren(...createArtifactCards(currentArtifacts));
+  elements.intermediateGrid.replaceChildren(...createArtifactCards(completedTaskResults));
   elements.skillGrid.replaceChildren(...createSkillCards(library.skills));
   elements.knowledgeGrid.replaceChildren(...createKnowledgeGroups(library.knowledge));
   renderWorkbenchSectionStates();
@@ -1905,7 +1964,7 @@ function toggleWorkbenchSection(sectionName) {
 function getWorkbenchSectionLabel(sectionName) {
   return (
     {
-      output: "Current Output",
+      output: "Completed Output",
       skill: "Skill",
       knowledge: "Knowledge",
     }[sectionName] ?? "Section"
@@ -1934,50 +1993,27 @@ function createArtifactCards(items) {
 
   const empty = document.createElement("article");
   empty.className = "artifact-card catalog-empty";
-  empty.innerHTML = "<h3>当前节点还没有产物</h3><p>完成任务时绑定飞书 Doc / Base 链接后，会出现在这里。</p>";
+  empty.innerHTML = "<h3>还没有已完成任务结果</h3><p>完成任务并生成或绑定链接后，会出现在这里。</p>";
   return [empty];
 }
 
 function createArtifactCard(item) {
   const card = document.createElement("article");
-  card.className = "artifact-card method-card is-feishu-artifact";
+  card.className = "artifact-card method-card output-result-card";
 
-  const type = document.createElement("small");
-  type.textContent = item.docType;
+  const taskTitle = document.createElement("p");
+  taskTitle.className = "output-task-name";
+  taskTitle.textContent = item.taskTitle ?? getNodeTitle(item.relatedNodeIds?.[0]);
 
-  const title = document.createElement("h3");
-  title.textContent = item.title;
+  const link = document.createElement("a");
+  link.className = "output-doc-link";
+  link.href = item.url;
+  link.target = "_blank";
+  link.rel = "noreferrer";
+  link.textContent = item.title;
+  link.title = `打开结果：${item.title}`;
 
-  const description = document.createElement("p");
-  description.textContent = item.description;
-
-  const relation = document.createElement("div");
-  relation.className = "record-node-links artifact-task-links";
-  const relationLabel = document.createElement("span");
-  relationLabel.className = "record-node-links-label";
-  relationLabel.textContent = "相关任务";
-  relation.append(relationLabel);
-  for (const nodeId of item.relatedNodeIds ?? []) {
-    const nodeChip = document.createElement("button");
-    nodeChip.className = "record-node-chip";
-    nodeChip.type = "button";
-    nodeChip.textContent = getNodeTitle(nodeId);
-    nodeChip.title = getNodeTitle(nodeId);
-    nodeChip.addEventListener("click", (event) => {
-      event.stopPropagation();
-      selectTreeNode(nodeId);
-    });
-    relation.append(nodeChip);
-  }
-
-  const meta = document.createElement("a");
-  meta.className = "method-card-link";
-  meta.href = item.url;
-  meta.target = "_blank";
-  meta.rel = "noreferrer";
-  meta.textContent = item.docType === "飞书 Doc" ? "打开飞书链接" : "打开结果链接";
-
-  card.append(type, title, description, relation, meta);
+  card.append(taskTitle, link);
   return card;
 }
 

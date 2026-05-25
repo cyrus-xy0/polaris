@@ -2693,6 +2693,52 @@ a.tree-record-chip:focus-visible {
   border-color: rgba(174, 153, 107, 0.22);
 }
 
+.method-card.artifact-card.output-result-card {
+  display: grid;
+  gap: 7px;
+  min-height: 0;
+  padding: 18px 20px 17px 22px;
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(246, 252, 249, 0.68)),
+    rgba(47, 128, 117, 0.03);
+  box-shadow:
+    0 14px 34px rgba(47, 128, 117, 0.09),
+    0 6px 16px rgba(66, 61, 48, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88);
+}
+
+.method-card.artifact-card.output-result-card::before {
+  top: 14px;
+  bottom: 14px;
+  background: rgba(47, 128, 117, 0.48);
+}
+
+.output-result-card .output-task-name {
+  margin: 0;
+  color: rgba(21, 25, 29, 0.58);
+  font-size: 13px;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.output-result-card .output-doc-link {
+  color: #15191d;
+  font-size: 18px;
+  font-weight: 780;
+  line-height: 1.28;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.output-result-card .output-doc-link:hover,
+.output-result-card .output-doc-link:focus-visible {
+  color: rgba(36, 95, 86, 0.96);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+
 .method-card.index-card {
   padding: 15px 16px 14px;
 }
@@ -3294,7 +3340,7 @@ a.tree-record-chip:focus-visible {
 }
 
 #methods-view .current-result-section .knowledge-grid {
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: 1fr;
   overflow: visible;
 }
 

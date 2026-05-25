@@ -10,7 +10,7 @@ import {
   refreshTaskPriorities,
   resolvePreparedArtifact,
 } from "../src/app-logic.js";
-import { TASK_PRIORITIES, buildTree, createNode } from "../src/task-nodes.js";
+import { TASK_PRIORITIES, TASK_STATES, buildTree, createNode } from "../src/task-nodes.js";
 
 describe("app logic", () => {
   it("ranks the strongest next task from the task data", () => {
@@ -119,6 +119,22 @@ describe("app logic", () => {
 
     assert.equal(completed.state, "完成");
     assert.equal(completed.result.source, "manual");
+  });
+
+  it("removes a completed task from the queue even when its output link is still pending", () => {
+    const prioritizedNodes = refreshTaskPriorities(sampleNodes);
+    const queue = buildActiveQueue(prioritizedNodes);
+    const currentId = queue.current.node.id;
+    const nodes = completeTask(prioritizedNodes, currentId, {
+      source: "pending-ai",
+      url: "",
+    });
+    const completed = nodes.find((node) => node.id === currentId);
+    const nextQueue = buildActiveQueue(nodes);
+
+    assert.equal(completed.state, TASK_STATES.DONE);
+    assert.equal(completed.result.source, "pending-ai");
+    assert.equal(nextQueue.available.some((item) => item.node.id === currentId), false);
   });
 
   it("resolves prepared output from artifacts before falling back", () => {
