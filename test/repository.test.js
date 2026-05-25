@@ -458,7 +458,7 @@ describe("local data repository", () => {
     }
   });
 
-  it("drops unsupported local sources such as secondbrain from generated config", () => {
+  it("drops unsupported local sources from generated config", () => {
     const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
     writeFileSync(
       join(dataRoot, "polaris.local.json"),
@@ -479,11 +479,11 @@ describe("local data repository", () => {
               defaultType: "本地知识",
             },
             {
-              id: "secondbrain",
-              kind: "secondbrain",
-              label: "Second Brain",
-              path: "secondbrain",
-              defaultType: "Second Brain",
+              id: "unsupported-source",
+              kind: "unsupported",
+              label: "Unsupported Source",
+              path: "unsupported",
+              defaultType: "Unsupported",
             },
           ],
         },
@@ -502,7 +502,7 @@ describe("local data repository", () => {
         project.sources.map((source) => source.kind),
         ["knowledge"],
       );
-      assert.equal(localConfig.sources.some((source) => source.id === "secondbrain"), false);
+      assert.equal(localConfig.sources.some((source) => source.id === "unsupported-source"), false);
     } finally {
       rmSync(dataRoot, { recursive: true, force: true });
     }

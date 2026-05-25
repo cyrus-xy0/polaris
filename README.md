@@ -193,7 +193,7 @@ Data handoff checklist:
 - Project upgrades only change code and bundled seed templates; they do not rewrite existing project config, task nodes, knowledge, or skills in the data directory. Local config is only normalized for legacy task-node directory paths and unsupported source kinds.
 - First deployment does not import the bundled demo goal tree, knowledge, skills, or output artifacts unless `--seed-demo` or `POLARIS_SEED_DEMO=1` is set.
 - `polaris.project.json` keeps only stable project identity.
-- `polaris.local.json` lists local storage paths and every existing knowledge or skill source that should be imported; unsupported source kinds such as a missing `secondbrain` entry are dropped during normalization.
+- `polaris.local.json` lists local storage paths and every existing knowledge or skill source that should be imported; unsupported source kinds are dropped during normalization.
 - New or renamed markdown files require a server restart so the source scan can rebuild the library index.
 - Existing markdown content can be edited from the browser and persists to disk.
 - Task-node state persists at `paths.taskNodes`; SQLite mirrors it for the running app.
