@@ -14,17 +14,17 @@ const defaultSources = [
   { id: "default-knowledge", kind: "knowledge", label: "Knowledge", path: "knowledge", defaultType: "本地知识" },
   { id: "default-skills", kind: "skills", label: "Skill", path: "skills", defaultType: "本地能力" },
 ];
-const defaultTaskNodesStorage = {
-  label: "Task Nodes",
-  path: ".",
-};
 const projectFileName = "polaris.project.json";
 const localConfigFileName = "polaris.local.json";
 const taskNodesFileName = "task-nodes.json";
 const defaultLocalPaths = {
-  taskNodes: defaultTaskNodesStorage.path,
+  taskNodes: taskNodesFileName,
   database: "polaris.db",
   aiResults: "ai-results",
+};
+const defaultTaskNodesStorage = {
+  label: "Task Nodes",
+  path: defaultLocalPaths.taskNodes,
 };
 const markdownMetadataColumns = {
   brief: "TEXT",
@@ -43,7 +43,7 @@ export function createRepository(options = {}) {
   const seedMarkdownLibrary = options.seedMarkdownLibrary === true || seedTaskNodes;
   mkdirSync(dataRoot, { recursive: true });
   const project = loadProject(dataRoot);
-  ensureDataFiles(dataRoot, seedDataRoot, { seedMarkdownLibrary });
+  ensureDataFiles(dataRoot, seedDataRoot, project.sources, { seedMarkdownLibrary });
   ensureSourceDirectories(project.sources);
   ensureTaskNodesDirectory(project.taskNodes);
   ensureAiResultsDirectory(project.aiResults);
@@ -394,12 +394,12 @@ function seedIfEmpty(repository, db, { seedTaskNodes = false } = {}) {
   }
 }
 
-function ensureDataFiles(dataRoot, seedDataRoot, { seedMarkdownLibrary = false } = {}) {
-  for (const { path } of defaultSources) {
-    const sourceDir = join(seedDataRoot, path);
-    const targetDir = join(dataRoot, path);
+function ensureDataFiles(dataRoot, seedDataRoot, sources, { seedMarkdownLibrary = false } = {}) {
+  for (const source of sources) {
+    const sourceDir = join(seedDataRoot, source.path);
+    const targetDir = source.rootPath;
     mkdirSync(targetDir, { recursive: true });
-    if (seedMarkdownLibrary) {
+    if (seedMarkdownLibrary && !isAbsolute(source.path)) {
       copyMissingMarkdownFiles(sourceDir, targetDir);
     }
   }
@@ -421,9 +421,10 @@ function loadProject(dataRoot) {
   const rawLocalConfig = hasLocalConfigFile
     ? parseJson(readFileSync(localConfigPath, "utf8"), {})
     : createDefaultLocalConfig(rawProject);
-  const localConfig = normalizeLocalConfig(rawLocalConfig, rawProject, dataRoot);
+  const legacyProjectConfig = hasLocalConfigFile ? {} : rawProject;
+  const localConfig = normalizeLocalConfig(rawLocalConfig, legacyProjectConfig, dataRoot);
   const taskNodeLabel =
-    rawLocalConfig?.taskNodes?.label ?? rawProject?.taskNodes?.label ?? defaultTaskNodesStorage.label;
+    rawLocalConfig?.taskNodes?.label ?? legacyProjectConfig?.taskNodes?.label ?? defaultTaskNodesStorage.label;
   const project = {
     name: normalizeProjectName(rawProject.name),
     taskNodes: normalizeTaskNodesStorage({ label: taskNodeLabel, path: localConfig.paths.taskNodes }, dataRoot),
@@ -432,8 +433,9 @@ function loadProject(dataRoot) {
     sources: localConfig.sources,
   };
 
-  if (!hasLocalConfigFile) {
-    writeFileSync(localConfigPath, `${JSON.stringify(serializeLocalConfig(project), null, 2)}\n`, "utf8");
+  const serializedLocalConfig = serializeLocalConfig(project);
+  if (!hasLocalConfigFile || shouldRewriteLocalConfig(rawLocalConfig)) {
+    writeFileSync(localConfigPath, `${JSON.stringify(serializedLocalConfig, null, 2)}\n`, "utf8");
   }
 
   return project;
@@ -500,19 +502,21 @@ function normalizeDirectoryStorage(directoryPath, dataRoot, fallback) {
 function normalizeTaskNodesStorage(taskNodes, dataRoot) {
   const input = taskNodes && typeof taskNodes === "object" ? taskNodes : defaultTaskNodesStorage;
   const storagePath = typeof input.path === "string" && input.path.trim() ? input.path.trim() : defaultTaskNodesStorage.path;
-  const rootPath = resolve(dataRoot, storagePath);
+  const fileStoragePath = normalizeTaskNodesFilePath(storagePath);
+  const filePath = resolve(dataRoot, fileStoragePath);
 
   return {
     label: typeof input.label === "string" && input.label.trim() ? input.label.trim() : defaultTaskNodesStorage.label,
-    path: storagePath,
-    rootPath,
-    filePath: join(rootPath, taskNodesFileName),
+    path: fileStoragePath,
+    rootPath: dirname(filePath),
+    filePath,
+    fileName: basename(filePath),
   };
 }
 
 function normalizeProjectSources(sources, dataRoot) {
   const normalizedSources = [];
-  const sourceInputs = Array.isArray(sources) && sources.length > 0 ? sources : defaultSources;
+  const sourceInputs = Array.isArray(sources) ? sources : defaultSources;
 
   for (const [position, source] of sourceInputs.entries()) {
     if (!["knowledge", "skills"].includes(source.kind)) continue;
@@ -530,6 +534,26 @@ function normalizeProjectSources(sources, dataRoot) {
   }
 
   return normalizedSources;
+}
+
+function normalizeTaskNodesFilePath(storagePath) {
+  const normalizedPath = normalize(storagePath);
+  if (extname(normalizedPath) === ".json") return normalizedPath;
+  return join(normalizedPath, taskNodesFileName);
+}
+
+function shouldRewriteLocalConfig(config) {
+  return hasUnsupportedSources(config) || hasLegacyTaskNodesDirectoryPath(config?.paths?.taskNodes);
+}
+
+function hasUnsupportedSources(config) {
+  if (!Array.isArray(config?.sources)) return false;
+  return config.sources.some((source) => source && source.kind && !["knowledge", "skills"].includes(source.kind));
+}
+
+function hasLegacyTaskNodesDirectoryPath(taskNodesPath) {
+  if (typeof taskNodesPath !== "string" || !taskNodesPath.trim()) return false;
+  return extname(normalize(taskNodesPath.trim())) !== ".json";
 }
 
 function createSourceId(kind, sourcePath) {
@@ -551,17 +575,6 @@ function serializeProject(project) {
         database: project.database.path,
         aiResults: project.aiResults.path,
       },
-    },
-    taskNodes: {
-      label: project.taskNodes.label,
-      path: project.taskNodes.path,
-      fileName: taskNodesFileName,
-    },
-    database: {
-      path: project.database.path,
-    },
-    aiResults: {
-      path: project.aiResults.path,
     },
     sources: project.sources.map(({ id, kind, label, path, defaultType }) => ({
       id,

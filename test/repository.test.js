@@ -178,9 +178,10 @@ describe("local data repository", () => {
     }
   });
 
-  it("stores task nodes in the configured local task-node directory", () => {
+  it("stores task nodes in the configured local task-node file", () => {
     const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
     const taskNodeRoot = mkdtempSync(join(tmpdir(), "polaris-task-nodes-"));
+    const taskNodeFile = join(taskNodeRoot, "custom-task-cards.json");
     const dbPath = join(dataRoot, "polaris.db");
     writeFileSync(join(dataRoot, "polaris.project.json"), JSON.stringify({ name: "Custom Task Project" }, null, 2));
     writeFileSync(
@@ -189,7 +190,7 @@ describe("local data repository", () => {
         {
           version: 1,
           paths: {
-            taskNodes: taskNodeRoot,
+            taskNodes: taskNodeFile,
             database: "polaris.db",
             aiResults: "ai-results",
           },
@@ -215,11 +216,10 @@ describe("local data repository", () => {
       );
       repository.close();
 
-      assert.equal(project.taskNodes.path, taskNodeRoot);
-      assert.equal(project.taskNodes.fileName, "task-nodes.json");
       assert.equal(project.localConfig.fileName, "polaris.local.json");
+      assert.equal(project.localConfig.paths.taskNodes, taskNodeFile);
       assert.equal(existsSync(join(dataRoot, "task-nodes.json")), false);
-      assert.equal(existsSync(join(taskNodeRoot, "task-nodes.json")), true);
+      assert.equal(existsSync(taskNodeFile), true);
 
       const reopenedRepository = createRepository({ dataRoot, dbPath });
       assert.equal(reopenedRepository.listTaskNodes()[0].title, "外部目录里的任务节点");
@@ -245,10 +245,12 @@ describe("local data repository", () => {
       writeFileSync(join(dataRoot, "polaris.local.json"), `${JSON.stringify(localConfig, null, 2)}\n`, "utf8");
 
       const reopenedRepository = createRepository({ dataRoot, dbPath });
+      const rewrittenLocalConfig = JSON.parse(readFileSync(join(dataRoot, "polaris.local.json"), "utf8"));
       reopenedRepository.close();
 
       assert.equal(existsSync(legacySnapshotPath), true);
       assert.equal(existsSync(configuredSnapshotPath), true);
+      assert.equal(rewrittenLocalConfig.paths.taskNodes, "tasks/task-nodes.json");
       assert.deepEqual(
         JSON.parse(readFileSync(configuredSnapshotPath, "utf8")).nodes.map((node) => node.id),
         JSON.parse(readFileSync(legacySnapshotPath, "utf8")).nodes.map((node) => node.id),
@@ -433,15 +435,10 @@ describe("local data repository", () => {
       const project = repository.getBootstrap().project;
 
       assert.equal(project.name, "Polaris");
-      assert.deepEqual(project.taskNodes, {
-        label: "Task Nodes",
-        path: ".",
-        fileName: "task-nodes.json",
-      });
       assert.deepEqual(project.localConfig, {
         fileName: "polaris.local.json",
         paths: {
-          taskNodes: ".",
+          taskNodes: "task-nodes.json",
           database: "polaris.db",
           aiResults: "ai-results",
         },
@@ -457,6 +454,56 @@ describe("local data repository", () => {
       );
     } finally {
       repository.close();
+      rmSync(dataRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("drops unsupported local sources such as secondbrain from generated config", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
+    writeFileSync(
+      join(dataRoot, "polaris.local.json"),
+      JSON.stringify(
+        {
+          version: 1,
+          paths: {
+            taskNodes: "task-nodes.json",
+            database: "polaris.db",
+            aiResults: "ai-results",
+          },
+          sources: [
+            {
+              id: "default-knowledge",
+              kind: "knowledge",
+              label: "Knowledge",
+              path: "knowledge",
+              defaultType: "本地知识",
+            },
+            {
+              id: "secondbrain",
+              kind: "secondbrain",
+              label: "Second Brain",
+              path: "secondbrain",
+              defaultType: "Second Brain",
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+
+    try {
+      const repository = createRepository({ dataRoot, dbPath: join(dataRoot, "polaris.db") });
+      const project = repository.getProject();
+      repository.close();
+      const localConfig = JSON.parse(readFileSync(join(dataRoot, "polaris.local.json"), "utf8"));
+
+      assert.deepEqual(
+        project.sources.map((source) => source.kind),
+        ["knowledge"],
+      );
+      assert.equal(localConfig.sources.some((source) => source.id === "secondbrain"), false);
+    } finally {
       rmSync(dataRoot, { recursive: true, force: true });
     }
   });
@@ -633,7 +680,7 @@ describe("local data repository", () => {
         {
           version: 1,
           paths: {
-            taskNodes: "tasks",
+            taskNodes: "tasks/custom-task-cards.json",
             database: "storage/polaris.db",
             aiResults: "storage/ai-results",
           },
@@ -649,7 +696,7 @@ describe("local data repository", () => {
       repository.close();
 
       assert.ok(existsSync(join(dataRoot, "storage/polaris.db")));
-      assert.equal(storage.taskNodesFilePath, join(dataRoot, "tasks/task-nodes.json"));
+      assert.equal(storage.taskNodesFilePath, join(dataRoot, "tasks/custom-task-cards.json"));
       assert.equal(storage.aiResultsRoot, join(dataRoot, "storage/ai-results"));
       assert.ok(existsSync(join(dataRoot, "storage/ai-results")));
     } finally {

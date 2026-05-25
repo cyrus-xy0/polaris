@@ -29,7 +29,7 @@ By default, the demo keeps that data outside the git checkout:
 - Windows: `%APPDATA%\Polaris`
 - Linux: `${XDG_DATA_HOME:-~/.local/share}/polaris`
 
-The repo's `data/` directory is only bundled seed/template data. On first run, Polaris creates empty user-owned knowledge and skill directories; it does not copy bundled demo markdown unless demo seeding is explicitly enabled. Normal startup never overwrites `polaris.project.json` or `polaris.local.json`, never rewrites configured source paths, and never deletes existing `knowledge/` or `skills/` markdown. If an older checkout already has runtime data in `data/`, the default startup path migrates those files once into the user data directory.
+The repo's `data/` directory is only bundled seed/template data. On first run, Polaris creates empty user-owned knowledge and skill directories; it does not copy bundled demo markdown unless demo seeding is explicitly enabled. Normal startup never overwrites `polaris.project.json`, only normalizes `polaris.local.json` when it contains legacy task-node directory paths or unsupported source kinds, and never deletes existing `knowledge/` or `skills/` markdown. If an older checkout already has runtime data in `data/`, the default startup path migrates those files once into the user data directory.
 
 First deployment starts with no goal tree, knowledge, skills, or demo output artifacts. Create the root Polaris goal and add reusable material in the UI; from that point on, task nodes, card state, conclusions, completion links, knowledge, skills, and output artifacts are user data. To load the bundled demo goal tree, demo markdown, and demo artifacts deliberately, start with:
 
@@ -55,7 +55,7 @@ You can also pass it as a CLI flag:
 npm start -- --data-dir /path/to/polaris-data
 ```
 
-Polaris keeps this runtime shape outside the checkout. `task-nodes.json` is created once the task tree is first saved, in the directory configured by `paths.taskNodes` in `polaris.local.json`:
+Polaris keeps this runtime shape outside the checkout. The task-node card file is created once the task tree is first saved, at the file path configured by `paths.taskNodes` in `polaris.local.json`:
 
 ```text
 polaris-data/
@@ -87,7 +87,7 @@ polaris-data/
 {
   "version": 1,
   "paths": {
-    "taskNodes": ".",
+    "taskNodes": "task-nodes.json",
     "database": "polaris.db",
     "aiResults": "ai-results"
   },
@@ -110,7 +110,7 @@ polaris-data/
 }
 ```
 
-`paths.taskNodes` is a directory path relative to the data directory, or an absolute local path. Polaris stores the task tree in `<paths.taskNodes>/task-nodes.json`; for example, `"taskNodes": "/Users/me/PolarisTasks"` keeps task state in `/Users/me/PolarisTasks/task-nodes.json`. If you move from the default root file to a custom task-node directory, Polaris copies the existing root `task-nodes.json` into the new directory once and leaves the original file untouched.
+`paths.taskNodes` is a JSON file path relative to the data directory, or an absolute local file path. For example, `"taskNodes": "/Users/me/PolarisTasks/cards.json"` keeps task state in `/Users/me/PolarisTasks/cards.json`. Legacy directory-style values are still accepted for upgrade compatibility: `"taskNodes": "tasks"` is normalized to `"tasks/task-nodes.json"` and the old root `task-nodes.json` is copied once if needed.
 
 `paths.database` controls the SQLite runtime mirror, and `paths.aiResults` controls generated action-plan/result JSON plus fallback HTML output. Both may also be relative to the data directory or absolute local paths.
 
@@ -190,13 +190,13 @@ Data handoff checklist:
 - `npm start` launches the browser UI with no extra packages to install.
 - `POLARIS_DATA_DIR` or `--data-dir` points the app at a deployer's own local state.
 - Without an override, Polaris uses the OS user data directory, not the git checkout.
-- Project upgrades only change code and bundled seed templates; they do not rewrite existing project/local config, task nodes, knowledge, or skills in the data directory.
+- Project upgrades only change code and bundled seed templates; they do not rewrite existing project config, task nodes, knowledge, or skills in the data directory. Local config is only normalized for legacy task-node directory paths and unsupported source kinds.
 - First deployment does not import the bundled demo goal tree, knowledge, skills, or output artifacts unless `--seed-demo` or `POLARIS_SEED_DEMO=1` is set.
 - `polaris.project.json` keeps only stable project identity.
-- `polaris.local.json` lists local storage paths and every knowledge or skill source that should be imported.
+- `polaris.local.json` lists local storage paths and every existing knowledge or skill source that should be imported; unsupported source kinds such as a missing `secondbrain` entry are dropped during normalization.
 - New or renamed markdown files require a server restart so the source scan can rebuild the library index.
 - Existing markdown content can be edited from the browser and persists to disk.
-- Task-node state persists in `<paths.taskNodes>/task-nodes.json`; SQLite mirrors it for the running app.
+- Task-node state persists at `paths.taskNodes`; SQLite mirrors it for the running app.
 - Markdown-backed `knowledge` and `skills` are user-maintained through project sources.
 - AI output remains readable after the app is gone because result JSON and fallback HTML are plain files under `paths.aiResults`.
 
@@ -269,7 +269,7 @@ npm test
 - User-maintained markdown knowledge and skills live in the configured data directory or external local sources.
 - Project identity lives at `<data-dir>/polaris.project.json`.
 - Local storage paths and knowledge/skill source configuration live at `<data-dir>/polaris.local.json`.
-- Task tree structure, card state, conclusions, and completion result links live in `<paths.taskNodes>/task-nodes.json`.
+- Task tree structure, card state, conclusions, and completion result links live at `paths.taskNodes`.
 - Normal startup only creates missing runtime directories/files and rebuilds SQLite indexes from configured sources; it does not delete or reset existing user-maintained markdown or project/local config.
 - Local SQLite at `paths.database` is a runtime mirror/index, not the only copy of user state.
 - Generated AI output lives in `paths.aiResults` as JSON plus local HTML documents when Feishu publishing is unavailable.
