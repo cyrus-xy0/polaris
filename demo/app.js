@@ -857,7 +857,7 @@ function syncCompleteButtonState() {
 }
 
 function createQueueCard(item, index, currentNodeId) {
-  const { node, reason } = item;
+  const { node } = item;
   const card = document.createElement("article");
   const priorityClass = `priority-${String(node.priority ?? "P2").toLowerCase()}`;
   card.className = `queue-card ${priorityClass}`;
@@ -874,33 +874,13 @@ function createQueueCard(item, index, currentNodeId) {
   description.className = "queue-card-description";
   description.textContent = node.description;
 
-  const capsule = document.createElement("div");
-  capsule.className = "queue-capsule";
-  capsule.append(createQueueDetail("为什么", reason), createQueueDetail("下一步", node.aiActions[0] ?? ""));
-
-  card.append(title, description, capsule);
+  card.append(title, description);
   card.addEventListener("click", () => {
     selectedNodeId = node.id;
     render();
   });
 
   return card;
-}
-
-function createQueueDetail(label, value) {
-  const detail = document.createElement("div");
-  detail.className = "queue-detail";
-
-  const labelElement = document.createElement("span");
-  labelElement.className = "queue-detail-label";
-  labelElement.textContent = `${label}：`;
-
-  const valueElement = document.createElement("span");
-  valueElement.className = "queue-detail-value";
-  valueElement.textContent = value;
-
-  detail.append(labelElement, valueElement);
-  return detail;
 }
 
 function completeSelectedTask() {

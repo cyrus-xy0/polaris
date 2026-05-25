@@ -442,6 +442,10 @@ describe("local data repository", () => {
           database: "polaris.db",
           aiResults: "ai-results",
         },
+        ai: {
+          timeoutMs: 120_000,
+          splitTimeoutMs: 60_000,
+        },
       });
       assert.ok(existsSync(join(dataRoot, "polaris.project.json")));
       assert.ok(existsSync(join(dataRoot, "polaris.local.json")));
@@ -454,6 +458,86 @@ describe("local data repository", () => {
       );
     } finally {
       repository.close();
+      rmSync(dataRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("persists user-owned AI timeout configuration in local config", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
+    writeFileSync(
+      join(dataRoot, "polaris.local.json"),
+      JSON.stringify(
+        {
+          version: 1,
+          paths: {
+            taskNodes: "task-nodes.json",
+            database: "polaris.db",
+            aiResults: "ai-results",
+          },
+          ai: {
+            timeoutMs: 180_000,
+            splitTimeoutMs: 90_000,
+          },
+          sources: [],
+        },
+        null,
+        2,
+      ),
+    );
+
+    try {
+      const repository = createRepository({ dataRoot, dbPath: join(dataRoot, "polaris.db") });
+      const project = repository.getProject();
+      repository.close();
+      const localConfig = JSON.parse(readFileSync(join(dataRoot, "polaris.local.json"), "utf8"));
+
+      assert.deepEqual(project.localConfig.ai, {
+        timeoutMs: 180_000,
+        splitTimeoutMs: 90_000,
+      });
+      assert.deepEqual(localConfig.ai, {
+        timeoutMs: 180_000,
+        splitTimeoutMs: 90_000,
+      });
+    } finally {
+      rmSync(dataRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("adds missing AI timeout defaults to legacy local config without using project files", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
+    writeFileSync(
+      join(dataRoot, "polaris.local.json"),
+      JSON.stringify(
+        {
+          version: 1,
+          paths: {
+            taskNodes: "task-nodes.json",
+            database: "polaris.db",
+            aiResults: "ai-results",
+          },
+          sources: [],
+        },
+        null,
+        2,
+      ),
+    );
+
+    try {
+      const repository = createRepository({ dataRoot, dbPath: join(dataRoot, "polaris.db") });
+      const project = repository.getProject();
+      repository.close();
+      const localConfig = JSON.parse(readFileSync(join(dataRoot, "polaris.local.json"), "utf8"));
+
+      assert.deepEqual(project.localConfig.ai, {
+        timeoutMs: 120_000,
+        splitTimeoutMs: 60_000,
+      });
+      assert.deepEqual(localConfig.ai, {
+        timeoutMs: 120_000,
+        splitTimeoutMs: 60_000,
+      });
+    } finally {
       rmSync(dataRoot, { recursive: true, force: true });
     }
   });

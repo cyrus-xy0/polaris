@@ -712,10 +712,12 @@ button {
 .queue-card {
   position: relative;
   display: grid;
+  grid-template-rows: auto auto;
   align-content: start;
-  min-height: 124px;
+  gap: 9px;
+  min-height: 112px;
   scroll-margin-top: 96px;
-  padding: 20px 20px 18px;
+  padding: 20px;
   border: 1px solid rgba(255, 255, 255, 0.8);
   border-radius: 26px;
   background:
@@ -848,70 +850,11 @@ button {
 .queue-card-description {
   position: relative;
   z-index: 1;
-  margin: 9px 0 0;
+  margin: 0;
   color: rgba(21, 25, 29, 0.52);
   font-size: 14px;
   line-height: 1.55;
   min-height: 43px;
-  display: -webkit-box;
-  overflow: hidden;
-  overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.queue-capsule {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  gap: 8px;
-  max-height: 0;
-  margin-top: 0;
-  padding: 0 14px;
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  border-radius: 18px;
-  color: rgba(21, 25, 29, 0.72);
-  background: rgba(255, 255, 255, 0.76);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(-6px);
-  overflow: hidden;
-  transition:
-    max-height 180ms ease,
-    margin-top 180ms ease,
-    padding 180ms ease,
-    opacity 180ms ease,
-    transform 180ms ease;
-  backdrop-filter: blur(18px);
-}
-
-.queue-card:hover .queue-capsule,
-.queue-card.is-selected .queue-capsule {
-  max-height: 126px;
-  margin-top: 14px;
-  padding: 12px 14px;
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.queue-detail {
-  display: grid;
-  grid-template-columns: 50px minmax(0, 1fr);
-  align-items: start;
-  gap: 6px;
-  min-width: 0;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.queue-detail-label {
-  color: #15191d;
-  font-weight: 760;
-}
-
-.queue-detail-value {
-  min-width: 0;
   display: -webkit-box;
   overflow: hidden;
   overflow-wrap: anywhere;

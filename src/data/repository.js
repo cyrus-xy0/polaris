@@ -22,6 +22,10 @@ const defaultLocalPaths = {
   database: "polaris.db",
   aiResults: "ai-results",
 };
+const defaultAiConfig = {
+  timeoutMs: 120_000,
+  splitTimeoutMs: 60_000,
+};
 const defaultTaskNodesStorage = {
   label: "Task Nodes",
   path: defaultLocalPaths.taskNodes,
@@ -430,6 +434,7 @@ function loadProject(dataRoot) {
     taskNodes: normalizeTaskNodesStorage({ label: taskNodeLabel, path: localConfig.paths.taskNodes }, dataRoot),
     database: normalizeFileStorage(localConfig.paths.database, dataRoot, defaultLocalPaths.database),
     aiResults: normalizeDirectoryStorage(localConfig.paths.aiResults, dataRoot, defaultLocalPaths.aiResults),
+    ai: localConfig.ai,
     sources: localConfig.sources,
   };
 
@@ -455,6 +460,7 @@ function createDefaultLocalConfig(legacyProject = {}) {
       database: defaultLocalPaths.database,
       aiResults: defaultLocalPaths.aiResults,
     },
+    ai: defaultAiConfig,
     sources: legacyProject?.sources ?? defaultSources,
   };
 }
@@ -475,8 +481,21 @@ function normalizeLocalConfig(config, legacyProject, dataRoot) {
       database: normalizeStoragePath(rawPaths.database, defaultLocalPaths.database),
       aiResults: normalizeStoragePath(rawPaths.aiResults, defaultLocalPaths.aiResults),
     },
+    ai: normalizeAiConfig(config?.ai),
     sources: normalizeProjectSources(config?.sources ?? legacyProject?.sources, dataRoot),
   };
+}
+
+function normalizeAiConfig(config) {
+  return {
+    timeoutMs: normalizePositiveInteger(config?.timeoutMs, defaultAiConfig.timeoutMs),
+    splitTimeoutMs: normalizePositiveInteger(config?.splitTimeoutMs, defaultAiConfig.splitTimeoutMs),
+  };
+}
+
+function normalizePositiveInteger(value, fallback) {
+  const parsedValue = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : fallback;
 }
 
 function normalizeStoragePath(value, fallback) {
@@ -543,7 +562,7 @@ function normalizeTaskNodesFilePath(storagePath) {
 }
 
 function shouldRewriteLocalConfig(config) {
-  return hasUnsupportedSources(config) || hasLegacyTaskNodesDirectoryPath(config?.paths?.taskNodes);
+  return hasUnsupportedSources(config) || hasLegacyTaskNodesDirectoryPath(config?.paths?.taskNodes) || hasMissingAiConfig(config);
 }
 
 function hasUnsupportedSources(config) {
@@ -554,6 +573,19 @@ function hasUnsupportedSources(config) {
 function hasLegacyTaskNodesDirectoryPath(taskNodesPath) {
   if (typeof taskNodesPath !== "string" || !taskNodesPath.trim()) return false;
   return extname(normalize(taskNodesPath.trim())) !== ".json";
+}
+
+function hasMissingAiConfig(config) {
+  return (
+    !config?.ai ||
+    !isPositiveIntegerConfigValue(config.ai.timeoutMs) ||
+    !isPositiveIntegerConfigValue(config.ai.splitTimeoutMs)
+  );
+}
+
+function isPositiveIntegerConfigValue(value) {
+  const parsedValue = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsedValue) && parsedValue > 0;
 }
 
 function createSourceId(kind, sourcePath) {
@@ -571,11 +603,15 @@ function serializeProject(project) {
     localConfig: {
       fileName: localConfigFileName,
       paths: {
-        taskNodes: project.taskNodes.path,
-        database: project.database.path,
-        aiResults: project.aiResults.path,
-      },
+      taskNodes: project.taskNodes.path,
+      database: project.database.path,
+      aiResults: project.aiResults.path,
     },
+    ai: {
+      timeoutMs: project.ai.timeoutMs,
+      splitTimeoutMs: project.ai.splitTimeoutMs,
+    },
+  },
     sources: project.sources.map(({ id, kind, label, path, defaultType }) => ({
       id,
       kind,
@@ -593,6 +629,10 @@ function serializeLocalConfig(project) {
       taskNodes: project.taskNodes.path,
       database: project.database.path,
       aiResults: project.aiResults.path,
+    },
+    ai: {
+      timeoutMs: project.ai.timeoutMs,
+      splitTimeoutMs: project.ai.splitTimeoutMs,
     },
     sources: project.sources.map(({ id, kind, label, path, defaultType }) => ({
       id,

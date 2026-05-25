@@ -46,10 +46,11 @@ if (!hasDataRootOverride({ argv: process.argv.slice(2), env: process.env })) {
 }
 const repository = createRepository({ dataRoot, seedDataRoot: bundledDataRoot, seedTaskNodes: seedDemoData });
 const storage = repository.getStorage();
+const projectConfig = repository.getProject();
 const aiResultsRoot = storage.aiResultsRoot;
 const inFlightAiJobs = new Map();
-const aiGenerationTimeoutMs = readPositiveIntegerEnv("POLARIS_AI_TIMEOUT_MS", 12_000);
-const aiSplitTimeoutMs = readPositiveIntegerEnv("POLARIS_AI_SPLIT_TIMEOUT_MS", Math.min(aiGenerationTimeoutMs, 6_000));
+const aiGenerationTimeoutMs = readPositiveIntegerEnv("POLARIS_AI_TIMEOUT_MS", projectConfig.localConfig.ai.timeoutMs);
+const aiSplitTimeoutMs = readPositiveIntegerEnv("POLARIS_AI_SPLIT_TIMEOUT_MS", projectConfig.localConfig.ai.splitTimeoutMs);
 const feishuPublishTimeoutMs = readPositiveIntegerEnv("POLARIS_FEISHU_TIMEOUT_MS", 8_000);
 
 const mimeTypes = {
