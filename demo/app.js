@@ -245,6 +245,62 @@ function getRecordsForNode(nodeId) {
   return (library.artifacts ?? []).filter((item) => item.relatedNodeIds?.includes(nodeId));
 }
 
+function getOutputRecordsForNode(nodeId) {
+  const node = nodes.find((item) => item.id === nodeId);
+  return dedupeOutputRecords([createTaskResultRecord(node), ...getRecordsForNode(nodeId)].filter(Boolean));
+}
+
+function getAllOutputRecords() {
+  const taskResults = nodes.map(createTaskResultRecord).filter(Boolean);
+  return dedupeOutputRecords([...taskResults, ...(library.artifacts ?? [])]);
+}
+
+function createTaskResultRecord(node) {
+  const result = node?.result;
+  const url = typeof result?.url === "string" ? result.url.trim() : "";
+  if (!node || !url) return null;
+
+  const source = typeof result.source === "string" && result.source.trim() ? result.source.trim() : "task-result";
+  const title = typeof result.title === "string" && result.title.trim() ? result.title.trim() : `${node.title} 结果`;
+  const docType =
+    typeof result.docType === "string" && result.docType.trim()
+      ? result.docType.trim()
+      : source === "manual"
+        ? "手动链接"
+        : "AI 结果";
+  const description =
+    typeof result.description === "string" && result.description.trim()
+      ? result.description.trim()
+      : source === "manual"
+        ? "用户完成任务时绑定的结果链接。"
+        : "完成任务时生成并绑定的 AI 结果。";
+
+  return {
+    id: `task-result-${node.id}`,
+    kind: "artifacts",
+    source,
+    docType,
+    title,
+    description,
+    url,
+    path: result.path,
+    relatedNodeIds: [node.id],
+    isTaskResult: true,
+  };
+}
+
+function dedupeOutputRecords(records) {
+  const seen = new Set();
+  const outputRecords = [];
+  for (const record of records) {
+    const key = record.url || record.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    outputRecords.push(record);
+  }
+  return outputRecords;
+}
+
 function getNodeTitle(nodeId) {
   const index = indexNodes(nodes);
   return index.byId.get(nodeId)?.title ?? nodeId;
@@ -795,6 +851,7 @@ function createQueueCard(item, index, currentNodeId) {
   card.style.opacity = `${Math.max(0.74, 1 - index * 0.08)}`;
 
   const title = document.createElement("h3");
+  title.className = "queue-card-title";
   title.textContent = node.title;
 
   const description = document.createElement("p");
@@ -843,12 +900,26 @@ function completeTaskWithResult(result) {
   const current = getCurrentItem(queue);
   if (!current) return;
 
-  nodes = completeTask(nodes, current.node.id, result);
+  nodes = completeTask(nodes, current.node.id, normalizeCompletionResult(current.node, result));
   saveNodes();
   selectedNodeId = null;
   elements.manualResultUrl.value = "";
   autoFilledResultUrl = "";
   render();
+}
+
+function normalizeCompletionResult(node, result = {}) {
+  const prepared = result.source === "ai" ? currentPreparedArtifact : null;
+  return {
+    source: result.source,
+    url: result.url,
+    title: prepared?.title ?? `${node.title} 结果`,
+    docType: prepared?.docType ?? (result.source === "manual" ? "手动链接" : "AI 结果"),
+    description:
+      prepared?.description ??
+      (result.source === "manual" ? "用户完成任务时绑定的结果链接。" : "完成任务时生成并绑定的 AI 结果。"),
+    path: prepared?.path,
+  };
 }
 
 function renderTree() {
@@ -1395,7 +1466,8 @@ function createTreeNode(node, focus, depth) {
   const isRelated = focus.relatedIds.has(node.id);
   const effectiveState = focus.stateById.get(node.id) ?? node.state;
   const isDone = effectiveState === TASK_STATES.DONE;
-  const linkedRecords = getRecordsForNode(node.id);
+  const linkedRecords = getOutputRecordsForNode(node.id);
+  const primaryResultRecord = linkedRecords.find((record) => record.url);
   wrapper.className = [
     "tree-family",
     depth === 0 ? "is-root" : "",
@@ -1457,6 +1529,9 @@ function createTreeNode(node, focus, depth) {
   const detail = document.createElement("span");
   detail.className = "tree-node-detail";
   detail.append(meta, priority, stateToggle);
+  if (isDone && primaryResultRecord) {
+    detail.append(createTreeResultLink(primaryResultRecord));
+  }
 
   header.append(title);
   content.append(header, detail);
@@ -1542,6 +1617,20 @@ function createTreeRecordChip(record) {
     });
   }
   return chip;
+}
+
+function createTreeResultLink(record) {
+  const link = document.createElement("a");
+  link.className = "tree-node-result-link";
+  link.href = record.url;
+  link.target = "_blank";
+  link.rel = "noreferrer";
+  link.textContent = "结果";
+  link.title = `打开${record.docType ?? "Output"}：${record.title}`;
+  link.addEventListener("click", (event) => {
+    event.stopPropagation();
+  });
+  return link;
 }
 
 function createTreeActionButton(label, title, onClick, tone = "default") {
@@ -1761,9 +1850,10 @@ function closeNodeEditorFromBackdrop(event) {
 function renderMethods() {
   const queue = getActiveQueue();
   const current = getCurrentItem(queue);
-  const currentArtifacts = current
-    ? library.artifacts.filter((item) => item.relatedNodeIds?.includes(current.node.id))
-    : library.artifacts;
+  const selectedNode = selectedTreeNodeId ? nodes.find((node) => node.id === selectedTreeNodeId) : null;
+  const selectedOutputs = selectedNode ? getOutputRecordsForNode(selectedNode.id) : [];
+  const outputNode = selectedOutputs.length > 0 ? selectedNode : current?.node;
+  const currentArtifacts = outputNode ? getOutputRecordsForNode(outputNode.id) : getAllOutputRecords();
 
   elements.intermediateGrid.replaceChildren(...createArtifactCards(currentArtifacts));
   elements.skillGrid.replaceChildren(...createSkillCards(library.skills));
@@ -1876,7 +1966,7 @@ function createArtifactCard(item) {
   meta.href = item.url;
   meta.target = "_blank";
   meta.rel = "noreferrer";
-  meta.textContent = "打开飞书链接";
+  meta.textContent = item.docType === "飞书 Doc" ? "打开飞书链接" : "打开结果链接";
 
   card.append(type, title, description, relation, meta);
   return card;
