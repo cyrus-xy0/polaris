@@ -75,7 +75,7 @@ button {
     linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 253, 247, 0.66)),
     rgba(255, 255, 255, 0.62);
   font-size: 17px;
-  font-weight: 650;
+  font-weight: 540;
   letter-spacing: 0;
   box-shadow:
     0 12px 34px rgba(66, 61, 48, 0.12),
@@ -86,7 +86,7 @@ button {
 
 .brand-name {
   font-size: 15px;
-  font-weight: 760;
+  font-weight: 580;
   line-height: 1;
   letter-spacing: 0;
   white-space: nowrap;
@@ -124,7 +124,7 @@ button {
     0 10px 28px rgba(66, 61, 48, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.82);
   font-size: 12px;
-  font-weight: 720;
+  font-weight: 560;
   letter-spacing: 0;
   pointer-events: none;
   backdrop-filter: blur(16px) saturate(1.1);
@@ -272,7 +272,7 @@ button {
   margin: 0 0 12px;
   color: rgba(47, 128, 117, 0.92);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 560;
   letter-spacing: 0.06em;
 }
 
@@ -282,7 +282,7 @@ button {
   margin: 0;
   color: #111820;
   font-size: 46px;
-  font-weight: 720;
+  font-weight: 560;
   line-height: 1.12;
   letter-spacing: 0;
 }
@@ -314,7 +314,7 @@ button {
   color: #265f58;
   background: rgba(47, 128, 117, 0.09);
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 540;
 }
 
 .ai-refresh-button {
@@ -408,7 +408,7 @@ button {
   margin: 0;
   color: rgba(21, 25, 29, 0.9);
   font-size: 22px;
-  font-weight: 740;
+  font-weight: 580;
   letter-spacing: 0;
 }
 
@@ -455,7 +455,7 @@ button {
   color: #7d4e16;
   background: rgba(182, 120, 44, 0.13);
   font-size: 13px;
-  font-weight: 760;
+  font-weight: 580;
   counter-increment: plan-step;
   content: counter(plan-step);
 }
@@ -492,7 +492,7 @@ button {
   margin: 0;
   color: rgba(17, 24, 32, 0.92);
   font-size: 22px;
-  font-weight: 740;
+  font-weight: 580;
   letter-spacing: 0;
 }
 
@@ -581,7 +581,7 @@ button {
   color: rgba(36, 95, 86, 0.92);
   background: rgba(47, 128, 117, 0.08);
   font-size: 14px;
-  font-weight: 720;
+  font-weight: 560;
   text-decoration: none;
   white-space: nowrap;
   transition:
@@ -687,77 +687,6 @@ button {
   transform: none;
 }
 
-.ai-config-panel {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: minmax(128px, 1fr) repeat(2, minmax(112px, 140px)) auto minmax(120px, 1fr);
-  gap: 10px;
-  align-items: center;
-  margin-top: 4px;
-  padding-top: 16px;
-  border-top: 1px solid rgba(21, 25, 29, 0.07);
-}
-
-.ai-config-heading h2 {
-  margin: 0;
-  color: rgba(17, 24, 32, 0.88);
-  font-size: 15px;
-  font-weight: 760;
-  line-height: 1.3;
-}
-
-.ai-config-field {
-  display: grid;
-  gap: 6px;
-  color: rgba(21, 25, 29, 0.52);
-  font-size: 12px;
-  font-weight: 720;
-}
-
-.ai-config-field input {
-  width: 100%;
-  min-height: 38px;
-  padding: 0 12px;
-  border: 1px solid rgba(21, 25, 29, 0.08);
-  border-radius: 999px;
-  color: rgba(17, 24, 32, 0.86);
-  background: rgba(255, 255, 255, 0.56);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86);
-  font: inherit;
-  font-size: 14px;
-  outline: none;
-}
-
-.ai-config-field input:focus {
-  border-color: rgba(47, 128, 117, 0.32);
-  box-shadow:
-    0 0 0 4px rgba(47, 128, 117, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
-}
-
-.ai-config-save {
-  height: 38px;
-  padding: 0 16px;
-}
-
-.ai-config-panel.is-saving .ai-config-save {
-  pointer-events: none;
-  opacity: 0.56;
-}
-
-.ai-config-status {
-  min-height: 18px;
-  margin: 0;
-  color: rgba(36, 95, 86, 0.76);
-  font-size: 12px;
-  font-weight: 680;
-  line-height: 1.5;
-}
-
-.ai-config-status.is-error {
-  color: rgba(154, 56, 42, 0.88);
-}
-
 .queue-panel {
   position: relative;
   z-index: 2;
@@ -783,7 +712,7 @@ button {
   margin: 0;
   color: #15191d;
   font-size: 25px;
-  font-weight: 720;
+  font-weight: 560;
   letter-spacing: 0;
 }
 
@@ -794,7 +723,7 @@ button {
   color: #365f58;
   background: rgba(77, 124, 115, 0.11);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 560;
 }
 
 .queue-chain {
@@ -866,7 +795,7 @@ button {
   padding: 0 8px;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 780;
+  font-weight: 600;
   content: attr(data-priority);
 }
 
@@ -949,7 +878,7 @@ button {
   min-height: 1.35em;
   color: rgba(21, 25, 29, 0.9);
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 560;
   line-height: 1.35;
   letter-spacing: 0;
   max-height: calc(1.35em * 2);
@@ -1030,7 +959,7 @@ button {
   margin: 0;
   color: #12161a;
   font-size: 42px;
-  font-weight: 730;
+  font-weight: 560;
   line-height: 1.14;
   letter-spacing: 0;
 }
@@ -1141,7 +1070,7 @@ button {
   margin: 0;
   color: #15191d;
   font-size: 24px;
-  font-weight: 730;
+  font-weight: 560;
   letter-spacing: 0;
 }
 
@@ -1225,7 +1154,7 @@ button {
   margin: 0;
   color: #111820;
   font-size: 24px;
-  font-weight: 740;
+  font-weight: 580;
   line-height: 1.2;
   letter-spacing: 0;
 }
@@ -1235,7 +1164,7 @@ button {
   margin-top: 8px;
   color: rgba(21, 25, 29, 0.5);
   font-size: 12px;
-  font-weight: 680;
+  font-weight: 520;
 }
 
 .node-editor-field {
@@ -1247,7 +1176,7 @@ button {
 .node-editor-field > span {
   color: rgba(21, 25, 29, 0.62);
   font-size: 12px;
-  font-weight: 740;
+  font-weight: 580;
 }
 
 .node-editor-field > input,
@@ -1300,7 +1229,7 @@ button {
   cursor: pointer;
   font: inherit;
   font-size: 13px;
-  font-weight: 760;
+  font-weight: 580;
 }
 
 .node-dependency-add:disabled {
@@ -1358,7 +1287,7 @@ button {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
   cursor: pointer;
   font-size: 20px;
-  font-weight: 680;
+  font-weight: 520;
   line-height: 1;
 }
 
@@ -1432,7 +1361,7 @@ button {
   display: flex;
   align-items: center;
   flex-direction: column;
-  min-width: 214px;
+  min-width: var(--tree-family-width, 214px);
   transition:
     min-width 220ms ease,
     opacity 180ms ease;
@@ -1458,14 +1387,14 @@ button {
   --node-title-color: rgba(21, 25, 29, 0.86);
   position: relative;
   display: block;
-  width: 232px;
+  width: var(--tree-node-card-width, 232px);
   min-height: 88px;
   padding: 0;
   border: 1px solid var(--node-state-border);
-  border-radius: 22px;
+  border-radius: 24px;
   background:
-    linear-gradient(90deg, var(--node-state-tint), rgba(255, 255, 255, 0) 44%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), var(--node-kind-tint)),
+    linear-gradient(115deg, rgba(255, 255, 255, 0.98), rgba(255, 252, 245, 0.76) 48%, var(--node-kind-tint)),
+    radial-gradient(circle at 8% 0%, var(--node-state-tint), rgba(255, 255, 255, 0) 34%),
     rgba(255, 255, 255, 0.78);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.84),
@@ -1492,9 +1421,11 @@ button {
   top: 1px;
   bottom: 1px;
   left: 0;
-  width: 6px;
-  border-radius: 22px 0 0 22px;
-  background: linear-gradient(180deg, var(--node-state-accent), rgba(255, 255, 255, 0.18));
+  width: 9px;
+  border-radius: 24px 0 0 24px;
+  background:
+    linear-gradient(180deg, var(--node-state-accent), rgba(255, 255, 255, 0.18)),
+    var(--node-state-accent);
   content: "";
   opacity: 0.88;
   pointer-events: none;
@@ -1516,8 +1447,8 @@ button {
 }
 
 .tree-family.is-root > .tree-node-card {
-  width: min(620px, calc(100vw - 156px));
-  min-height: 108px;
+  width: var(--tree-node-card-width, 660px);
+  min-height: 132px;
   border-color: var(--node-state-border);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.86),
@@ -1731,6 +1662,7 @@ button {
 }
 
 .tree-node-card.is-ghost .tree-node-description,
+.tree-node-card.is-ghost .tree-node-body,
 .tree-node-card.is-ghost .tree-node-actions {
   display: none;
 }
@@ -1758,7 +1690,7 @@ button {
   overflow: hidden;
   color: rgba(21, 25, 29, 0.5);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 540;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1766,6 +1698,7 @@ button {
 
 .tree-family.is-collapsed > .tree-node-card .tree-node-meta,
 .tree-family.is-collapsed > .tree-node-card .tree-node-detail,
+.tree-family.is-collapsed > .tree-node-card .tree-node-body,
 .tree-family.is-collapsed > .tree-node-card .tree-node-description,
 .tree-family.is-collapsed > .tree-node-card .tree-node-actions {
   display: none;
@@ -1774,55 +1707,57 @@ button {
 .tree-node-title {
   color: var(--node-title-color, rgba(21, 25, 29, 0.84));
   font-size: 15px;
-  font-weight: 700;
-  line-height: 1.42;
+  font-weight: 560;
+  line-height: 1.32;
 }
 
 .tree-node-header {
   position: relative;
-  padding: 18px 54px 13px 18px;
-  border-radius: 21px 21px 0 0;
+  padding: 22px 68px 18px 30px;
+  border-radius: 23px 23px 0 0;
+  border-bottom: 1px solid rgba(21, 25, 29, 0.055);
   background:
-    linear-gradient(180deg, var(--node-kind-header), rgba(255, 255, 255, 0.02)),
-    rgba(255, 255, 255, 0.24);
-}
-
-.tree-node-header::before {
-  position: absolute;
-  top: 18px;
-  bottom: 14px;
-  left: 0;
-  width: 3px;
-  border-radius: 0 999px 999px 0;
-  background: var(--node-kind-accent);
-  content: "";
-}
-
-.tree-node-card.is-selected .tree-node-header::before {
-  background: var(--node-kind-accent);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.52);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.1)),
+    linear-gradient(90deg, var(--node-kind-header), rgba(255, 255, 255, 0) 72%),
+    rgba(255, 255, 255, 0.28);
 }
 
 .tree-family.is-root > .tree-node-card .tree-node-title {
-  font-size: 19px;
+  display: block;
+  max-width: 560px;
+  color: rgba(21, 25, 29, 0.8);
+  font-size: 21px;
+  font-weight: 540;
   line-height: 1.42;
 }
 
 .tree-node-meta {
-  color: rgba(21, 25, 29, 0.44);
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: rgba(21, 25, 29, 0.5);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.tree-node-meta::before {
+  width: 5px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(21, 25, 29, 0.12);
+  content: "";
 }
 
 .tree-node-priority {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 30px;
-  height: 22px;
-  padding: 0 8px;
+  min-width: 38px;
+  height: 28px;
+  padding: 0 12px;
   border-radius: 999px;
-  font-size: 11px;
-  font-weight: 780;
+  font-size: 13px;
+  font-weight: 560;
 }
 
 .tree-node-priority.priority-p0 {
@@ -1845,24 +1780,26 @@ button {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 10px 18px 14px;
+  padding: 14px 30px 16px;
   border-top: 1px solid rgba(21, 25, 29, 0.055);
-  background: rgba(255, 255, 255, 0.28);
+  border-bottom: 1px solid rgba(21, 25, 29, 0.045);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.44), rgba(255, 255, 255, 0.14)),
+    rgba(255, 255, 255, 0.28);
 }
 
 .tree-state-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 24px;
-  padding: 0 9px;
+  height: 30px;
+  padding: 0 13px;
   border: 1px solid rgba(21, 25, 29, 0.06);
   border-radius: 999px;
   color: rgba(21, 25, 29, 0.58);
   background: rgba(255, 255, 255, 0.52);
   cursor: pointer;
-  font-size: 12px;
-  font-weight: 680;
+  font-size: 13px;
+  font-weight: 560;
   line-height: 1;
   transition:
     transform 150ms ease,
@@ -1872,32 +1809,14 @@ button {
     opacity 150ms ease;
 }
 
-.tree-state-toggle::before {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: rgba(77, 124, 115, 0.36);
-  content: "";
-}
-
 .tree-node-card.is-pending .tree-state-toggle {
   color: rgba(125, 78, 22, 0.82);
   background: rgba(255, 248, 235, 0.72);
 }
 
-.tree-node-card.is-pending .tree-state-toggle::before {
-  background: rgba(182, 120, 44, 0.82);
-  box-shadow: 0 0 0 4px rgba(182, 120, 44, 0.09);
-}
-
 .tree-node-card.is-done .tree-state-toggle {
   color: rgba(36, 95, 86, 0.72);
   background: rgba(241, 249, 246, 0.72);
-}
-
-.tree-node-card.is-done .tree-state-toggle::before {
-  background: #2f8075;
-  box-shadow: 0 0 0 4px rgba(47, 128, 117, 0.1);
 }
 
 .tree-state-toggle:hover {
@@ -1907,53 +1826,101 @@ button {
   background: rgba(255, 255, 255, 0.82);
 }
 
+.tree-node-body {
+  display: grid;
+  gap: 14px;
+  padding: 20px 30px 28px;
+}
+
 .tree-node-description {
+  position: relative;
   margin: 0;
-  padding: 0 18px 18px;
-  border-top: 1px solid rgba(21, 25, 29, 0.04);
-  color: rgba(21, 25, 29, 0.58);
-  font-size: 13px;
-  line-height: 1.58;
+  padding: 18px 20px;
+  border: 1px solid rgba(21, 25, 29, 0.055);
+  border-radius: 18px;
+  color: rgba(21, 25, 29, 0.62);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 253, 247, 0.42)),
+    rgba(255, 255, 255, 0.36);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
+  font-size: 14px;
+  line-height: 1.7;
 }
 
 .tree-node-records {
-  display: flex;
-  align-items: flex-start;
-  flex-wrap: wrap;
-  gap: 7px;
+  display: grid;
+  grid-template-columns: minmax(112px, max-content) minmax(140px, 1fr);
+  align-items: center;
+  gap: 10px 14px;
   min-width: 0;
-  padding: 0 18px 18px;
+  padding: 14px;
+  border: 1px solid rgba(47, 128, 117, 0.09);
+  border-radius: 18px;
+  background:
+    linear-gradient(90deg, rgba(47, 128, 117, 0.06), rgba(255, 255, 255, 0) 46%),
+    rgba(255, 255, 255, 0.46);
+}
+
+.tree-node-records.is-empty {
+  border-style: dashed;
+  border-color: rgba(21, 25, 29, 0.1);
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.tree-node-records.has-records {
+  align-items: start;
 }
 
 .tree-node-records-label,
 .tree-node-record-empty {
   min-width: 0;
-  color: rgba(21, 25, 29, 0.42);
+  color: rgba(21, 25, 29, 0.48);
   font-size: 12px;
-  font-weight: 680;
+  font-weight: 560;
 }
 
 .tree-node-records-label {
-  flex: 0 0 100%;
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  color: rgba(36, 95, 86, 0.76);
+  letter-spacing: 0.02em;
 }
 
 .tree-node-record-empty {
-  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 32px;
+  color: rgba(21, 25, 29, 0.42);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.tree-node-record-empty::before {
+  width: 22px;
+  height: 1px;
+  margin-right: 10px;
+  border-radius: 999px;
+  background: rgba(21, 25, 29, 0.18);
+  content: "";
 }
 
 .tree-record-chip {
+  position: relative;
   display: block;
-  flex: 0 1 100%;
   max-width: 100%;
-  min-height: 24px;
-  padding: 0 9px;
+  min-height: 32px;
+  padding: 6px 12px;
   border: 1px solid rgba(47, 128, 117, 0.12);
-  border-radius: 999px;
+  border-radius: 12px;
   color: rgba(36, 95, 86, 0.86);
-  background: rgba(47, 128, 117, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(47, 128, 117, 0.06)),
+    rgba(47, 128, 117, 0.08);
   font-size: 12px;
-  font-weight: 680;
-  line-height: 22px;
+  font-weight: 560;
+  line-height: 1.35;
   text-decoration: none;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1978,7 +1945,7 @@ button {
   color: rgba(36, 95, 86, 0.92);
   background: rgba(47, 128, 117, 0.1);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 580;
   line-height: 22px;
   text-decoration: none;
   white-space: nowrap;
@@ -2002,14 +1969,6 @@ a.tree-record-chip:focus-visible {
   border-color: rgba(182, 120, 44, 0.28);
   background: rgba(174, 153, 107, 0.16);
   outline: none;
-}
-
-.tree-node-card.is-done .tree-node-header::before {
-  background: var(--node-kind-accent);
-}
-
-.tree-node-card.is-pending .tree-node-header::before {
-  background: var(--node-kind-accent);
 }
 
 .tree-node-actions {
@@ -2050,7 +2009,7 @@ a.tree-record-chip:focus-visible {
   background: rgba(255, 255, 255, 0.82);
   cursor: pointer;
   font-size: 17px;
-  font-weight: 720;
+  font-weight: 560;
   line-height: 1;
   white-space: nowrap;
 }
@@ -2438,14 +2397,14 @@ a.tree-record-chip:focus-visible {
   color: rgba(21, 25, 29, 0.46);
   background: rgba(255, 255, 255, 0.52);
   font-size: 11px;
-  font-weight: 720;
+  font-weight: 560;
 }
 
 .catalog-group-header h3 {
   margin: 7px 0 0;
   color: rgba(21, 25, 29, 0.88);
   font-size: 18px;
-  font-weight: 740;
+  font-weight: 580;
   line-height: 1.25;
 }
 
@@ -2634,14 +2593,14 @@ a.tree-record-chip:focus-visible {
   color: rgba(36, 95, 86, 0.92);
   background: rgba(47, 128, 117, 0.08);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 560;
 }
 
 .method-card h3 {
   margin: 0;
   color: #15191d;
   font-size: 17px;
-  font-weight: 730;
+  font-weight: 560;
   line-height: 1.34;
 }
 
@@ -2709,7 +2668,7 @@ a.tree-record-chip:focus-visible {
 .record-node-links-label {
   color: rgba(21, 25, 29, 0.42);
   font-size: 12px;
-  font-weight: 720;
+  font-weight: 560;
 }
 
 .record-node-chip {
@@ -2722,7 +2681,7 @@ a.tree-record-chip:focus-visible {
   background: rgba(92, 120, 155, 0.08);
   cursor: pointer;
   font-size: 12px;
-  font-weight: 680;
+  font-weight: 520;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2746,7 +2705,7 @@ a.tree-record-chip:focus-visible {
 .method-card.is-md-file .method-card-link::before {
   display: inline-block;
   margin-right: 7px;
-  font-weight: 780;
+  font-weight: 600;
 }
 
 .method-card.is-md-file .method-card-link::before {
@@ -2836,7 +2795,7 @@ a.tree-record-chip:focus-visible {
   margin: 0;
   color: rgba(17, 24, 32, 0.9);
   font-size: 16px;
-  font-weight: 760;
+  font-weight: 580;
   line-height: 1.36;
 }
 
@@ -2851,7 +2810,7 @@ a.tree-record-chip:focus-visible {
   color: rgba(36, 95, 86, 0.84);
   background: rgba(47, 128, 117, 0.07);
   font-size: 11px;
-  font-weight: 720;
+  font-weight: 560;
   line-height: 1;
   white-space: nowrap;
 }
@@ -2860,7 +2819,7 @@ a.tree-record-chip:focus-visible {
   justify-self: start;
   color: rgba(17, 24, 32, 0.48);
   font-size: 12px;
-  font-weight: 680;
+  font-weight: 520;
   line-height: 1.35;
   text-decoration: none;
   overflow-wrap: anywhere;
@@ -2901,7 +2860,7 @@ a.tree-record-chip:focus-visible {
 .skill-section .method-card h3 {
   color: rgba(17, 24, 32, 0.9);
   font-size: 16px;
-  font-weight: 760;
+  font-weight: 580;
   line-height: 1.36;
 }
 
@@ -3044,7 +3003,7 @@ a.tree-record-chip:focus-visible {
   margin: 0;
   color: #111820;
   font-size: 24px;
-  font-weight: 740;
+  font-weight: 580;
 }
 
 .markdown-editor-header span {
@@ -3173,19 +3132,6 @@ a.tree-record-chip:focus-visible {
     width: min(96%, 680px);
     margin-right: auto;
     margin-left: auto;
-  }
-
-  .ai-config-panel {
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    width: min(96%, 680px);
-    margin-right: auto;
-    margin-left: auto;
-  }
-
-  .ai-config-heading,
-  .ai-config-status {
-    grid-column: 1 / -1;
   }
 
   .workspace-page {
@@ -3625,7 +3571,7 @@ a.tree-record-chip:focus-visible {
   border: 1px solid rgba(47, 128, 117, 0.18);
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 740;
+  font-weight: 580;
 }
 
 .knowledge-cluster-label {
@@ -3639,7 +3585,7 @@ a.tree-record-chip:focus-visible {
   margin: 0;
   color: rgba(17, 24, 32, 0.92);
   font-size: 17px;
-  font-weight: 740;
+  font-weight: 580;
   line-height: 1.35;
 }
 
@@ -3794,7 +3740,7 @@ a.tree-record-chip:focus-visible {
   margin: 0;
   color: rgba(17, 24, 32, 0.72);
   font-size: 14px;
-  font-weight: 620;
+  font-weight: 560;
   line-height: 1.46;
   overflow: hidden;
   -webkit-box-orient: vertical;
@@ -3850,7 +3796,7 @@ a.tree-record-chip:focus-visible {
   margin: 0;
   color: rgba(17, 24, 32, 0.48);
   font-size: 12px;
-  font-weight: 680;
+  font-weight: 520;
 }
 
 #markdown-editor-textarea {
@@ -3894,7 +3840,7 @@ body {
 
 .nav-item {
   color: rgba(17, 24, 32, 0.58);
-  font-weight: 640;
+  font-weight: 520;
 }
 
 .nav-item.is-active {
@@ -3927,7 +3873,7 @@ body {
 #methods-view .panel-kicker {
   color: rgba(47, 128, 117, 0.78);
   font-size: 11px;
-  font-weight: 760;
+  font-weight: 580;
   letter-spacing: 0.1em;
 }
 
@@ -3936,7 +3882,7 @@ body {
 #methods-view .reusable-knowledge-section .canvas-header h2 {
   color: rgba(17, 24, 32, 0.92);
   font-size: 22px;
-  font-weight: 760;
+  font-weight: 580;
   line-height: 1.18;
 }
 
@@ -3966,7 +3912,7 @@ body {
 .skill-section .method-card h3 {
   color: rgba(17, 24, 32, 0.88);
   font-size: 15px;
-  font-weight: 720;
+  font-weight: 560;
   line-height: 1.42;
 }
 
@@ -3977,7 +3923,7 @@ body {
   border-color: rgba(47, 128, 117, 0.12);
   color: rgba(36, 95, 86, 0.76);
   background: rgba(47, 128, 117, 0.055);
-  font-weight: 700;
+  font-weight: 560;
 }
 
 .output-result-card .output-doc-link,
@@ -4007,7 +3953,7 @@ body {
 .knowledge-cluster-heading h3 {
   color: rgba(17, 24, 32, 0.88);
   font-size: 16px;
-  font-weight: 720;
+  font-weight: 560;
 }
 
 .knowledge-row.method-card {
@@ -4026,7 +3972,7 @@ body {
   border-color: rgba(111, 88, 44, 0.12);
   color: rgba(111, 88, 44, 0.74);
   background: rgba(182, 120, 44, 0.055);
-  font-weight: 680;
+  font-weight: 520;
 }
 
 .knowledge-row.method-card h3 {
@@ -4046,7 +3992,7 @@ body {
 #methods-view .panel-kicker {
   margin: 0 0 6px;
   font-size: var(--playbook-kicker-size);
-  font-weight: 760;
+  font-weight: 580;
   line-height: 1.15;
   letter-spacing: 0.1em;
 }
@@ -4058,7 +4004,7 @@ body {
 #methods-view .reusable-knowledge-section .canvas-header h2 {
   color: rgba(17, 24, 32, 0.92);
   font-size: var(--playbook-heading-size);
-  font-weight: 760;
+  font-weight: 580;
   line-height: 1.2;
 }
 
@@ -4093,7 +4039,7 @@ body {
   margin: 0;
   color: rgba(17, 24, 32, 0.88);
   font-size: var(--playbook-card-title-size);
-  font-weight: 720;
+  font-weight: 560;
   line-height: 1.42;
 }
 
@@ -4119,7 +4065,7 @@ body {
 #methods-view .knowledge-row.method-card small.knowledge-row-date {
   min-height: 24px;
   font-size: var(--playbook-meta-size);
-  font-weight: 700;
+  font-weight: 560;
 }
 
 #methods-view .knowledge-row.method-card h3 {
@@ -4179,4 +4125,645 @@ body {
   .markdown-editor-header h2 {
     white-space: normal;
   }
+}
+
+/* Typography hierarchy pass: keep emphasis scarce so the Focus view feels lighter. */
+.brand {
+  color: rgba(17, 24, 32, 0.76);
+  font-weight: 560;
+}
+
+.brand-name {
+  font-weight: 600;
+}
+
+.app-footer,
+.nav-item,
+.node-chip,
+.queue-count {
+  font-weight: 520;
+}
+
+.nav-item.is-active {
+  font-weight: 580;
+}
+
+.panel-kicker,
+#methods-view .panel-kicker {
+  color: rgba(47, 128, 117, 0.78);
+  font-weight: 560;
+  letter-spacing: 0.05em;
+}
+
+.current-panel h1 {
+  color: rgba(17, 24, 32, 0.86);
+  font-size: 42px;
+  font-weight: 520;
+  line-height: 1.16;
+}
+
+.action-plan h2,
+.prepared-result-header h2,
+.queue-header h2,
+.page-heading h1,
+.markdown-editor-header h2,
+#methods-view .canvas-header h2,
+#methods-view .knowledge-section h2,
+#methods-view .current-result-section .canvas-header h2,
+#methods-view .skill-section .canvas-header h2,
+#methods-view .reusable-knowledge-section .canvas-header h2 {
+  font-weight: 580;
+}
+
+.action-plan h2,
+.prepared-result-header h2,
+.queue-header h2 {
+  color: rgba(17, 24, 32, 0.84);
+}
+
+.current-summary,
+.plan-summary,
+#prepared-result-summary,
+.queue-card-description {
+  color: rgba(21, 25, 29, 0.56);
+}
+
+.plan-steps li::before,
+.queue-card::after,
+.tree-node-priority,
+.record-node-chip,
+.output-result-card .output-doc-type,
+.knowledge-cluster-label,
+.knowledge-cluster-count,
+.knowledge-cluster-toggle,
+#methods-view .output-result-card .output-doc-type,
+#methods-view .knowledge-cluster-label,
+#methods-view .knowledge-cluster-count,
+#methods-view .knowledge-cluster-toggle,
+#methods-view .knowledge-row-date,
+#methods-view .knowledge-row.method-card small.knowledge-row-date {
+  font-weight: 560;
+}
+
+.queue-card-title,
+#methods-view .catalog-empty h3,
+#methods-view .output-result-card .output-task-name,
+#methods-view .skill-section .method-card h3,
+#methods-view .knowledge-cluster-heading h3 {
+  color: rgba(17, 24, 32, 0.76);
+  font-weight: 520;
+}
+
+.queue-card.is-current .queue-card-title,
+.queue-card.priority-p0 .queue-card-title {
+  color: rgba(17, 24, 32, 0.86);
+  font-weight: 560;
+}
+
+.ai-result-link,
+.primary-action,
+.soft-action,
+.tree-node-action,
+.tree-node-result-link,
+.node-dependency-add,
+.node-dependency-toggle {
+  font-weight: 600;
+}
+
+.queue-header h2 {
+  font-size: 23px;
+}
+
+.queue-card-title {
+  font-size: 17px;
+}
+
+.action-plan h2,
+.prepared-result-header h2 {
+  font-size: 20px;
+}
+
+@media (max-width: 980px) {
+  .current-panel h1 {
+    font-size: 34px;
+  }
+}
+
+/* Global type hierarchy: most text should be calm; emphasis is scarce and local. */
+:root {
+  --weight-copy: 400;
+  --weight-subtle: 480;
+  --weight-label: 520;
+  --weight-heading: 540;
+  --weight-focus: 560;
+  --weight-action: 600;
+}
+
+body {
+  font-weight: var(--weight-copy);
+}
+
+.current-summary,
+.plan-summary,
+#prepared-result-summary,
+#prepared-result-points li,
+.queue-card-description,
+.tree-node-description,
+.tree-node-record-empty,
+.method-card p,
+.knowledge-cluster-summary,
+.catalog-empty p,
+#methods-view .catalog-empty p,
+#methods-view .output-result-card .output-doc-link,
+#methods-view .skill-section .method-card p,
+#methods-view .knowledge-cluster-summary,
+.first-run-empty p,
+.page-heading p,
+.node-editor-header span,
+.node-editor-status,
+.markdown-editor-header span {
+  font-weight: var(--weight-copy);
+}
+
+.brand,
+.nav-item,
+.app-footer,
+.panel-kicker,
+#methods-view .panel-kicker,
+.node-chip,
+.queue-count,
+.tree-node-meta,
+.tree-node-priority,
+.tree-state-toggle,
+.tree-node-records-label,
+.tree-record-chip,
+.record-node-chip,
+.output-result-card .output-doc-type,
+.knowledge-cluster-label,
+.knowledge-cluster-count,
+.knowledge-cluster-toggle,
+.knowledge-row-date,
+.method-card small,
+.tool-pill,
+.ai-result-link,
+.soft-action,
+.tree-node-action,
+.tree-node-result-link,
+.node-dependency-add,
+.node-dependency-toggle {
+  font-weight: var(--weight-label);
+}
+
+.brand-name,
+.nav-item.is-active,
+.current-panel h1,
+.page-heading h1,
+.canvas-header h2,
+.knowledge-section h2,
+.current-result-section .canvas-header h2,
+.skill-section .canvas-header h2,
+.reusable-knowledge-section .canvas-header h2,
+.queue-header h2,
+.action-plan h2,
+.prepared-result-header h2,
+.first-run-empty h2,
+.node-editor-header h2,
+.markdown-editor-header h2,
+.tree-node-title,
+.queue-card-title,
+.method-card h3,
+.knowledge-cluster-heading h3,
+.output-result-card .output-task-name,
+.catalog-empty h3 {
+  font-weight: var(--weight-heading);
+}
+
+.queue-card.is-current .queue-card-title,
+.queue-card.priority-p0 .queue-card-title,
+.tree-node-card.is-selected .tree-node-title {
+  font-weight: var(--weight-focus);
+}
+
+.tree-family.is-root > .tree-node-card .tree-node-title {
+  font-weight: var(--weight-heading);
+}
+
+.primary-action,
+.finish-action {
+  font-weight: var(--weight-action);
+}
+
+/* Semantic surface pass: cards, queues, and playbook pages should not share one texture. */
+:root {
+  --surface-card-border: rgba(17, 24, 32, 0.085);
+  --surface-card-shadow:
+    0 1px 1px rgba(17, 24, 32, 0.035),
+    0 16px 36px rgba(31, 39, 43, 0.075);
+  --surface-card-shadow-hover:
+    0 2px 2px rgba(17, 24, 32, 0.035),
+    0 24px 52px rgba(31, 39, 43, 0.11);
+  --paper-shadow:
+    0 1px 1px rgba(17, 24, 32, 0.035),
+    0 22px 58px rgba(71, 63, 47, 0.09);
+}
+
+.tree-node-card {
+  border-color: color-mix(in srgb, var(--node-state-border) 56%, var(--surface-card-border));
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 252, 246, 0.9)),
+    linear-gradient(110deg, var(--node-state-tint), rgba(255, 255, 255, 0) 42%),
+    rgba(255, 255, 255, 0.88);
+  box-shadow: var(--surface-card-shadow);
+}
+
+.tree-node-card::before {
+  width: 6px;
+  border-radius: 18px 0 0 18px;
+  opacity: 0.78;
+}
+
+.tree-node-card:hover,
+.tree-node-card.is-selected {
+  transform: translateY(-3px);
+  box-shadow:
+    0 0 0 4px var(--node-state-ring),
+    var(--surface-card-shadow-hover);
+}
+
+.tree-node-card.is-selected {
+  box-shadow:
+    0 0 0 4px var(--node-state-ring),
+    var(--surface-card-shadow-hover);
+}
+
+.tree-node-header {
+  padding: 20px 66px 16px 28px;
+  border-radius: 17px 17px 0 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.18)),
+    rgba(255, 255, 255, 0.22);
+}
+
+.tree-node-detail {
+  padding: 13px 28px 15px;
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.tree-node-body {
+  padding: 18px 28px 26px;
+}
+
+.queue-chain {
+  counter-reset: queue-step;
+  gap: 14px;
+  padding-left: 56px;
+}
+
+.queue-chain::before {
+  top: 18px;
+  bottom: 18px;
+  left: 24px;
+  width: 1px;
+  background:
+    linear-gradient(180deg, rgba(182, 120, 44, 0), rgba(182, 120, 44, 0.58) 10%, rgba(47, 128, 117, 0.46) 62%, rgba(92, 120, 155, 0));
+}
+
+.queue-card {
+  counter-increment: queue-step;
+  min-height: 98px;
+  padding: 17px 18px 17px 20px;
+  border-color: rgba(17, 24, 32, 0.075);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(252, 250, 245, 0.88)),
+    rgba(255, 255, 255, 0.86);
+  box-shadow: var(--surface-card-shadow);
+}
+
+.queue-card::before {
+  left: -51px;
+  top: 18px;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 28px;
+  border: 1px solid rgba(47, 128, 117, 0.2);
+  border-radius: 999px;
+  color: rgba(36, 95, 86, 0.78);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(243, 249, 247, 0.9));
+  box-shadow:
+    0 0 0 6px rgba(247, 249, 244, 0.92),
+    0 8px 18px rgba(31, 39, 43, 0.08);
+  content: counter(queue-step, decimal-leading-zero);
+  font-size: 10px;
+  font-weight: var(--weight-label);
+  letter-spacing: 0.04em;
+}
+
+.queue-card::after {
+  top: 13px;
+  right: 13px;
+  height: 24px;
+}
+
+.queue-card.priority-p0::before {
+  border-color: rgba(182, 120, 44, 0.38);
+  color: rgba(125, 78, 22, 0.82);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 245, 225, 0.94));
+}
+
+.queue-card.priority-p1::before {
+  border-color: rgba(47, 128, 117, 0.3);
+  color: rgba(36, 95, 86, 0.82);
+}
+
+.queue-card.priority-p2::before {
+  border-color: rgba(92, 120, 155, 0.22);
+  color: rgba(65, 90, 120, 0.78);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(244, 248, 252, 0.92));
+}
+
+.queue-card:hover,
+.queue-card.is-selected {
+  transform: translateX(6px) translateY(-2px);
+  box-shadow:
+    0 0 0 4px rgba(182, 120, 44, 0.045),
+    var(--surface-card-shadow-hover);
+}
+
+#methods-view {
+  position: relative;
+}
+
+#methods-view .knowledge-layout {
+  position: relative;
+  padding: 14px;
+  border: 1px solid rgba(111, 88, 44, 0.08);
+  border-radius: 22px;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.72), rgba(255, 251, 242, 0.5) 49%, rgba(222, 210, 184, 0.18) 50%, rgba(255, 255, 255, 0.66) 51%, rgba(247, 250, 250, 0.58)),
+    rgba(255, 255, 255, 0.42);
+  box-shadow: var(--paper-shadow);
+}
+
+#methods-view .knowledge-layout::before {
+  position: absolute;
+  top: 20px;
+  bottom: 20px;
+  left: 50%;
+  width: 1px;
+  background: linear-gradient(180deg, rgba(111, 88, 44, 0), rgba(111, 88, 44, 0.16), rgba(111, 88, 44, 0));
+  content: "";
+  pointer-events: none;
+  transform: translateX(-8px);
+}
+
+#methods-view .knowledge-section {
+  border-color: rgba(111, 88, 44, 0.105);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 252, 246, 0.9)),
+    rgba(255, 255, 255, 0.86);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 12px 34px rgba(71, 63, 47, 0.065);
+}
+
+#methods-view .knowledge-section::before {
+  width: 5px;
+  border-radius: 12px 0 0 12px;
+  background: linear-gradient(180deg, rgba(47, 128, 117, 0.46), rgba(47, 128, 117, 0.1));
+}
+
+#methods-view .current-result-section::before {
+  background: linear-gradient(180deg, rgba(182, 120, 44, 0.48), rgba(182, 120, 44, 0.1));
+}
+
+#methods-view .skill-section::before {
+  background: linear-gradient(180deg, rgba(92, 120, 155, 0.48), rgba(92, 120, 155, 0.1));
+}
+
+#methods-view .reusable-knowledge-section::before {
+  background: linear-gradient(180deg, rgba(47, 128, 117, 0.44), rgba(47, 128, 117, 0.1));
+}
+
+#methods-view .canvas-header {
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(111, 88, 44, 0.09);
+}
+
+#methods-view .panel-kicker {
+  color: rgba(111, 88, 44, 0.74);
+  letter-spacing: 0.12em;
+}
+
+#methods-view .canvas-header h2,
+#methods-view .knowledge-section h2,
+#methods-view .current-result-section .canvas-header h2,
+#methods-view .skill-section .canvas-header h2,
+#methods-view .reusable-knowledge-section .canvas-header h2 {
+  font-size: 21px;
+  font-weight: var(--weight-heading);
+}
+
+#methods-view .catalog-empty,
+#methods-view .method-card.artifact-card.output-result-card,
+#methods-view .method-card.skill-card,
+#methods-view .knowledge-cluster {
+  border-color: rgba(111, 88, 44, 0.095);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(253, 251, 246, 0.88)),
+    rgba(255, 255, 255, 0.84);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.86),
+    0 8px 20px rgba(71, 63, 47, 0.045);
+}
+
+/* Shape language pass: reduce rounded rectangles and give each surface a distinct silhouette. */
+:root {
+  --cut-corner: 16px;
+  --edge-ink: rgba(17, 24, 32, 0.12);
+}
+
+.tree-node-card {
+  border-radius: 4px;
+  background:
+    linear-gradient(135deg, transparent 0 12px, var(--edge-ink) 12px 13px, transparent 13px) top right / 28px 28px no-repeat,
+    linear-gradient(315deg, transparent 0 12px, rgba(182, 120, 44, 0.22) 12px 13px, transparent 13px) bottom left / 28px 28px no-repeat,
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 252, 246, 0.91)),
+    linear-gradient(110deg, var(--node-state-tint), rgba(255, 255, 255, 0) 46%),
+    rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.92),
+    0 12px 28px rgba(31, 39, 43, 0.08);
+}
+
+.tree-node-card::before {
+  width: 5px;
+  border-radius: 0;
+}
+
+.tree-node-card:hover,
+.tree-node-card.is-selected {
+  transform: translateY(-4px);
+  box-shadow:
+    -6px 6px 0 color-mix(in srgb, var(--node-state-accent) 14%, transparent),
+    0 18px 42px rgba(31, 39, 43, 0.11);
+}
+
+.tree-node-header {
+  border-radius: 3px 3px 0 0;
+}
+
+.tree-node-priority,
+.tree-state-toggle,
+.tree-node-description,
+.tree-node-records,
+.tree-record-chip {
+  border-radius: 3px;
+}
+
+.tree-node-description {
+  background:
+    linear-gradient(90deg, rgba(47, 128, 117, 0.045), rgba(255, 255, 255, 0) 42%),
+    rgba(255, 255, 255, 0.62);
+}
+
+.queue-panel {
+  background:
+    linear-gradient(90deg, rgba(17, 24, 32, 0.035) 0 1px, transparent 1px) 0 0 / 20px 20px,
+    linear-gradient(180deg, rgba(250, 254, 253, 0.9), rgba(246, 244, 237, 0.74));
+}
+
+.queue-chain {
+  gap: 10px;
+  padding-left: 58px;
+}
+
+.queue-chain::before {
+  left: 26px;
+  width: 3px;
+  background: linear-gradient(180deg, rgba(182, 120, 44, 0.72), rgba(47, 128, 117, 0.52), rgba(92, 120, 155, 0.2));
+}
+
+.queue-card {
+  min-height: 84px;
+  padding: 14px 54px 14px 16px;
+  border-width: 0 0 0 4px;
+  border-style: solid;
+  border-radius: 2px;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.68)),
+    rgba(255, 255, 255, 0.76);
+  box-shadow:
+    inset 0 -1px 0 rgba(17, 24, 32, 0.07),
+    0 8px 20px rgba(31, 39, 43, 0.055);
+}
+
+.queue-card.priority-p0 {
+  border-left-color: rgba(182, 120, 44, 0.72);
+}
+
+.queue-card.priority-p1 {
+  border-left-color: rgba(47, 128, 117, 0.66);
+}
+
+.queue-card.priority-p2 {
+  border-left-color: rgba(92, 120, 155, 0.58);
+}
+
+.queue-card::before {
+  left: -58px;
+  top: 12px;
+  width: 42px;
+  height: 25px;
+  border-radius: 2px;
+  box-shadow:
+    0 0 0 4px rgba(247, 249, 244, 0.94),
+    0 8px 18px rgba(31, 39, 43, 0.08);
+}
+
+.queue-card::after {
+  top: 12px;
+  right: 12px;
+  border-radius: 2px;
+}
+
+.queue-card:hover,
+.queue-card.is-selected {
+  transform: translateX(7px);
+  box-shadow:
+    inset 0 -1px 0 rgba(17, 24, 32, 0.08),
+    -5px 5px 0 rgba(182, 120, 44, 0.1),
+    0 14px 32px rgba(31, 39, 43, 0.1);
+}
+
+#methods-view .knowledge-layout {
+  border-radius: 2px;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.78), rgba(255, 251, 242, 0.56) 48%, rgba(99, 78, 42, 0.12) 49.5%, rgba(255, 255, 255, 0.5) 51%, rgba(246, 250, 250, 0.68)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(244, 240, 231, 0.46));
+  box-shadow:
+    -10px 0 0 rgba(111, 88, 44, 0.16),
+    0 1px 0 rgba(255, 255, 255, 0.86),
+    0 26px 70px rgba(71, 63, 47, 0.1);
+}
+
+#methods-view .knowledge-section {
+  border-radius: 2px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    inset 0 -1px 0 rgba(111, 88, 44, 0.08),
+    0 10px 24px rgba(71, 63, 47, 0.05);
+}
+
+#methods-view .knowledge-section::before {
+  width: 7px;
+  border-radius: 0;
+}
+
+#methods-view .catalog-empty,
+#methods-view .method-card,
+#methods-view .method-card.artifact-card.output-result-card,
+#methods-view .method-card.skill-card,
+#methods-view .knowledge-cluster,
+#methods-view .catalog-group {
+  border-radius: 2px;
+}
+
+#methods-view .method-card,
+#methods-view .method-card.artifact-card.output-result-card,
+#methods-view .method-card.skill-card,
+#methods-view .knowledge-cluster {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(252, 250, 245, 0.86)),
+    linear-gradient(90deg, rgba(111, 88, 44, 0.045), rgba(255, 255, 255, 0) 34%);
+  box-shadow:
+    inset 0 -1px 0 rgba(17, 24, 32, 0.055),
+    0 6px 14px rgba(71, 63, 47, 0.04);
+}
+
+#methods-view .method-card::before {
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  border-radius: 0;
+}
+
+#methods-view .catalog-label,
+#methods-view .catalog-count,
+#methods-view .method-card small,
+#methods-view .method-card-link,
+#methods-view .output-result-card .output-doc-type,
+#methods-view .knowledge-cluster-label,
+#methods-view .knowledge-cluster-count,
+#methods-view .knowledge-cluster-toggle,
+#methods-view .knowledge-row-date,
+#methods-view .knowledge-row.method-card small.knowledge-row-date {
+  border-radius: 2px;
 }

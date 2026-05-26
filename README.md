@@ -118,9 +118,7 @@ polaris-data/
 
 `paths.database` controls the SQLite runtime mirror, and `paths.aiResults` controls generated action-plan/result JSON plus fallback HTML output. Both may also be relative to the data directory or absolute local paths.
 
-`ai.timeoutMs` controls action-plan, draft-output, and executed AI-result generation. `ai.splitTimeoutMs` controls manual AI child-node generation. These values live in the user-owned data directory and are preserved across project code updates; environment variables can still override them for a single process.
-
-The Focus screen also exposes the same AI timeout values in seconds and saves changes back to `polaris.local.json` in the active data directory. Changes apply to new AI jobs immediately; restart is only needed when editing the JSON file by hand.
+`ai.timeoutMs` controls action-plan, draft-output, and executed AI-result generation. `ai.splitTimeoutMs` controls manual AI child-node generation. These values live in `polaris.local.json` in the user-owned data directory and are preserved across project code updates; environment variables can still override them for a single process. Changes apply after restarting the local server.
 
 To connect your own knowledge or skill folder, stop the server, add another `sources` entry in `polaris.local.json`, and restart. `path` may be relative to the data directory or an absolute local path:
 
@@ -262,7 +260,7 @@ Polaris reads AI timeout defaults from the user-owned `polaris.local.json`, so e
 - `ai.timeoutMs` defaults to `120000` for action plans, draft output, and AI result generation. `POLARIS_AI_TIMEOUT_MS` can override it for a single server process.
 - `ai.splitTimeoutMs` defaults to `60000` for manual AI child-node generation. `POLARIS_AI_SPLIT_TIMEOUT_MS` can override it for a single server process.
 - `POLARIS_FEISHU_TIMEOUT_MS` defaults to `8000` per `lark-cli` operation before falling back to local HTML.
-- The browser writes Focus-screen AI timeout edits to the active data directory's `polaris.local.json`, not to files tracked by the repo.
+- Persistent AI timeout changes should be made in the active data directory's `polaris.local.json`, not in files tracked by the repo.
 
 Deployment servers can run with `openclaw` only. Polaris discovers `openclaw` before `hermes`, invokes it as `openclaw agent --agent "${POLARIS_OPENCLAW_AGENT:-main}" --message "<prompt>" --thinking "${POLARIS_OPENCLAW_THINKING:-low}" --json`, and accepts JSON or plain text from the response. `hermes` is only a fallback provider and is not required when `openclaw` is executable in the service root, `bin/`, `<data-dir>/bin`, or `PATH`.
 

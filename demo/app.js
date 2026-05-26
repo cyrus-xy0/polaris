@@ -23,7 +23,6 @@ import {
 let nodes = [];
 let library = { knowledge: [], skills: [], artifacts: [] };
 let appMetadata = { version: "" };
-let projectConfig = normalizeProjectConfig();
 let selectedNodeId = null;
 let selectedTreeNodeId = null;
 let activeView = "today";
@@ -47,8 +46,6 @@ let nodeEditorDependencyQuery = "";
 let nodeEditorBackdropPointerStarted = false;
 let draggingTreeNodeId = null;
 let treeDropTarget = null;
-let aiConfigDraft = null;
-let aiConfigFeedback = null;
 let refreshingAiNodeId = null;
 const aiAnalyzingText = "AI 正在分析";
 const newRootNodeTitle = "新的 Polaris 目标";
@@ -77,10 +74,6 @@ const elements = {
   aiResultLink: document.querySelector("#ai-result-link"),
   completeButton: document.querySelector("#complete-button"),
   manualResultUrl: document.querySelector("#manual-result-url"),
-  aiConfigForm: document.querySelector("#ai-config-form"),
-  aiTimeoutSeconds: document.querySelector("#ai-timeout-seconds"),
-  aiSplitTimeoutSeconds: document.querySelector("#ai-split-timeout-seconds"),
-  aiConfigStatus: document.querySelector("#ai-config-status"),
   treeMap: document.querySelector("#tree-map"),
   nodeEditorDrawer: document.querySelector("#node-editor-drawer"),
   nodeEditorForm: document.querySelector("#node-editor-form"),
@@ -114,7 +107,6 @@ const elements = {
 async function loadAppData() {
   const data = await requestJson("/api/bootstrap");
   appMetadata = normalizeAppMetadata(data.app);
-  projectConfig = normalizeProjectConfig(data.project);
   nodes = hydrateNodes(data.nodes);
   library = normalizeLibrary(data.library);
   selectedTreeNodeId = nodes[0]?.id ?? null;
@@ -137,23 +129,6 @@ function normalizeAppMetadata(rawApp = {}) {
   return {
     version: version ? `v${version.replace(/^v/i, "")}` : "",
   };
-}
-
-function normalizeProjectConfig(rawProject = {}) {
-  const ai = rawProject.localConfig?.ai ?? {};
-  return {
-    localConfig: {
-      ai: {
-        timeoutMs: normalizePositiveInteger(ai.timeoutMs, 120_000),
-        splitTimeoutMs: normalizePositiveInteger(ai.splitTimeoutMs, 60_000),
-      },
-    },
-  };
-}
-
-function normalizePositiveInteger(value, fallback) {
-  const parsedValue = Number.parseInt(value ?? "", 10);
-  return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : fallback;
 }
 
 async function saveNodes() {
@@ -369,7 +344,6 @@ function getCurrentItem(queue) {
 
 function render() {
   renderAppVersion();
-  renderAiConfigPanel();
   renderView();
   const queue = getActiveQueue();
   const current = getCurrentItem(queue);
@@ -390,20 +364,6 @@ function renderAppVersion() {
   if (elements.appFooter) {
     elements.appFooter.hidden = !appMetadata.version;
   }
-}
-
-function renderAiConfigPanel() {
-  if (!elements.aiConfigForm) return;
-  if (!aiConfigDraft) {
-    elements.aiTimeoutSeconds.value = formatMillisecondsAsSeconds(projectConfig.localConfig.ai.timeoutMs);
-    elements.aiSplitTimeoutSeconds.value = formatMillisecondsAsSeconds(projectConfig.localConfig.ai.splitTimeoutMs);
-  }
-  elements.aiConfigStatus.textContent = aiConfigFeedback?.message ?? "";
-  elements.aiConfigStatus.classList.toggle("is-error", aiConfigFeedback?.tone === "error");
-}
-
-function formatMillisecondsAsSeconds(milliseconds) {
-  return String(Math.max(1, Math.round(milliseconds / 1000)));
 }
 
 function renderView() {
@@ -1034,64 +994,6 @@ function syncCompleteButtonState() {
     : hasResultUrl
       ? "完成当前任务并绑定结果链接"
       : "完成当前任务；之后可以手动生成或绑定结果链接";
-}
-
-function updateAiConfigDraft() {
-  aiConfigDraft = {
-    timeoutSeconds: elements.aiTimeoutSeconds.value,
-    splitTimeoutSeconds: elements.aiSplitTimeoutSeconds.value,
-  };
-  aiConfigFeedback = null;
-  renderAiConfigPanel();
-}
-
-async function saveAiConfig(event) {
-  event.preventDefault();
-  const timeoutSeconds = readPositiveSeconds(elements.aiTimeoutSeconds.value, "生成超时");
-  const splitTimeoutSeconds = readPositiveSeconds(elements.aiSplitTimeoutSeconds.value, "拆分超时");
-  if (!timeoutSeconds.ok || !splitTimeoutSeconds.ok) {
-    aiConfigFeedback = {
-      tone: "error",
-      message: timeoutSeconds.error || splitTimeoutSeconds.error,
-    };
-    renderAiConfigPanel();
-    return;
-  }
-
-  elements.aiConfigForm.classList.add("is-saving");
-  aiConfigFeedback = { tone: "saving", message: "保存中..." };
-  renderAiConfigPanel();
-
-  try {
-    const payload = await requestJson("/api/ai-config", {
-      method: "PUT",
-      body: JSON.stringify({
-        ai: {
-          timeoutMs: timeoutSeconds.value * 1000,
-          splitTimeoutMs: splitTimeoutSeconds.value * 1000,
-        },
-      }),
-    });
-    projectConfig = normalizeProjectConfig(payload.project);
-    aiConfigDraft = null;
-    aiConfigFeedback = { tone: "success", message: "已保存到本地配置" };
-    clearAiGenerationCaches();
-    render();
-  } catch (error) {
-    console.error("Failed to persist AI config", error);
-    aiConfigFeedback = { tone: "error", message: `保存失败：${error.message}` };
-    renderAiConfigPanel();
-  } finally {
-    elements.aiConfigForm.classList.remove("is-saving");
-  }
-}
-
-function readPositiveSeconds(value, label) {
-  const parsedValue = Number.parseInt(value ?? "", 10);
-  if (Number.isFinite(parsedValue) && parsedValue > 0) {
-    return { ok: true, value: parsedValue };
-  }
-  return { ok: false, error: `${label}必须是正整数秒` };
 }
 
 function createQueueCard(item, index, currentNodeId) {
@@ -1780,6 +1682,9 @@ function createTreeNode(node, focus, depth) {
   card.ariaPressed = String(isSelected);
   card.draggable = true;
   card.style.viewTransitionName = getTreeTransitionName(node.id);
+  const cardWidth = estimateTreeCardWidth(node, { depth, isSelected, linkedRecords });
+  card.style.setProperty("--tree-node-card-width", `${cardWidth}px`);
+  wrapper.style.setProperty("--tree-family-width", `${cardWidth + (isSelected ? 64 : 36)}px`);
 
   const content = document.createElement("div");
   content.className = "tree-node-content";
@@ -1820,13 +1725,17 @@ function createTreeNode(node, focus, depth) {
   header.append(title);
   content.append(header, detail);
   if (isSelected) {
+    const body = document.createElement("div");
+    body.className = "tree-node-body";
+
     const description = document.createElement("p");
     description.className = "tree-node-description";
     description.textContent = node.description;
-    content.append(description);
+    body.append(description);
 
     const records = document.createElement("div");
     records.className = "tree-node-records";
+    records.classList.add(linkedRecords.length > 0 ? "has-records" : "is-empty");
     const label = document.createElement("span");
     label.className = "tree-node-records-label";
     label.textContent = "关联 Output";
@@ -1836,10 +1745,11 @@ function createTreeNode(node, focus, depth) {
     } else {
       const empty = document.createElement("span");
       empty.className = "tree-node-record-empty";
-      empty.textContent = "暂无";
+      empty.textContent = "暂无产物";
       records.append(empty);
     }
-    content.append(records);
+    body.append(records);
+    content.append(body);
   }
 
   const actions = document.createElement("div");
@@ -1881,6 +1791,38 @@ function createTreeNode(node, focus, depth) {
   }
 
   return wrapper;
+}
+
+function estimateTreeCardWidth(node, { depth, isSelected, linkedRecords }) {
+  const titleWidth = getTextVisualLength(node.title);
+  const descriptionWidth = getTextVisualLength(node.description);
+  const recordWidth = Math.max(0, ...linkedRecords.map((record) => getTextVisualLength(record.title ?? "")));
+
+  if (isSelected) {
+    const minWidth = depth === 0 ? 640 : 540;
+    const maxWidth = depth === 0 ? 780 : 700;
+    const contentWidth = Math.max(
+      minWidth,
+      titleWidth * 9 + 132,
+      descriptionWidth * 8.5 + 196,
+      recordWidth * 7 + 220,
+    );
+    return clampNumber(Math.round(contentWidth), minWidth, maxWidth);
+  }
+
+  const compactWidth = Math.max(232, titleWidth * 8 + 104);
+  return clampNumber(Math.round(compactWidth), 232, 360);
+}
+
+function getTextVisualLength(value) {
+  return [...String(value ?? "")].reduce((sum, character) => {
+    if (/\s/.test(character)) return sum + 0.5;
+    return sum + (character.charCodeAt(0) > 255 ? 2 : 1);
+  }, 0);
+}
+
+function clampNumber(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function getTreeTransitionName(nodeId) {
@@ -2614,9 +2556,6 @@ elements.viewButtons.forEach((button) => {
 });
 elements.completeButton.addEventListener("click", completeSelectedTask);
 elements.refreshAiButton.addEventListener("click", refreshCurrentAiResult);
-elements.aiConfigForm.addEventListener("submit", saveAiConfig);
-elements.aiTimeoutSeconds.addEventListener("input", updateAiConfigDraft);
-elements.aiSplitTimeoutSeconds.addEventListener("input", updateAiConfigDraft);
 elements.nodeEditorForm.addEventListener("submit", saveNodeEditor);
 elements.nodeEditorAiSplit.addEventListener("click", splitSelectedNodeWithAi);
 elements.nodeEditorTitle.addEventListener("input", updateNodeEditorDraftFromFields);
