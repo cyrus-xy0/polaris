@@ -173,8 +173,13 @@ export function normalizeTaskNodes(nodes) {
     throw createHttpError(400, "nodes must be a non-empty array");
   }
 
-  const normalizedNodes = nodes.map((node) => createNode(node));
-  indexNodes(normalizedNodes);
+  let normalizedNodes;
+  try {
+    normalizedNodes = nodes.map((node) => createNode(node));
+    indexNodes(normalizedNodes);
+  } catch (error) {
+    throw createHttpError(400, error.message);
+  }
   if (!normalizedNodes.some((node) => !node.parentId)) {
     throw createHttpError(400, "task tree must include at least one root node");
   }

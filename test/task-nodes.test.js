@@ -107,4 +107,24 @@ describe("task node structure v1", () => {
     assert.equal(states.get("study-real-cases"), TASK_STATES.TODO);
     assert.equal(states.get("analyze-pitchdeck-management"), TASK_STATES.TODO);
   });
+
+  it("rejects task trees with parent cycles", () => {
+    const nodes = [
+      createNode({ id: "root", title: "Root" }),
+      createNode({ id: "a", parentId: "b", title: "A" }),
+      createNode({ id: "b", parentId: "a", title: "B" }),
+    ];
+
+    assert.throws(() => buildTree(nodes), /Cycle detected in parent chain/);
+  });
+
+  it("rejects task trees with dependency cycles", () => {
+    const nodes = [
+      createNode({ id: "root", title: "Root" }),
+      createNode({ id: "a", parentId: "root", title: "A", dependencies: ["b"] }),
+      createNode({ id: "b", parentId: "root", title: "B", dependencies: ["a"] }),
+    ];
+
+    assert.throws(() => buildExecutableQueue(nodes), /Cycle detected in dependencies/);
+  });
 });

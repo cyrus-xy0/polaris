@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "node:test";
 import { bundledSeedDataRoot, createRepository, defaultDataRoot } from "../src/data/repository.js";
+import { createNode } from "../src/task-nodes.js";
 
 describe("local data repository", () => {
   it("keeps bundled seed data separate from the runtime default data root", () => {
@@ -140,6 +141,29 @@ describe("local data repository", () => {
       assert.equal(snapshotNode.priorityOverride, true);
       assert.equal(reopenedNode.priority, "P0");
       assert.equal(reopenedNode.priorityOverride, true);
+    } finally {
+      rmSync(dataRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects dependency cycles as a bad task-node payload", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
+    const dbPath = join(dataRoot, "polaris.db");
+
+    try {
+      const repository = createRepository({ dataRoot, dbPath });
+
+      assert.throws(
+        () =>
+          repository.saveTaskNodes([
+            createNode({ id: "root", title: "Root" }),
+            createNode({ id: "a", parentId: "root", title: "A", dependencies: ["b"] }),
+            createNode({ id: "b", parentId: "root", title: "B", dependencies: ["a"] }),
+          ]),
+        (error) => error.statusCode === 400 && /Cycle detected in dependencies/.test(error.message),
+      );
+
+      repository.close();
     } finally {
       rmSync(dataRoot, { recursive: true, force: true });
     }

@@ -106,7 +106,47 @@ export function indexNodes(nodes) {
     }
   }
 
+  assertAcyclicParentLinks(nodes, byId);
+  assertAcyclicDependencies(nodes, byId);
+
   return { byId, childrenByParentId };
+}
+
+function assertAcyclicParentLinks(nodes, byId) {
+  for (const node of nodes) {
+    const seen = new Set();
+    let current = node;
+    while (current?.parentId) {
+      if (seen.has(current.id)) {
+        throw new Error(`Cycle detected in parent chain at "${current.id}"`);
+      }
+      seen.add(current.id);
+      current = byId.get(current.parentId);
+    }
+  }
+}
+
+function assertAcyclicDependencies(nodes, byId) {
+  const visiting = new Set();
+  const visited = new Set();
+
+  function visit(node) {
+    if (visited.has(node.id)) return;
+    if (visiting.has(node.id)) {
+      throw new Error(`Cycle detected in dependencies at "${node.id}"`);
+    }
+
+    visiting.add(node.id);
+    for (const dependencyId of node.dependencies) {
+      visit(byId.get(dependencyId));
+    }
+    visiting.delete(node.id);
+    visited.add(node.id);
+  }
+
+  for (const node of nodes) {
+    visit(node);
+  }
 }
 
 export function isLeaf(node, index) {

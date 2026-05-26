@@ -3129,8 +3129,13 @@ a.tree-record-chip:focus-visible {
 
   .queue-panel {
     min-height: auto;
-    max-height: none;
-    overflow: visible;
+    height: min(560px, calc(100vh - 126px));
+    max-height: 560px;
+    overflow: hidden;
+  }
+
+  .queue-chain {
+    min-height: 0;
   }
 
   .current-panel h1 {
@@ -3387,6 +3392,34 @@ a.tree-record-chip:focus-visible {
 
   #methods-view .knowledge-catalog-group.is-large .method-card:first-child {
     min-height: 126px;
+  }
+}
+
+@media (max-width: 420px) {
+  .topbar {
+    right: 14px;
+    left: 14px;
+  }
+
+  .brand {
+    width: 42px;
+    min-width: 42px;
+    padding: 0;
+  }
+
+  .brand-name {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .nav-item {
+    padding-right: 6px;
+    padding-left: 6px;
+    font-size: 12px;
   }
 }
 

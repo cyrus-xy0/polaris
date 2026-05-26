@@ -11,6 +11,7 @@ import {
   buildActiveQueue,
   completeTask,
   deleteTaskNode,
+  getDependencyCycleBlockerIds,
   getAncestorIds,
   getNodeAndDescendantIds,
   migrateTaskNodes,
@@ -380,8 +381,7 @@ function render() {
 
   renderCurrent(current, queue);
   renderQueue(queue, current.node.id);
-  renderTree();
-  renderMethods();
+  renderActiveWorkspaceView();
 }
 
 function renderAppVersion() {
@@ -413,6 +413,9 @@ function renderView() {
   for (const button of elements.viewButtons) {
     button.classList.toggle("is-active", button.dataset.viewButton === activeView);
   }
+  if (activeView !== "tree") {
+    elements.nodeEditorDrawer.hidden = true;
+  }
 }
 
 function renderEmptyState() {
@@ -435,8 +438,7 @@ function renderEmptyState() {
   currentPreparedArtifact = null;
   updateAiResultLink();
   elements.queueChain.innerHTML = '<div class="empty-state">没有可执行叶子节点</div>';
-  renderTree();
-  renderMethods();
+  renderActiveWorkspaceView();
 }
 
 function renderFirstRunEmptyState() {
@@ -454,8 +456,15 @@ function renderFirstRunEmptyState() {
   currentPreparedArtifact = null;
   updateAiResultLink();
   elements.queueChain.replaceChildren(createFirstRunPrompt("创建根目标", addRootNode));
-  renderTree();
-  renderMethods();
+  renderActiveWorkspaceView();
+}
+
+function renderActiveWorkspaceView() {
+  if (activeView === "tree") {
+    renderTree();
+  } else if (activeView === "methods") {
+    renderMethods();
+  }
 }
 
 function renderCurrent(item, queue) {
@@ -1372,11 +1381,13 @@ function renderDependencyOptions(selected) {
 }
 
 function getCandidateDependencyNodes(selected) {
+  const dependencyCycleBlockerIds = getDependencyCycleBlockerIds(nodes, selected.id);
   const blockedIds = new Set([
     selected.id,
     ...getAncestorIds(nodes, selected.id),
     ...getNodeAndDescendantIds(nodes, selected.id),
     ...nodeEditorDependencyIds,
+    ...dependencyCycleBlockerIds,
   ]);
   return nodes.filter((node) => !blockedIds.has(node.id));
 }
@@ -2021,9 +2032,15 @@ async function persistNodeEditorDraft({ splitAfterSave = false } = {}) {
   const priority = priorityOverride ? normalizePriorityInput(priorityInput) : selected.priority ?? TASK_PRIORITIES.P2;
   const dependencies = [...nodeEditorDependencyIds];
   const shouldSplit = splitAfterSave && !hasChildNodes(selected.id);
+  const dependencyCycleBlockerIds = getDependencyCycleBlockerIds(nodes, selected.id);
+  const cyclicDependency = dependencies.find((dependencyId) => dependencyCycleBlockerIds.has(dependencyId));
 
   if (!title) {
     showNodeEditorStatus(selected.id, "标题不能为空", "error");
+    return;
+  }
+  if (cyclicDependency) {
+    showNodeEditorStatus(selected.id, `不能添加依赖「${getNodeTitle(cyclicDependency)}」，这会形成循环依赖`, "error");
     return;
   }
 
@@ -2257,7 +2274,12 @@ function createSkillCard(item, options = {}) {
 
 function createKnowledgeGroups(items) {
   const groups = groupItemsByType(items);
-  return groups.map(createKnowledgeGroupCard);
+  if (groups.length > 0) return groups.map(createKnowledgeGroupCard);
+
+  const empty = document.createElement("article");
+  empty.className = "catalog-empty";
+  empty.innerHTML = "<h3>还没有 Knowledge</h3><p>在 knowledge 目录新增 md 文件后重启服务，这里会显示可复用判断。</p>";
+  return [empty];
 }
 
 function groupItemsByType(items) {

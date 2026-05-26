@@ -1,6 +1,6 @@
 import { cpSync, createReadStream, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { createServer } from "node:http";
-import { extname, join, normalize, resolve } from "node:path";
+import { extname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import {
   generateAiResultOutput,
   generateDraftOutput,
@@ -62,11 +62,12 @@ const mimeTypes = {
 };
 
 function resolveRequestPath(url) {
-  const pathname = decodeURIComponent(new URL(url, "http://localhost").pathname);
+  const pathname = readRequestPathname(url);
+  if (!pathname) return null;
   const requested = pathname === "/" ? "/demo/index.html" : pathname;
   const filePath = normalize(join(root, requested));
 
-  if (!filePath.startsWith(root)) {
+  if (!isPathInside(root, filePath)) {
     return null;
   }
 
@@ -208,13 +209,30 @@ function hasLegacyRuntimeData(rootPath) {
 }
 
 function resolveAiResultRequestPath(url) {
-  const pathname = decodeURIComponent(new URL(url, "http://localhost").pathname);
+  const pathname = readRequestPathname(url);
+  if (!pathname) return null;
   if (!pathname.startsWith("/ai-results/")) return null;
 
   const requested = normalize(join(aiResultsRoot, pathname.slice("/ai-results/".length)));
-  if (requested !== aiResultsRoot && !requested.startsWith(`${aiResultsRoot}/`)) return null;
+  if (!isPathInside(aiResultsRoot, requested)) return null;
   if (existsSync(requested) && statSync(requested).isFile()) return requested;
   return null;
+}
+
+function readRequestPathname(url) {
+  try {
+    return decodeURIComponent(new URL(url, "http://localhost").pathname);
+  } catch {
+    return null;
+  }
+}
+
+function isPathInside(rootPath, filePath) {
+  const relativePath = relative(rootPath, filePath);
+  return (
+    relativePath === "" ||
+    (!relativePath.startsWith("..") && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath))
+  );
 }
 
 async function handleApiRequest(request, response) {

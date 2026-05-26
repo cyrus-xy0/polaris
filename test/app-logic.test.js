@@ -5,10 +5,12 @@ import {
   buildActiveQueue,
   buildAiContextForNode,
   completeTask,
+  deleteTaskNode,
   getRecordsForNode,
   moveTaskNode,
   refreshTaskPriorities,
   resolvePreparedArtifact,
+  wouldCreateDependencyCycle,
 } from "../src/app-logic.js";
 import { TASK_PRIORITIES, TASK_STATES, buildTree, createNode } from "../src/task-nodes.js";
 
@@ -92,6 +94,33 @@ describe("app logic", () => {
     const movedNodes = moveTaskNode(nodes, { nodeId: "a", targetId: "a1", position: "inside" });
 
     assert.strictEqual(movedNodes, nodes);
+  });
+
+  it("removes deleted nodes from remaining dependency lists", () => {
+    const nodes = [
+      createNode({ id: "root", title: "Root" }),
+      createNode({ id: "research", parentId: "root", title: "Research" }),
+      createNode({ id: "draft", parentId: "root", title: "Draft", dependencies: ["research"] }),
+    ];
+
+    const update = deleteTaskNode(nodes, "research");
+
+    assert.deepEqual(update.deletedIds, new Set(["research"]));
+    assert.deepEqual(update.nodes.find((node) => node.id === "draft").dependencies, []);
+    assert.doesNotThrow(() => buildActiveQueue(update.nodes));
+  });
+
+  it("detects dependency choices that would create a cycle", () => {
+    const nodes = [
+      createNode({ id: "root", title: "Root" }),
+      createNode({ id: "a", parentId: "root", title: "A", dependencies: ["b"] }),
+      createNode({ id: "b", parentId: "root", title: "B", dependencies: ["c"] }),
+      createNode({ id: "c", parentId: "root", title: "C" }),
+      createNode({ id: "d", parentId: "root", title: "D" }),
+    ];
+
+    assert.equal(wouldCreateDependencyCycle(nodes, "c", "a"), true);
+    assert.equal(wouldCreateDependencyCycle(nodes, "c", "d"), false);
   });
 
   it("matches library records to related task nodes", () => {

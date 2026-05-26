@@ -405,8 +405,49 @@ export function deleteTaskNode(nodes, nodeId) {
 
   const deletedIds = getNodeAndDescendantIds(nodes, nodeId);
   return {
-    nodes: nodes.filter((candidate) => !deletedIds.has(candidate.id)),
+    nodes: nodes
+      .filter((candidate) => !deletedIds.has(candidate.id))
+      .map((candidate) => ({
+        ...candidate,
+        dependencies: candidate.dependencies.filter((dependencyId) => !deletedIds.has(dependencyId)),
+      })),
     parentId: node.parentId,
     deletedIds,
   };
+}
+
+export function wouldCreateDependencyCycle(nodes, nodeId, dependencyId) {
+  return getDependencyCycleBlockerIds(nodes, nodeId).has(dependencyId);
+}
+
+export function getDependencyCycleBlockerIds(nodes, nodeId) {
+  if (!nodeId) return new Set(nodes.map((node) => node.id));
+
+  const index = indexNodes(nodes);
+  if (!index.byId.has(nodeId)) return new Set(nodes.map((node) => node.id));
+
+  const blockerIds = new Set([nodeId]);
+  for (const node of nodes) {
+    if (node.id !== nodeId && hasDependencyPath(index, node.id, nodeId)) {
+      blockerIds.add(node.id);
+    }
+  }
+
+  return blockerIds;
+}
+
+function hasDependencyPath(index, fromId, toId) {
+  const visited = new Set();
+  const stack = [fromId];
+  while (stack.length > 0) {
+    const currentId = stack.pop();
+    if (currentId === toId) return true;
+    if (visited.has(currentId)) continue;
+
+    visited.add(currentId);
+    const current = index.byId.get(currentId);
+    stack.push(...(current?.dependencies ?? []));
+  }
+
+  return false;
 }
