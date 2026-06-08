@@ -1108,10 +1108,22 @@ button {
   padding: 96px 42px 34px;
   background: rgba(17, 24, 32, 0.18);
   backdrop-filter: blur(12px);
+  opacity: 1;
+  transition:
+    opacity 180ms ease,
+    backdrop-filter 180ms ease,
+    background 180ms ease;
 }
 
 .node-editor-drawer[hidden] {
   display: none;
+}
+
+.node-editor-drawer.is-closing {
+  background: rgba(17, 24, 32, 0);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  pointer-events: none;
 }
 
 .tree-editor {
@@ -1127,6 +1139,27 @@ button {
     0 30px 78px rgba(47, 128, 117, 0.12),
     0 12px 28px rgba(66, 61, 48, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.88);
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  transition:
+    transform 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 180ms ease;
+}
+
+.node-editor-drawer.is-closing .tree-editor {
+  opacity: 0;
+  transform: translateX(28px) scale(0.985);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .node-editor-drawer,
+  .tree-editor {
+    transition: none;
+  }
+
+  .node-editor-drawer.is-closing .tree-editor {
+    transform: none;
+  }
 }
 
 .node-editor-shell {
@@ -3049,8 +3082,23 @@ a.tree-record-chip:focus-visible {
 
 .editor-actions {
   display: flex;
+  align-items: center;
+  gap: 14px;
   justify-content: flex-end;
   margin-top: 16px;
+}
+
+.markdown-editor-status {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: rgba(47, 128, 117, 0.88);
+  font-size: 14px;
+  font-weight: 560;
+}
+
+.markdown-editor-status.is-error {
+  color: rgba(166, 64, 48, 0.92);
 }
 
 @media (max-width: 980px) {
@@ -4653,7 +4701,7 @@ body {
 
 .queue-card {
   min-height: 84px;
-  padding: 14px 54px 14px 16px;
+  padding: 14px 16px;
   border-width: 0 0 0 4px;
   border-style: solid;
   border-radius: 2px;
@@ -4692,6 +4740,15 @@ body {
   top: 12px;
   right: 12px;
   border-radius: 2px;
+}
+
+.queue-card-title {
+  padding-right: 58px;
+}
+
+.queue-card-description {
+  padding-right: 0;
+  overflow-wrap: break-word;
 }
 
 .queue-card:hover,

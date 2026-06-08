@@ -35,6 +35,8 @@ const collapsedWorkbenchSections = new Set(readCollapsedWorkbenchSections());
 let nodeEditorFeedback = null;
 let nodeEditorDraft = null;
 let isNodeEditorOpen = false;
+let isNodeEditorClosing = false;
+let nodeEditorCloseTimer = null;
 const suggestedActionPlanCache = new Map();
 const draftOutputCache = new Map();
 const aiResultCache = new Map();
@@ -98,6 +100,7 @@ const elements = {
   markdownEditorTitle: document.querySelector("#markdown-editor-title"),
   markdownEditorPath: document.querySelector("#markdown-editor-path"),
   markdownEditorTextarea: document.querySelector("#markdown-editor-textarea"),
+  markdownEditorStatus: document.querySelector("#markdown-editor-status"),
   markdownEditorClose: document.querySelector("#markdown-editor-close"),
   markdownEditorSave: document.querySelector("#markdown-editor-save"),
   appFooter: document.querySelector("#app-footer"),
@@ -1152,7 +1155,9 @@ function createFirstRunPrompt(actionLabel, onAction) {
 
 function renderNodeEditor(focus) {
   const selected = focus.selectedId ? focus.index.byId.get(focus.selectedId) : null;
-  elements.nodeEditorDrawer.hidden = !isNodeEditorOpen || activeView !== "tree";
+  const shouldShowEditor = (isNodeEditorOpen || isNodeEditorClosing) && activeView === "tree";
+  elements.nodeEditorDrawer.hidden = !shouldShowEditor;
+  elements.nodeEditorDrawer.classList.toggle("is-closing", isNodeEditorClosing);
   const fields = [
     elements.nodeEditorTitle,
     elements.nodeEditorDescription,
@@ -1160,7 +1165,7 @@ function renderNodeEditor(focus) {
     elements.nodeEditorDependencySearch,
   ];
 
-  if (!isNodeEditorOpen || !selected) {
+  if (!shouldShowEditor || !selected) {
     elements.nodeEditorHeading.textContent = "未选择节点";
     elements.nodeEditorMeta.textContent = "";
     elements.nodeEditorMeta.hidden = true;
@@ -1175,7 +1180,7 @@ function renderNodeEditor(focus) {
   }
 
   fields.forEach((field) => {
-    field.disabled = false;
+    field.disabled = isNodeEditorClosing;
   });
 
   const draft = ensureNodeEditorDraft(selected);
@@ -1384,8 +1389,13 @@ function createDependencyEmptyState(text) {
 }
 
 function openNodeEditor(nodeId) {
+  if (nodeEditorCloseTimer) {
+    clearTimeout(nodeEditorCloseTimer);
+    nodeEditorCloseTimer = null;
+  }
   selectedTreeNodeId = nodeId;
   isNodeEditorOpen = true;
+  isNodeEditorClosing = false;
   nodeEditorFeedback = null;
   nodeEditorDraft = null;
   nodeEditorDependencyNodeId = null;
@@ -1393,11 +1403,19 @@ function openNodeEditor(nodeId) {
 }
 
 function closeNodeEditor() {
+  if (!isNodeEditorOpen && !isNodeEditorClosing) return;
   isNodeEditorOpen = false;
-  nodeEditorFeedback = null;
-  nodeEditorDraft = null;
-  nodeEditorDependencyNodeId = null;
+  isNodeEditorClosing = true;
   render();
+  if (nodeEditorCloseTimer) clearTimeout(nodeEditorCloseTimer);
+  nodeEditorCloseTimer = setTimeout(() => {
+    isNodeEditorClosing = false;
+    nodeEditorFeedback = null;
+    nodeEditorDraft = null;
+    nodeEditorDependencyNodeId = null;
+    nodeEditorCloseTimer = null;
+    render();
+  }, 220);
 }
 
 function restoreTreeScrollAfterRender(scrollContainer, scrollLeft, scrollTop) {
@@ -2012,6 +2030,10 @@ async function persistNodeEditorDraft({ splitAfterSave = false } = {}) {
           : "已保存到本地数据层"
         : formatSaveError(saveResult.error),
     };
+    if (saveResult.ok && !shouldSplit) {
+      closeNodeEditor();
+      return;
+    }
     render();
 
     if (saveResult.ok && shouldSplit) {
@@ -2477,6 +2499,8 @@ function openMarkdownEditor(item) {
   elements.markdownEditorTitle.textContent = item.brief || item.title;
   elements.markdownEditorPath.textContent = formatMarkdownEditorPath(item);
   elements.markdownEditorTextarea.value = item.markdown;
+  elements.markdownEditorStatus.textContent = "";
+  elements.markdownEditorStatus.className = "markdown-editor-status";
   elements.markdownEditor.hidden = false;
   requestAnimationFrame(() => focusMarkdownEntry(item));
 }
@@ -2530,6 +2554,9 @@ function closeMarkdownEditor() {
 async function saveMarkdownEditor() {
   if (!editingMarkdownItem) return;
   const markdown = elements.markdownEditorTextarea.value;
+  elements.markdownEditorSave.disabled = true;
+  elements.markdownEditorStatus.textContent = "正在保存...";
+  elements.markdownEditorStatus.className = "markdown-editor-status";
   try {
     const data = await requestJson(
       `/api/library/${encodeURIComponent(editingMarkdownItem.kind)}/${encodeURIComponent(editingMarkdownItem.id)}/markdown`,
@@ -2539,12 +2566,16 @@ async function saveMarkdownEditor() {
       },
     );
     Object.assign(editingMarkdownItem, data.item);
-    elements.markdownEditorPath.textContent = `${editingMarkdownItem.path} · 已保存`;
+    elements.markdownEditorPath.textContent = formatMarkdownEditorPath(editingMarkdownItem);
+    elements.markdownEditorStatus.textContent = "已保存到服务器";
     clearAiGenerationCaches();
     render();
   } catch (error) {
     console.error("Failed to persist markdown", error);
-    elements.markdownEditorPath.textContent = `${editingMarkdownItem.path} · 保存失败`;
+    elements.markdownEditorStatus.textContent = "保存失败，请检查本地服务";
+    elements.markdownEditorStatus.className = "markdown-editor-status is-error";
+  } finally {
+    elements.markdownEditorSave.disabled = false;
   }
 }
 
