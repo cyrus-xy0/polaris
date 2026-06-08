@@ -50,11 +50,18 @@ export function validateNode(node) {
   if (!Array.isArray(node.dependencies)) {
     errors.push("dependencies must be an array");
   }
+  if (!node.contextRefs || typeof node.contextRefs !== "object") {
+    errors.push("contextRefs must be an object");
+  } else {
+    if (!Array.isArray(node.contextRefs.include)) errors.push("contextRefs.include must be an array");
+    if (!Array.isArray(node.contextRefs.exclude)) errors.push("contextRefs.exclude must be an array");
+  }
 
   return errors;
 }
 
 export function createNode(input) {
+  const contextRefs = normalizeContextRefs(input.contextRefs);
   const node = {
     id: input.id,
     parentId: input.parentId ?? null,
@@ -67,6 +74,7 @@ export function createNode(input) {
     priorityOverride: input.priorityOverride === true,
     conclusion: input.conclusion ?? null,
     result: input.result ?? null,
+    contextRefs,
     createdFrom: input.createdFrom ?? CREATED_FROM.USER,
   };
 
@@ -76,6 +84,18 @@ export function createNode(input) {
   }
 
   return node;
+}
+
+function normalizeContextRefs(contextRefs = {}) {
+  return {
+    include: normalizeContextRefList(contextRefs?.include),
+    exclude: normalizeContextRefList(contextRefs?.exclude),
+  };
+}
+
+function normalizeContextRefList(value) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean))];
 }
 
 export function indexNodes(nodes) {

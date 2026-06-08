@@ -24,6 +24,24 @@ describe("task node structure v1", () => {
     assert.equal(node.priorityOverride, false);
   });
 
+  it("preserves task-level AI context references", () => {
+    const node = createNode({
+      id: "context-node",
+      title: "上下文节点",
+      description: "手动调整 AI 上下文。",
+      aiActions: ["选择上下文"],
+      contextRefs: {
+        include: ["skills:s1", "skills:s1", ""],
+        exclude: ["knowledge:k1"],
+      },
+    });
+
+    assert.deepEqual(node.contextRefs, {
+      include: ["skills:s1"],
+      exclude: ["knowledge:k1"],
+    });
+  });
+
   it("builds the sample as a recursive tree", () => {
     const tree = buildTree(sampleNodes);
 

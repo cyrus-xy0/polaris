@@ -10,3 +10,4 @@ data/*.project.json
 data/*.local.json
 data/task-nodes.json
 data/ai-results/
+.polaris-demo-data/

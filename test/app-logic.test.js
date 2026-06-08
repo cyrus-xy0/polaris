@@ -233,4 +233,85 @@ describe("app logic", () => {
     assert.equal(context.accumulatedResults[0].result.url, "https://example.feishu.cn/docx/result");
     assert.equal(context.taskLineage.at(-1).priority, "P0");
   });
+
+  it("applies manual AI context includes and excludes", () => {
+    const context = buildAiContextForNode({
+      nodes: [
+        createNode({
+          id: "root",
+          title: "Root",
+          description: "Root task",
+          aiActions: ["plan"],
+        }),
+        createNode({
+          id: "current",
+          parentId: "root",
+          title: "Current",
+          description: "Current task",
+          aiActions: ["use context"],
+          contextRefs: {
+            include: ["skills:s-manual", "artifacts:a-manual"],
+            exclude: ["knowledge:k-auto"],
+          },
+        }),
+      ],
+      library: {
+        knowledge: [
+          { id: "k-auto", kind: "knowledge", title: "Auto knowledge", relatedNodeIds: ["current"] },
+          { id: "k-global", kind: "knowledge", title: "Global knowledge", relatedNodeIds: [] },
+        ],
+        skills: [
+          { id: "s-manual", kind: "skills", title: "Manual skill", relatedNodeIds: [] },
+        ],
+        artifacts: [
+          { id: "a-manual", kind: "artifacts", title: "Manual artifact", relatedNodeIds: [] },
+        ],
+      },
+      nodeId: "current",
+    });
+
+    assert.equal(context.knowledge.some((record) => record.id === "k-auto"), false);
+    assert.equal(context.knowledge.some((record) => record.id === "k-global"), true);
+    assert.equal(context.skills.some((record) => record.id === "s-manual"), true);
+    assert.equal(context.artifacts.some((record) => record.id === "a-manual"), true);
+  });
+
+  it("keeps automatically selected AI context compact while preserving manual includes", () => {
+    const context = buildAiContextForNode({
+      nodes: [
+        createNode({
+          id: "current",
+          title: "Current",
+          description: "Current task",
+          aiActions: ["use context"],
+          contextRefs: {
+            include: ["skills:s-manual"],
+          },
+        }),
+      ],
+      library: {
+        knowledge: Array.from({ length: 8 }, (_, index) => ({
+          id: `k-global-${index}`,
+          kind: "knowledge",
+          title: `Global knowledge ${index}`,
+          relatedNodeIds: [],
+        })),
+        skills: [
+          { id: "s-manual", kind: "skills", title: "Manual skill", relatedNodeIds: [] },
+          ...Array.from({ length: 8 }, (_, index) => ({
+            id: `s-global-${index}`,
+            kind: "skills",
+            title: `Global skill ${index}`,
+            relatedNodeIds: [],
+          })),
+        ],
+        artifacts: [],
+      },
+      nodeId: "current",
+    });
+
+    assert.equal(context.knowledge.length, 3);
+    assert.equal(context.skills.length, 4);
+    assert.equal(context.skills[0].id, "s-manual");
+  });
 });

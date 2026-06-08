@@ -21,19 +21,12 @@
       </header>
 
       <section class="hero view is-active" id="today-view">
-        <div class="ambient ambient-a"></div>
-        <div class="ambient ambient-b"></div>
-
-        <section class="current-panel glass" aria-labelledby="current-title">
+        <section class="current-panel work-card is-primary" aria-labelledby="current-title">
           <div class="current-node-indicator" aria-label="当前任务节点" title="当前任务节点">
             <span></span>
           </div>
-          <h1 id="current-title"></h1>
-          <p class="current-summary" id="current-summary"></p>
-
-          <div class="node-chip-row">
-            <span class="node-chip" id="current-priority"></span>
-            <span class="node-chip muted" id="current-rank"></span>
+          <div class="focus-header">
+            <p class="panel-kicker">Current Node</p>
             <button
               class="ai-refresh-button"
               id="refresh-ai-button"
@@ -44,8 +37,33 @@
               ↻
             </button>
           </div>
+          <h1 id="current-title"></h1>
+          <p class="current-summary" id="current-summary"></p>
 
-          <article class="action-plan">
+          <div class="node-chip-row">
+            <span class="node-chip" id="current-priority"></span>
+            <span class="node-chip muted" id="current-rank"></span>
+          </div>
+
+          <div class="current-node-intelligence" aria-label="当前节点执行上下文">
+            <section class="work-card context-panel current-node-subpanel">
+              <div class="panel-heading">
+                <p class="panel-kicker">Why Now</p>
+                <h2>执行判断</h2>
+              </div>
+              <div class="signal-grid" id="workflow-signals"></div>
+            </section>
+
+            <section class="work-card context-panel current-node-subpanel">
+              <div class="panel-heading">
+                <p class="panel-kicker">Context Used</p>
+                <h2>上下文</h2>
+              </div>
+              <div class="context-list" id="context-used-list"></div>
+            </section>
+          </div>
+
+          <article class="action-plan work-card-section">
             <div class="action-plan-header">
               <div>
                 <p class="panel-kicker">Suggest Action Plan</p>
@@ -55,7 +73,7 @@
             <ol class="plan-steps" id="action-plan-steps"></ol>
           </article>
 
-          <article class="prepared-result">
+          <article class="prepared-result work-card-section">
             <div class="prepared-result-header">
               <div>
                 <p class="panel-kicker">Draft Output</p>
@@ -68,16 +86,16 @@
 
           <div class="completion-panel finish-dock" aria-label="当前任务完成方式">
             <a class="ai-result-link" id="ai-result-link" href="#" target="_blank" rel="noreferrer">查看 AI 结果</a>
-            <input id="manual-result-url" type="url" placeholder="不满意就粘贴自己的 Doc / Base 链接" />
-            <button class="primary-action finish-action" id="complete-button">完成</button>
+            <input id="manual-result-url" type="url" placeholder="粘贴 Doc / Base / HTML 结果链接" />
+            <button class="primary-action finish-action" id="complete-button">Complete</button>
           </div>
         </section>
 
-        <aside class="queue-panel" aria-labelledby="queue-title">
+        <aside class="queue-panel work-card" aria-labelledby="queue-title">
           <div class="queue-header">
             <div>
               <p class="panel-kicker">Task Queue</p>
-              <h2 id="queue-title">接下来要做</h2>
+              <h2 id="queue-title">Task Queue</h2>
             </div>
           </div>
 

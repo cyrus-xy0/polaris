@@ -259,7 +259,7 @@ function writeTaskNodesFile(filePath, nodes) {
 function readTaskNodesFromDb(db) {
   const rows = db
     .prepare(
-      `SELECT id, parent_id, title, description, ai_actions, dependencies, state, priority, priority_override, conclusion, result, created_from
+      `SELECT id, parent_id, title, description, ai_actions, dependencies, state, priority, priority_override, conclusion, result, context_refs, created_from
        FROM task_nodes
        ORDER BY position ASC, rowid ASC`,
     )
@@ -278,6 +278,7 @@ function readTaskNodesFromDb(db) {
       priorityOverride: row.priority_override === 1,
       conclusion: parseJson(row.conclusion, null),
       result: parseJson(row.result, null),
+      contextRefs: parseJson(row.context_refs, {}),
       createdFrom: row.created_from,
     }),
   );
@@ -296,6 +297,7 @@ function serializeTaskNodes(nodes) {
     priorityOverride: node.priorityOverride,
     conclusion: node.conclusion ?? null,
     result: node.result ?? null,
+    contextRefs: node.contextRefs ?? { include: [], exclude: [] },
     createdFrom: node.createdFrom,
   }));
 }
@@ -314,6 +316,7 @@ function ensureSchema(db) {
       priority_override INTEGER NOT NULL DEFAULT 0,
       conclusion TEXT,
       result TEXT,
+      context_refs TEXT NOT NULL DEFAULT '{"include":[],"exclude":[]}',
       created_from TEXT NOT NULL,
       position INTEGER NOT NULL
     );
@@ -348,6 +351,9 @@ function ensureTaskNodeColumns(db) {
   if (!columns.has("priority_override")) {
     db.exec("ALTER TABLE task_nodes ADD COLUMN priority_override INTEGER NOT NULL DEFAULT 0");
   }
+  if (!columns.has("context_refs")) {
+    db.exec(`ALTER TABLE task_nodes ADD COLUMN context_refs TEXT NOT NULL DEFAULT '{"include":[],"exclude":[]}'`);
+  }
   const currentColumns = new Set(db.prepare("PRAGMA table_info(task_nodes)").all().map((column) => column.name));
   if (currentColumns.has("tag")) {
     migrateTaskNodesWithoutTag(db);
@@ -368,14 +374,15 @@ function migrateTaskNodesWithoutTag(db) {
       priority_override INTEGER NOT NULL DEFAULT 0,
       conclusion TEXT,
       result TEXT,
+      context_refs TEXT NOT NULL DEFAULT '{"include":[],"exclude":[]}',
       created_from TEXT NOT NULL,
       position INTEGER NOT NULL
     );
 
     INSERT INTO task_nodes_next (
-      id, parent_id, title, description, ai_actions, dependencies, state, priority, priority_override, conclusion, result, created_from, position
+      id, parent_id, title, description, ai_actions, dependencies, state, priority, priority_override, conclusion, result, context_refs, created_from, position
     )
-    SELECT id, parent_id, title, description, ai_actions, dependencies, state, priority, priority_override, conclusion, result, created_from, position
+    SELECT id, parent_id, title, description, ai_actions, dependencies, state, priority, priority_override, conclusion, result, context_refs, created_from, position
     FROM task_nodes;
 
     DROP TABLE task_nodes;
@@ -1086,8 +1093,8 @@ function findMarkdownSource(project, kind, libraryPath, markdownPath) {
 function replaceTaskNodes(db, nodes) {
   const insert = db.prepare(`
     INSERT INTO task_nodes (
-      id, parent_id, title, description, ai_actions, dependencies, state, priority, priority_override, conclusion, result, created_from, position
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      id, parent_id, title, description, ai_actions, dependencies, state, priority, priority_override, conclusion, result, context_refs, created_from, position
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   db.exec("BEGIN");
@@ -1106,6 +1113,7 @@ function replaceTaskNodes(db, nodes) {
         node.priorityOverride ? 1 : 0,
         JSON.stringify(node.conclusion),
         JSON.stringify(node.result),
+        JSON.stringify(node.contextRefs ?? { include: [], exclude: [] }),
         node.createdFrom,
         position,
       );

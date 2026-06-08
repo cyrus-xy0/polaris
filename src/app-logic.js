@@ -202,9 +202,26 @@ export function buildAiContextForNode({ nodes = [], library = {}, nodeId, reason
     .filter((item) => item && item.id !== node.id)
     .map(serializeTaskContext);
   const relatedNodeIds = new Set([node.id, ...upstreamTaskIds]);
-  const knowledge = selectContextRecords(library.knowledge, relatedNodeIds, { includeGlobal: true });
-  const skills = selectContextRecords(library.skills, relatedNodeIds, { includeGlobal: true });
-  const artifacts = selectContextRecords(library.artifacts, relatedNodeIds);
+  const contextRefs = normalizeContextRefs(node.contextRefs);
+  const knowledge = selectContextRecords(library.knowledge, relatedNodeIds, {
+    includeGlobal: true,
+    globalLimit: 3,
+    limit: 6,
+    includeRefs: contextRefs.include,
+    excludeRefs: contextRefs.exclude,
+  });
+  const skills = selectContextRecords(library.skills, relatedNodeIds, {
+    includeGlobal: true,
+    globalLimit: 3,
+    limit: 6,
+    includeRefs: contextRefs.include,
+    excludeRefs: contextRefs.exclude,
+  });
+  const artifacts = selectContextRecords(library.artifacts, relatedNodeIds, {
+    limit: 4,
+    includeRefs: contextRefs.include,
+    excludeRefs: contextRefs.exclude,
+  });
   const accumulatedResults = nodes
     .filter((item) => item.id !== node.id && (item.result || item.conclusion))
     .map(serializeTaskContext)
@@ -353,19 +370,42 @@ function getLineage(node, index) {
   return lineage;
 }
 
-function selectContextRecords(records = [], relatedNodeIds, { includeGlobal = false } = {}) {
+function selectContextRecords(
+  records = [],
+  relatedNodeIds,
+  { includeGlobal = false, globalLimit = 4, limit = 8, includeRefs = [], excludeRefs = [] } = {},
+) {
   const direct = [];
   const global = [];
+  const manual = [];
+  const includeRefSet = new Set(includeRefs);
+  const excludeRefSet = new Set(excludeRefs);
 
   for (const record of records ?? []) {
-    if (record.relatedNodeIds?.some((id) => relatedNodeIds.has(id))) {
+    if (excludeRefSet.has(getRecordContextRef(record)) || excludeRefSet.has(record.id)) {
+      continue;
+    }
+    if (includeRefSet.has(getRecordContextRef(record)) || includeRefSet.has(record.id)) {
+      manual.push(serializeRecordContext(record));
+    } else if (record.relatedNodeIds?.some((id) => relatedNodeIds.has(id))) {
       direct.push(serializeRecordContext(record));
     } else if (includeGlobal) {
       global.push(serializeRecordContext(record));
     }
   }
 
-  return [...direct, ...global].slice(0, includeGlobal ? 14 : 8);
+  return [...manual, ...direct, ...global.slice(0, globalLimit)].slice(0, limit);
+}
+
+function normalizeContextRefs(contextRefs = {}) {
+  return {
+    include: Array.isArray(contextRefs.include) ? contextRefs.include : [],
+    exclude: Array.isArray(contextRefs.exclude) ? contextRefs.exclude : [],
+  };
+}
+
+function getRecordContextRef(record) {
+  return `${record.kind ?? "record"}:${record.id}`;
 }
 
 function serializeTaskContext(node) {

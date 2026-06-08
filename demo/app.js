@@ -9,6 +9,7 @@ import {
 } from "/src/task-nodes.js";
 import {
   buildActiveQueue,
+  buildAiContextForNode,
   completeTask,
   deleteTaskNode,
   getDependencyCycleBlockerIds,
@@ -105,6 +106,8 @@ const elements = {
   markdownEditorSave: document.querySelector("#markdown-editor-save"),
   appFooter: document.querySelector("#app-footer"),
   appVersion: document.querySelector("#app-version"),
+  workflowSignals: document.querySelector("#workflow-signals"),
+  contextUsedList: document.querySelector("#context-used-list"),
 };
 
 async function loadAppData() {
@@ -229,6 +232,7 @@ function renderLoadingState() {
   currentPreparedArtifact = null;
   updateAiResultLink();
   elements.queueChain.innerHTML = '<div class="empty-state">读取本地数据库...</div>';
+  renderWorkflowIntelligence(null);
 }
 
 function renderFatalState(error) {
@@ -247,6 +251,7 @@ function renderFatalState(error) {
   currentPreparedArtifact = null;
   updateAiResultLink();
   elements.queueChain.innerHTML = '<div class="empty-state">无法读取任务队列</div>';
+  renderWorkflowIntelligence(null);
 }
 
 function getActiveQueue() {
@@ -401,6 +406,7 @@ function renderEmptyState() {
   currentPreparedArtifact = null;
   updateAiResultLink();
   elements.queueChain.innerHTML = '<div class="empty-state">没有可执行叶子节点</div>';
+  renderWorkflowIntelligence(null);
   renderActiveWorkspaceView();
 }
 
@@ -419,6 +425,7 @@ function renderFirstRunEmptyState() {
   currentPreparedArtifact = null;
   updateAiResultLink();
   elements.queueChain.replaceChildren(createFirstRunPrompt("创建根目标", addRootNode));
+  renderWorkflowIntelligence(null);
   renderActiveWorkspaceView();
 }
 
@@ -441,6 +448,354 @@ function renderCurrent(item, queue) {
   syncAiRefreshButton(node);
   renderSuggestedActionPlan(node, reason);
   renderDraftOutput(node, reason);
+  renderWorkflowIntelligence(item);
+}
+
+function renderWorkflowIntelligence(item) {
+  if (!elements.contextUsedList) return;
+  if (!item?.node) {
+    elements.contextUsedList.replaceChildren(createPanelEmpty("选择或创建一个任务节点后，会展示 AI 将带入的上下文。"));
+    return;
+  }
+
+  const { node, reason } = item;
+  const context = buildAiContextForNode({ nodes, library, nodeId: node.id, reason });
+  const dependencyCount = node.dependencies?.length ?? 0;
+  const completedDependencies = getCompletedDependencyCount(node);
+  const contextRecords = createContextRecords(context);
+  const reasonSignals = createWhyNowSignals(node, {
+    dependencyCount,
+    completedDependencies,
+  });
+
+  elements.workflowSignals?.replaceChildren(createSignalSummary(reasonSignals));
+
+  elements.contextUsedList.replaceChildren(
+    createContextToolbar(node, contextRecords),
+    ...(contextRecords.length > 0
+      ? contextRecords.map((entry) => createContextItem(entry, node))
+      : [createPanelEmpty("当前节点暂未绑定专属上下文，会使用全局 Knowledge / Skill 作为默认输入。")]),
+  );
+}
+
+function getCompletedDependencyCount(node) {
+  if (!node?.dependencies?.length) return 0;
+  const stateById = deriveEffectiveStates(nodes);
+  return node.dependencies.filter((dependencyId) => stateById.get(dependencyId) === TASK_STATES.DONE).length;
+}
+
+function createWhyNowSignals(node, { dependencyCount, completedDependencies }) {
+  const dependentCount = countTaskDependents(node.id);
+  const directionSignal = getDirectionSignal(node);
+  const probeSignal = getProbeSignal(node);
+  const depsReady = dependencyCount === 0 || completedDependencies >= dependencyCount;
+
+  return [
+    {
+      label: "Unlocks",
+      tags: [dependentCount > 0 ? `解锁 ${dependentCount}` : "解锁 0"],
+      detail:
+        dependentCount > 0
+          ? "会带动后面的任务，先做能少等一轮。"
+          : "不是卡点，但适合当前阶段先处理。",
+    },
+    {
+      label: "Direction",
+      tags: directionSignal.tags,
+      detail: directionSignal.detail,
+    },
+    {
+      label: "Probe",
+      tags: probeSignal.tags,
+      detail: probeSignal.detail,
+    },
+    {
+      label: "Deps Ready",
+      tags: [dependencyCount ? `前置 ${completedDependencies}/${dependencyCount}` : "前置 0/0", depsReady ? "可推进" : "先等等"],
+      detail: depsReady ? "前置已经齐了，现在推进不会空转。" : "还有前置没完成，先推进容易返工。",
+    },
+  ];
+}
+
+function countTaskDependents(nodeId) {
+  const directDependentsById = new Map(nodes.map((node) => [node.id, []]));
+  for (const node of nodes) {
+    for (const dependencyId of node.dependencies ?? []) {
+      directDependentsById.get(dependencyId)?.push(node.id);
+    }
+  }
+
+  const seen = new Set();
+  const stack = [...(directDependentsById.get(nodeId) ?? [])];
+  while (stack.length > 0) {
+    const dependentId = stack.pop();
+    if (seen.has(dependentId)) continue;
+    seen.add(dependentId);
+    stack.push(...(directDependentsById.get(dependentId) ?? []));
+  }
+  return seen.size;
+}
+
+function getDirectionSignal(node) {
+  const text = getNodeSearchText(node);
+  const index = indexNodes(nodes);
+  const parentChildren = node.parentId ? (index.childrenByParentId.get(node.parentId) ?? []) : [];
+  const isEarlySibling = parentChildren.findIndex((child) => child.id === node.id) <= 1;
+  const isDirectional = /(方向|原则|边界|定义|场景|方案|判断|拆|设计|定位|策略|口径|目标)/i.test(text);
+
+  if (isDirectional || isEarlySibling) {
+    return {
+      tags: ["方向先定", isEarlySibling ? "早期节点" : "影响口径"],
+      detail: "先把方向说清楚，后面拆解才不会跑偏。",
+    };
+  }
+
+  return {
+    tags: ["执行项"],
+    detail: "方向基本清楚，价值在于把事情往前推。",
+  };
+}
+
+function getProbeSignal(node) {
+  const text = getNodeSearchText(node);
+  if (/(试|验证|实验|demo|mvp|案例|样例|原型|跑通|落地|探索)/i.test(text)) {
+    return {
+      tags: ["值得先试", "低成本验证"],
+      detail: "先试一下，就能更早发现判断是否靠谱。",
+    };
+  }
+
+  return {
+    tags: ["常规推进"],
+    detail: "不是试探任务，优先级主要看依赖和方向。",
+  };
+}
+
+function getNodeSearchText(node) {
+  return `${node.title ?? ""} ${node.description ?? ""} ${(node.aiActions ?? []).join(" ")}`;
+}
+
+function createSignalSummary(signals) {
+  const summary = document.createElement("article");
+  summary.className = "signal-summary";
+
+  const primarySignal = signals.find((signal) => signal.label === "Direction") ?? signals[0];
+  const primary = document.createElement("div");
+  primary.className = "signal-primary";
+  primary.append(createSignalChip(primarySignal.tags[0], "strong"));
+
+  const chipRow = document.createElement("div");
+  chipRow.className = "signal-chip-row";
+  chipRow.replaceChildren(
+    ...signals
+      .flatMap((signal) => signal.tags.map((tag) => ({ tag, label: signal.label, isPrimary: signal === primarySignal && tag === primarySignal.tags[0] })))
+      .filter((item) => !item.isPrimary)
+      .map((item) => createSignalChip(item.tag, getSignalTone(item.label))),
+  );
+
+  summary.append(primary, chipRow);
+  return summary;
+}
+
+function createSignalChip(text, tone = "neutral") {
+  const chip = document.createElement("span");
+  chip.className = `signal-chip is-${tone}`;
+  chip.textContent = text;
+  return chip;
+}
+
+function getSignalTone(label) {
+  if (label === "Deps Ready") return "ready";
+  if (label === "Unlocks") return "unlock";
+  if (label === "Probe") return "probe";
+  return "neutral";
+}
+
+function createContextRecords(context) {
+  return [
+    ...context.knowledge.map((record) => ({ kind: "Knowledge", record })),
+    ...context.skills.map((record) => ({ kind: "Skill", record })),
+    ...context.artifacts.map((record) => ({ kind: "Artifact", record })),
+  ];
+}
+
+function createContextToolbar(node, contextRecords) {
+  const toolbar = document.createElement("div");
+  toolbar.className = "context-toolbar";
+  const currentRefs = new Set(contextRecords.map((entry) => getRecordContextRef(entry.record)));
+
+  const typeOptions = [
+    { value: "all", label: "All" },
+    { value: "Knowledge", label: "Knowledge" },
+    { value: "Skill", label: "Skill" },
+    { value: "Artifact", label: "Artifact" },
+  ];
+  const typeSelect = document.createElement("select");
+  typeSelect.className = "context-type-select";
+  typeSelect.setAttribute("aria-label", "选择要添加的上下文类型");
+  typeSelect.replaceChildren(
+    ...typeOptions.map((option) => {
+      const typeOption = document.createElement("option");
+      typeOption.value = option.value;
+      typeOption.textContent = option.label;
+      return typeOption;
+    }),
+  );
+
+  const input = document.createElement("input");
+  const listId = `context-candidates-${node.id}`;
+  input.className = "context-add-input";
+  input.type = "search";
+  input.placeholder = "添加 Knowledge / Skill / Artifact";
+  input.setAttribute("list", listId);
+  input.autocomplete = "off";
+
+  const datalist = document.createElement("datalist");
+  datalist.id = listId;
+
+  const refreshCandidates = (type = "all") => {
+    input.placeholder = getContextAddPlaceholder(type);
+    input.value = "";
+    datalist.replaceChildren(...createContextCandidateOptions(currentRefs, type));
+  };
+  refreshCandidates();
+
+  typeSelect.addEventListener("change", () => refreshCandidates(typeSelect.value));
+
+  const button = document.createElement("button");
+  button.className = "context-add-button";
+  button.type = "button";
+  button.textContent = "Add";
+  button.addEventListener("click", () => addContextFromInput(node.id, input.value));
+  input.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    addContextFromInput(node.id, input.value);
+  });
+
+  toolbar.append(typeSelect, input, datalist, button);
+  return toolbar;
+}
+
+function createContextCandidateOptions(currentRefs, type = "all") {
+  return getContextCandidateRecords()
+    .filter((entry) => type === "all" || entry.kind === type)
+    .filter((entry) => !currentRefs.has(entry.ref))
+    .slice(0, 24)
+    .map((entry) => {
+      const option = document.createElement("option");
+      option.value = formatContextCandidateValue(entry);
+      option.dataset.ref = entry.ref;
+      return option;
+    });
+}
+
+function getContextAddPlaceholder(type = "all") {
+  if (type === "Knowledge") return "添加 Knowledge";
+  if (type === "Skill") return "添加 Skill";
+  if (type === "Artifact") return "添加 Artifact";
+  return "添加 Knowledge / Skill / Artifact";
+}
+
+function createContextItem(entry, node) {
+  const { kind, record } = entry;
+  const item = document.createElement("article");
+  item.className = "context-item";
+  item.dataset.contextRef = getRecordContextRef(record);
+
+  const source = document.createElement("small");
+  source.className = "context-source";
+  source.textContent = kind;
+
+  const title = document.createElement("p");
+  title.className = "context-title";
+  title.textContent = getContextRecordTitle(record);
+
+  const remove = document.createElement("button");
+  remove.className = "context-remove-button";
+  remove.type = "button";
+  remove.textContent = "Remove";
+  remove.title = `移除上下文：${getContextRecordTitle(record)}`;
+  remove.addEventListener("click", () => removeNodeContextRef(node.id, getRecordContextRef(record)));
+
+  item.append(source, title, remove);
+  return item;
+}
+
+function getContextCandidateRecords() {
+  return [
+    ...library.knowledge.map((record) => ({ kind: "Knowledge", record })),
+    ...library.skills.map((record) => ({ kind: "Skill", record })),
+    ...library.artifacts.map((record) => ({ kind: "Artifact", record })),
+  ]
+    .map((entry) => ({ ...entry, ref: getRecordContextRef(entry.record), title: getContextRecordTitle(entry.record) }))
+    .sort((a, b) => a.kind.localeCompare(b.kind) || a.title.localeCompare(b.title));
+}
+
+function formatContextCandidateValue(entry) {
+  return `${entry.kind}: ${entry.title}`;
+}
+
+function addContextFromInput(nodeId, value) {
+  const query = String(value ?? "").trim().toLowerCase();
+  if (!query) return;
+  const candidate = getContextCandidateRecords().find((entry) => {
+    const label = formatContextCandidateValue(entry).toLowerCase();
+    return label === query || entry.ref.toLowerCase() === query || entry.title.toLowerCase() === query;
+  });
+  if (!candidate) return;
+  updateNodeContextRefs(nodeId, ({ include, exclude }) => ({
+    include: [...new Set([...include, candidate.ref])],
+    exclude: exclude.filter((ref) => ref !== candidate.ref && ref !== candidate.record.id),
+  }));
+}
+
+function removeNodeContextRef(nodeId, ref) {
+  updateNodeContextRefs(nodeId, ({ include, exclude }) => ({
+    include: include.filter((item) => item !== ref),
+    exclude: [...new Set([...exclude, ref])],
+  }));
+}
+
+function updateNodeContextRefs(nodeId, update) {
+  nodes = nodes.map((node) => {
+    if (node.id !== nodeId) return node;
+    const currentRefs = normalizeNodeContextRefs(node.contextRefs);
+    return createNode({
+      ...node,
+      contextRefs: update(currentRefs),
+    });
+  });
+  clearAiGenerationCaches();
+  render();
+  saveNodes();
+}
+
+function normalizeNodeContextRefs(contextRefs = {}) {
+  return {
+    include: Array.isArray(contextRefs.include) ? contextRefs.include : [],
+    exclude: Array.isArray(contextRefs.exclude) ? contextRefs.exclude : [],
+  };
+}
+
+function getRecordContextRef(record) {
+  return `${record.kind ?? "record"}:${record.id}`;
+}
+
+function getContextRecordTitle(record) {
+  return record.brief || record.title || record.description || record.type || record.docType || "未命名上下文";
+}
+
+function isManuallyIncludedContext(node, record) {
+  const refs = normalizeNodeContextRefs(node.contextRefs);
+  return refs.include.includes(getRecordContextRef(record)) || refs.include.includes(record.id);
+}
+
+function createPanelEmpty(text) {
+  const empty = document.createElement("p");
+  empty.className = "panel-empty";
+  empty.textContent = text;
+  return empty;
 }
 
 function syncAiRefreshButton(node) {
@@ -1005,6 +1360,11 @@ function createQueueCard(item, index, currentNodeId) {
   const priorityClass = `priority-${String(node.priority ?? "P2").toLowerCase()}`;
   card.className = `queue-card ${priorityClass}`;
   card.dataset.priority = node.priority ?? "P2";
+  card.dataset.description = node.description;
+  card.title = node.description;
+  card.ariaLabel = `${node.title}。${node.description}`;
+  card.role = "button";
+  card.tabIndex = 0;
   if (node.id === currentNodeId) card.classList.add("is-current");
   if (node.id === selectedNodeId) card.classList.add("is-selected");
   card.style.opacity = `${Math.max(0.74, 1 - index * 0.08)}`;
@@ -1018,7 +1378,17 @@ function createQueueCard(item, index, currentNodeId) {
   description.textContent = node.description;
 
   card.append(title, description);
+  card.addEventListener("mouseenter", () => card.classList.add("is-hovered"));
+  card.addEventListener("mouseleave", () => card.classList.remove("is-hovered"));
+  card.addEventListener("focus", () => card.classList.add("is-hovered"));
+  card.addEventListener("blur", () => card.classList.remove("is-hovered"));
   card.addEventListener("click", () => {
+    selectedNodeId = node.id;
+    render();
+  });
+  card.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
     selectedNodeId = node.id;
     render();
   });
@@ -1127,6 +1497,7 @@ function renderTree() {
 
   restoreTreeScrollAfterRender(scrollContainer, scrollLeft, scrollTop);
   animateTreeRender(previousCardRects);
+  centerSelectedTreeNodeAfterRender(focus.selectedId);
 }
 
 function createFirstRunPrompt(actionLabel, onAction) {
@@ -1424,6 +1795,33 @@ function restoreTreeScrollAfterRender(scrollContainer, scrollLeft, scrollTop) {
   scrollContainer.scrollTop = scrollTop;
 }
 
+function centerSelectedTreeNodeAfterRender(nodeId) {
+  if (!nodeId || activeView !== "tree") return;
+  requestAnimationFrame(() => {
+    centerSelectedTreeNode(nodeId);
+    setTimeout(() => centerSelectedTreeNode(nodeId), 120);
+  });
+}
+
+function centerSelectedTreeNode(nodeId) {
+  if (!nodeId || activeView !== "tree") return;
+    const card = elements.treeMap.querySelector(`.tree-node-card[data-tree-id="${CSS.escape(nodeId)}"]`);
+    const scrollContainer = elements.treeMap.parentElement;
+    if (!card || !scrollContainer) return;
+
+    const cardRect = card.getBoundingClientRect();
+    const containerRect = scrollContainer.getBoundingClientRect();
+    const nextLeft =
+      scrollContainer.scrollLeft + cardRect.left + cardRect.width / 2 - (containerRect.left + scrollContainer.clientWidth / 2);
+    const nextTop =
+      scrollContainer.scrollTop + cardRect.top + cardRect.height / 2 - (containerRect.top + scrollContainer.clientHeight / 2);
+    scrollContainer.scrollTo({
+      left: Math.max(0, nextLeft),
+      top: Math.max(0, nextTop),
+      behavior: "auto",
+    });
+}
+
 function shouldAnimateTreeRender() {
   return activeView === "tree" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
@@ -1499,10 +1897,14 @@ function getTreeFocus() {
   const descendantIds = new Set();
   const ghostIds = new Set();
   const parentId = selectedNode?.parentId ?? null;
+  const grandparentId = parentId ? (index.byId.get(parentId)?.parentId ?? null) : null;
   const directChildren = selectedId ? (index.childrenByParentId.get(selectedId) ?? []) : [];
 
   if (parentId) {
     ancestorIds.add(parentId);
+  }
+  if (grandparentId) {
+    ancestorIds.add(grandparentId);
   }
   for (const child of directChildren) {
     descendantIds.add(child.id);
@@ -1514,9 +1916,16 @@ function getTreeFocus() {
       }
     }
   }
+  if (grandparentId) {
+    for (const parentSibling of index.childrenByParentId.get(grandparentId) ?? []) {
+      if (parentSibling.id !== parentId) {
+        ghostIds.add(parentSibling.id);
+      }
+    }
+  }
 
   const relatedIds = new Set([selectedId, ...ancestorIds, ...descendantIds].filter(Boolean));
-  return { selectedId, parentId, ancestorIds, descendantIds, ghostIds, relatedIds, index, stateById };
+  return { selectedId, parentId, grandparentId, ancestorIds, descendantIds, ghostIds, relatedIds, index, stateById };
 }
 
 function buildFocusedTree(focus) {
@@ -1538,7 +1947,19 @@ function buildFocusedTree(focus) {
   const parentChildren = (focus.index.childrenByParentId.get(parent.id) ?? []).map((child) =>
     child.id === selected.id ? selectedSlice : cloneTreeDisplayNode(child, [], focus.index, "ghost"),
   );
-  return [cloneTreeDisplayNode(parent, parentChildren, focus.index)];
+  const parentSlice = cloneTreeDisplayNode(parent, parentChildren, focus.index);
+
+  if (!parent.parentId) {
+    return [parentSlice];
+  }
+
+  const grandparent = focus.index.byId.get(parent.parentId);
+  if (!grandparent) return [parentSlice];
+
+  const grandparentChildren = (focus.index.childrenByParentId.get(grandparent.id) ?? []).map((child) =>
+    child.id === parent.id ? parentSlice : cloneTreeDisplayNode(child, [], focus.index, "ghost"),
+  );
+  return [cloneTreeDisplayNode(grandparent, grandparentChildren, focus.index)];
 }
 
 function cloneTreeDisplayNode(node, children, index, displayMode = "normal") {
@@ -1563,6 +1984,8 @@ function startTreeNodeDrag(event, nodeId) {
   draggingTreeNodeId = nodeId;
   treeDropTarget = null;
   event.currentTarget.classList.add("is-dragging");
+  elements.treeMap.classList.add("is-tree-dragging");
+  markAvailableTreeDropTargets(nodeId);
   if (event.dataTransfer) {
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", nodeId);
@@ -1584,7 +2007,7 @@ function handleTreeNodeDragOver(event, targetId) {
 
 function handleTreeNodeDragLeave(event) {
   if (!event.currentTarget.contains(event.relatedTarget)) {
-    event.currentTarget.classList.remove("is-drop-before", "is-drop-after", "is-drop-inside");
+    event.currentTarget.classList.remove("is-drop-before", "is-drop-after", "is-drop-inside", "is-drop-reparent");
   }
 }
 
@@ -1618,6 +2041,8 @@ function finishTreeDrag(activeCard = null) {
   activeCard?.classList.remove("is-dragging");
   draggingTreeNodeId = null;
   treeDropTarget = null;
+  elements.treeMap.classList.remove("is-tree-dragging");
+  clearAvailableTreeDropTargets();
   clearTreeDropTargets();
   for (const card of elements.treeMap.querySelectorAll(".tree-node-card.is-dragging")) {
     card.classList.remove("is-dragging");
@@ -1625,14 +2050,28 @@ function finishTreeDrag(activeCard = null) {
 }
 
 function clearTreeDropTargets() {
-  for (const card of elements.treeMap.querySelectorAll(".tree-node-card.is-drop-before, .tree-node-card.is-drop-after, .tree-node-card.is-drop-inside")) {
-    card.classList.remove("is-drop-before", "is-drop-after", "is-drop-inside");
+  for (const card of elements.treeMap.querySelectorAll(".tree-node-card.is-drop-before, .tree-node-card.is-drop-after, .tree-node-card.is-drop-inside, .tree-node-card.is-drop-reparent")) {
+    card.classList.remove("is-drop-before", "is-drop-after", "is-drop-inside", "is-drop-reparent");
+  }
+}
+
+function markAvailableTreeDropTargets(nodeId) {
+  for (const card of elements.treeMap.querySelectorAll(".tree-node-card[data-tree-id]")) {
+    const targetId = card.dataset.treeId;
+    card.classList.toggle("is-drop-available", canMoveTreeNodeTo(nodeId, targetId, "inside"));
+  }
+}
+
+function clearAvailableTreeDropTargets() {
+  for (const card of elements.treeMap.querySelectorAll(".tree-node-card.is-drop-available")) {
+    card.classList.remove("is-drop-available");
   }
 }
 
 function getTreeNodeDropPosition(event, card, targetId) {
   const targetNode = indexNodes(nodes).byId.get(targetId);
   if (!targetNode?.parentId) return "inside";
+  if (card.classList.contains("is-ghost")) return "inside";
 
   const rect = card.getBoundingClientRect();
   const ratio = (event.clientY - rect.top) / Math.max(rect.height, 1);
@@ -1657,6 +2096,7 @@ function canMoveTreeNodeTo(nodeId, targetId, position) {
 function markTreeDropTarget(card, position) {
   clearTreeDropTargets();
   card.classList.add(`is-drop-${position}`);
+  card.classList.toggle("is-drop-reparent", position === "inside" && card.classList.contains("is-ghost"));
 }
 
 function createTreeNode(node, focus, depth) {
@@ -1698,6 +2138,10 @@ function createTreeNode(node, focus, depth) {
   card.role = "button";
   card.tabIndex = 0;
   card.ariaPressed = String(isSelected);
+  card.title = `${node.title}${node.description ? `\n${node.description}` : ""}`;
+  if (isGhost) {
+    card.title = `${card.title}\n拖动节点到这里可换父亲节点`;
+  }
   card.draggable = true;
   card.style.viewTransitionName = getTreeTransitionName(node.id);
   const cardWidth = estimateTreeCardWidth(node, { depth, isSelected, linkedRecords });
@@ -1713,6 +2157,7 @@ function createTreeNode(node, focus, depth) {
   const title = document.createElement("span");
   title.className = "tree-node-title";
   title.textContent = node.title;
+  title.title = node.title;
 
   const meta = document.createElement("span");
   meta.className = "tree-node-meta";
@@ -1813,23 +2258,21 @@ function createTreeNode(node, focus, depth) {
 
 function estimateTreeCardWidth(node, { depth, isSelected, linkedRecords }) {
   const titleWidth = getTextVisualLength(node.title);
-  const descriptionWidth = getTextVisualLength(node.description);
   const recordWidth = Math.max(0, ...linkedRecords.map((record) => getTextVisualLength(record.title ?? "")));
 
   if (isSelected) {
-    const minWidth = depth === 0 ? 640 : 540;
-    const maxWidth = depth === 0 ? 780 : 700;
+    const minWidth = depth === 0 ? 540 : 360;
+    const maxWidth = depth === 0 ? 640 : 460;
     const contentWidth = Math.max(
       minWidth,
-      titleWidth * 9 + 132,
-      descriptionWidth * 8.5 + 196,
-      recordWidth * 7 + 220,
+      titleWidth * 5.8 + 128,
+      recordWidth * 5 + 180,
     );
     return clampNumber(Math.round(contentWidth), minWidth, maxWidth);
   }
 
-  const compactWidth = Math.max(232, titleWidth * 8 + 104);
-  return clampNumber(Math.round(compactWidth), 232, 360);
+  const compactWidth = Math.max(depth === 0 ? 420 : 220, titleWidth * 5.2 + 96);
+  return clampNumber(Math.round(compactWidth), depth === 0 ? 420 : 220, depth === 0 ? 520 : 300);
 }
 
 function getTextVisualLength(value) {
@@ -2263,12 +2706,13 @@ function groupItemsByType(items) {
 function createKnowledgeGroupCard(group) {
   const isCollapsed = collapsedKnowledgeGroups.has(group.type);
   const isExpanded = expandedKnowledgeGroups.has(group.type);
-  const visibleLimit = 6;
+  const visibleLimit = 4;
   const visibleItems = isCollapsed ? [] : isExpanded ? group.items : group.items.slice(0, visibleLimit);
   const hiddenCount = Math.max(0, group.items.length - visibleItems.length);
 
   const cluster = document.createElement("article");
-  cluster.className = `knowledge-cluster ${isExpanded ? "is-open" : ""} ${isCollapsed ? "is-collapsed" : ""}`;
+  cluster.className = `knowledge-cluster ${getKnowledgeGroupClass(group.type)} ${isExpanded ? "is-open" : ""} ${isCollapsed ? "is-collapsed" : ""}`;
+  cluster.dataset.groupType = group.type;
 
   const header = document.createElement("div");
   header.className = "knowledge-cluster-header";
@@ -2290,7 +2734,7 @@ function createKnowledgeGroupCard(group) {
 
   const label = document.createElement("span");
   label.className = "knowledge-cluster-label";
-  label.textContent = group.type;
+  label.textContent = getKnowledgeGroupHeaderLabel(group.type);
 
   const title = document.createElement("h3");
   title.textContent = getKnowledgeGroupTitle(group);
@@ -2308,6 +2752,11 @@ function createKnowledgeGroupCard(group) {
   count.className = "knowledge-cluster-count";
   count.textContent = `${group.items.length} 条`;
   meta.append(count);
+
+  const sourceCount = document.createElement("span");
+  sourceCount.className = "knowledge-cluster-source";
+  sourceCount.textContent = `${getKnowledgeSourceCount(group)} 来源`;
+  meta.append(sourceCount);
 
   const collapseToggle = document.createElement("button");
   collapseToggle.className = "knowledge-cluster-collapse";
@@ -2351,8 +2800,40 @@ function getKnowledgeGroupTitle(group) {
 
 function getKnowledgeGroupSummary(group) {
   const datedCount = group.items.filter((item) => item.date).length;
+  return `${datedCount || group.items.length} 条可复用判断 · ${getKnowledgeSourceCount(group)} 个来源`;
+}
+
+function getKnowledgeSourceCount(group) {
   const paths = new Set(group.items.map((item) => item.path).filter(Boolean));
-  return `${datedCount || group.items.length} 条可复用判断 · ${paths.size || 1} 个来源`;
+  return paths.size || 1;
+}
+
+function getKnowledgeGroupClass(type) {
+  const normalized = String(type ?? "").toLowerCase();
+  if (normalized.includes("workflow")) return "is-workflow";
+  if (normalized.includes("agent")) return "is-agent";
+  if (normalized.includes("application")) return "is-application";
+  if (normalized.includes("principle") || normalized.includes("rule")) return "is-principle";
+  return "is-general";
+}
+
+function getKnowledgeGroupLabel(type) {
+  const normalized = String(type ?? "").trim();
+  if (!normalized) return "Knowledge";
+  if (normalized === "ai-native-workflow") return "AI-native workflow";
+  if (normalized === "agent-application") return "Agent application";
+  if (normalized.includes("-")) return normalized.replaceAll("-", " ");
+  return normalized;
+}
+
+function getKnowledgeGroupHeaderLabel(type) {
+  const normalized = String(type ?? "").trim().toLowerCase();
+  if (!normalized) return "Knowledge";
+  if (normalized.includes("workflow")) return "Workflow";
+  if (normalized.includes("agent")) return "Agent";
+  if (normalized.includes("application")) return "Application";
+  if (normalized.includes("principle") || normalized.includes("rule")) return "Principle";
+  return getKnowledgeGroupLabel(type);
 }
 
 function createCatalogGroupCard(group, options) {
@@ -2436,14 +2917,23 @@ function toggleKnowledgeGroupCollapsed(groupType) {
 function createKnowledgeCard(item, options = {}) {
   const knowledgeTitle = item.brief || item.title || "未命名知识";
   const card = document.createElement("article");
-  card.className = "knowledge-row method-card is-md-file";
+  card.className = `knowledge-row method-card is-md-file ${getKnowledgeGroupClass(item.type)}`;
   card.role = "button";
   card.tabIndex = 0;
   card.setAttribute("aria-label", `打开知识详情：${knowledgeTitle}`);
+  card.title = `${knowledgeTitle}${item.path ? `\n${item.path}` : ""}`;
 
   const date = document.createElement("small");
   date.className = "knowledge-row-date";
   date.textContent = item.date || item.type;
+
+  const tag = document.createElement("span");
+  tag.className = "knowledge-row-tag";
+  tag.textContent = getKnowledgeGroupLabel(item.type);
+
+  const meta = document.createElement("div");
+  meta.className = "knowledge-row-meta";
+  meta.append(date, tag);
 
   const body = document.createElement("div");
   body.className = "knowledge-row-body";
@@ -2452,7 +2942,7 @@ function createKnowledgeCard(item, options = {}) {
   title.textContent = knowledgeTitle;
 
   body.append(title);
-  card.append(date, body);
+  card.append(meta, body);
   card.addEventListener("click", () => openMarkdownEditor(item));
   card.addEventListener("keydown", (event) => {
     if (event.key === "Enter" || event.key === " ") {
