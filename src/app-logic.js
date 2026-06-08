@@ -177,6 +177,46 @@ export function getRecordsForNode(library, nodeId) {
   return getAllRecords(library).filter((item) => item.relatedNodeIds?.includes(nodeId));
 }
 
+export function getContextCandidateRecords(library = {}) {
+  return getAllRecords(library).map((record) => ({
+    ref: getRecordContextRef(record),
+    id: record.id,
+    kind: record.kind,
+    type: record.type,
+    title: getContextRecordTitle(record),
+    brief: record.brief,
+    description: record.description,
+    usage: record.usage,
+    date: record.date,
+    sourceDescription: record.sourceDescription,
+  }));
+}
+
+export function applyWorkspaceIntelligenceToNode(node, intelligence = {}, validRefs = [], updatedAt = new Date().toISOString()) {
+  const currentRefs = normalizeContextRefs(node.contextRefs);
+  const validRefSet = new Set(validRefs);
+  const selectedRefs = normalizeContextRefList(intelligence.contextRefs).filter(
+    (ref) => validRefSet.has(ref) && !currentRefs.exclude.includes(ref),
+  );
+  const whyNow = intelligence.whyNow && typeof intelligence.whyNow === "object" ? intelligence.whyNow : {};
+  return createNode({
+    ...node,
+    contextRefs: {
+      include: [...new Set([...currentRefs.include, ...selectedRefs])],
+      exclude: currentRefs.exclude,
+    },
+    aiInsights: {
+      ...node.aiInsights,
+      whyNow: {
+        summary: typeof whyNow.summary === "string" ? whyNow.summary.trim() : "",
+        tags: normalizeWhyNowTags(whyNow.tags),
+        provider: typeof intelligence.provider === "string" ? intelligence.provider : null,
+        updatedAt,
+      },
+    },
+  });
+}
+
 export function buildAiContextForNode({ nodes = [], library = {}, nodeId, reason = "" } = {}) {
   const index = indexNodes(nodes);
   const node = index.byId.get(nodeId);
@@ -399,13 +439,40 @@ function selectContextRecords(
 
 function normalizeContextRefs(contextRefs = {}) {
   return {
-    include: Array.isArray(contextRefs.include) ? contextRefs.include : [],
-    exclude: Array.isArray(contextRefs.exclude) ? contextRefs.exclude : [],
+    include: normalizeContextRefList(contextRefs.include),
+    exclude: normalizeContextRefList(contextRefs.exclude),
   };
+}
+
+function normalizeContextRefList(value) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean))];
 }
 
 function getRecordContextRef(record) {
   return `${record.kind ?? "record"}:${record.id}`;
+}
+
+function getContextRecordTitle(record) {
+  return record.brief || record.title || record.description || record.type || record.docType || "未命名上下文";
+}
+
+function normalizeWhyNowTags(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((tag) => {
+      if (typeof tag === "string") {
+        const text = tag.trim();
+        return text ? { text, tone: "neutral" } : null;
+      }
+      if (!tag || typeof tag !== "object") return null;
+      const text = typeof tag.text === "string" ? tag.text.trim() : "";
+      if (!text) return null;
+      const tone = typeof tag.tone === "string" ? tag.tone.trim() : "neutral";
+      return { text, tone: tone || "neutral" };
+    })
+    .filter(Boolean)
+    .slice(0, 8);
 }
 
 function serializeTaskContext(node) {

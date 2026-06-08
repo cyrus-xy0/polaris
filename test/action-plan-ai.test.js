@@ -12,10 +12,12 @@ import {
   generateDraftOutput,
   generateSuggestedActionPlan,
   generateTaskNodeSplit,
+  generateWorkspaceIntelligence,
   parseAiResultOutput,
   parseActionPlanOutput,
   parseDraftOutput,
   parseTaskNodeSplitOutput,
+  parseWorkspaceIntelligenceOutput,
 } from "../src/action-plan-ai.js";
 import { CREATED_FROM, TASK_STATES, createNode } from "../src/task-nodes.js";
 
@@ -79,6 +81,23 @@ describe("action plan AI", () => {
     });
 
     assert.deepEqual(split, { summary: "", nodes: [], provider: null });
+  });
+
+  it("leaves workspace intelligence blank when no local generator exists", async () => {
+    const serviceRoot = mkdtempSync(join(tmpdir(), "polaris-no-workspace-generator-"));
+    const intelligence = await generateWorkspaceIntelligence({
+      node: createTestNode(),
+      serviceRoot,
+      dataRoot: serviceRoot,
+      env: { PATH: "" },
+      includePath: false,
+    });
+
+    assert.deepEqual(intelligence, {
+      whyNow: { summary: "", tags: [] },
+      contextRefs: [],
+      provider: null,
+    });
   });
 
   it("uses a service-local openclaw executable before falling back to static steps", async () => {
@@ -472,6 +491,28 @@ describe("action plan AI", () => {
       ["明确输入", "执行验证", "记录结论"],
     );
     assert.deepEqual(split.nodes[0].aiActions, ["明确输入", "执行最小动作", "记录结果"]);
+  });
+
+  it("parses workspace intelligence JSON for why-now tags and context refs", () => {
+    const intelligence = parseWorkspaceIntelligenceOutput(
+      JSON.stringify({
+        whyNow: {
+          summary: "先定方向再拆执行。",
+          tags: [
+            { text: "方向先定", tone: "strong" },
+            { text: "前置 2/2", tone: "ready" },
+          ],
+        },
+        contextRefs: ["knowledge:k1", "skills:s1", "artifacts:a1"],
+      }),
+    );
+
+    assert.equal(intelligence.whyNow.summary, "先定方向再拆执行。");
+    assert.deepEqual(intelligence.whyNow.tags, [
+      { text: "方向先定", tone: "strong" },
+      { text: "前置 2/2", tone: "ready" },
+    ]);
+    assert.deepEqual(intelligence.contextRefs, ["knowledge:k1", "skills:s1", "artifacts:a1"]);
   });
 
   it("parses draft JSON embedded in diff-like model output", () => {

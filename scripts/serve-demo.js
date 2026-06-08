@@ -6,12 +6,14 @@ import {
   generateDraftOutput,
   generateSuggestedActionPlan,
   generateTaskNodeSplit,
+  generateWorkspaceIntelligence,
 } from "../src/action-plan-ai.js";
 import {
   createFallbackAiResultOutput,
   createFallbackDraftOutput,
   createFallbackSuggestedActionPlan,
   createFallbackTaskNodeSplit,
+  createFallbackWorkspaceIntelligence,
 } from "../src/ai-fallbacks.js";
 import {
   createAiResultSignature,
@@ -25,7 +27,14 @@ import {
   writeAiResult,
   writeAiResultDocument,
 } from "../src/ai-result-store.js";
-import { buildActiveQueue, buildAiContextForNode, getRecordsForNode, resolvePreparedArtifact } from "../src/app-logic.js";
+import {
+  applyWorkspaceIntelligenceToNode,
+  buildActiveQueue,
+  buildAiContextForNode,
+  getContextCandidateRecords,
+  getRecordsForNode,
+  resolvePreparedArtifact,
+} from "../src/app-logic.js";
 import { getDefaultDataRoot, hasDataRootOverride, resolveDataRoot, shouldSeedDemoData } from "../src/config.js";
 import { createRepository } from "../src/data/repository.js";
 import { publishAiResultToFeishu } from "../src/feishu-ai-result.js";
@@ -284,6 +293,64 @@ async function handleApiRequest(request, response) {
       return true;
     }
 
+    const workspaceIntelligenceMatch = url.pathname.match(/^\/api\/task-nodes\/([^/]+)\/workspace-intelligence$/);
+    if (request.method === "POST" && workspaceIntelligenceMatch) {
+      const nodeId = decodeURIComponent(workspaceIntelligenceMatch[1]);
+      const nodes = repository.listTaskNodes();
+      const node = nodes.find((candidate) => candidate.id === nodeId);
+      if (!node) {
+        sendJson(response, 404, { error: `Task node not found: ${nodeId}` });
+        return true;
+      }
+
+      const existingWhyNow = node.aiInsights?.whyNow;
+      if (Array.isArray(existingWhyNow?.tags) && existingWhyNow.tags.length > 0) {
+        sendJson(response, 200, {
+          nodes,
+          node,
+          intelligence: node.aiInsights,
+          status: "ready",
+          source: "task-node",
+        });
+        return true;
+      }
+
+      const queue = buildActiveQueue(nodes);
+      const queueItem = queue.available.find((item) => item.node.id === nodeId);
+      const reason = queueItem?.reason ?? "";
+      const library = repository.getLibrary();
+      const contextCandidates = getContextCandidateRecords(library);
+      const aiContext = buildAiContextForNode({ nodes, library, nodeId, reason });
+      const generated = await generateWorkspaceIntelligence({
+        node,
+        reason,
+        relatedRecords: getRecordsForNode(library, nodeId),
+        aiContext,
+        contextCandidates,
+        serviceRoot: root,
+        dataRoot,
+        timeoutMs: aiGenerationTimeoutMs,
+      });
+      const effectiveIntelligence =
+        generated.whyNow?.tags?.length > 0 || generated.contextRefs?.length > 0
+          ? generated
+          : createFallbackWorkspaceIntelligence({ node, reason, contextCandidates });
+      const validRefs = contextCandidates.map((candidate) => candidate.ref);
+      const updatedNode = applyWorkspaceIntelligenceToNode(node, effectiveIntelligence, validRefs);
+      const nextNodes = nodes.map((candidate) => (candidate.id === nodeId ? updatedNode : candidate));
+      const savedNodes = repository.saveTaskNodes(nextNodes);
+      const savedNode = savedNodes.find((candidate) => candidate.id === nodeId) ?? updatedNode;
+
+      sendJson(response, 200, {
+        nodes: savedNodes,
+        node: savedNode,
+        intelligence: savedNode.aiInsights,
+        status: "ready",
+        source: effectiveIntelligence.provider === "local-fallback" ? "fallback" : "ai",
+      });
+      return true;
+    }
+
     const splitChildrenMatch = url.pathname.match(/^\/api\/task-nodes\/([^/]+)\/split-children$/);
     if (request.method === "POST" && splitChildrenMatch) {
       const nodeId = decodeURIComponent(splitChildrenMatch[1]);
@@ -373,17 +440,6 @@ async function handleApiRequest(request, response) {
 
       const library = repository.getLibrary();
       const artifact = resolvePreparedArtifact(node, library.artifacts);
-      const signature = createDraftOutputSignature({ node, artifact });
-      const saved = readAiResult({ dataRoot, aiResultsRoot, kind: "draft-output", nodeId, signature });
-      if (saved?.output && hasDraftOutputContent(saved.output)) {
-        sendJson(response, 200, {
-          output: saved.output,
-          persistedAt: saved.updatedAt,
-          source: "filesystem",
-        });
-        return true;
-      }
-
       const queue = buildActiveQueue(nodes);
       const queueItem = queue.available.find((item) => item.node.id === nodeId);
       const reason = queueItem?.reason ?? "";
@@ -396,6 +452,16 @@ async function handleApiRequest(request, response) {
         return true;
       }
       const actionPlanDigest = createAiContextDigest(suggested.plan);
+      const signature = createDraftOutputSignature({ node, artifact, contextDigest, actionPlanDigest });
+      const saved = readAiResult({ dataRoot, aiResultsRoot, kind: "draft-output", nodeId, signature });
+      if (saved?.output && hasDraftOutputContent(saved.output)) {
+        sendJson(response, 200, {
+          output: saved.output,
+          persistedAt: saved.updatedAt,
+          source: "filesystem",
+        });
+        return true;
+      }
       const draft = await runSharedAiJob(`draft-output:${nodeId}:${signature}`, async () => {
         const latestSaved = readAiResult({ dataRoot, aiResultsRoot, kind: "draft-output", nodeId, signature });
         if (latestSaved?.output && hasDraftOutputContent(latestSaved.output)) {
@@ -469,17 +535,6 @@ async function handleApiRequest(request, response) {
 
       const library = repository.getLibrary();
       const artifact = resolvePreparedArtifact(node, library.artifacts);
-      const signature = createAiResultSignature({ node, artifact });
-      const saved = readAiResult({ dataRoot, aiResultsRoot, kind: "ai-result", nodeId, signature });
-      if (saved?.result?.url) {
-        sendJson(response, 200, {
-          result: saved.result,
-          persistedAt: saved.updatedAt,
-          source: "filesystem",
-        });
-        return true;
-      }
-
       const queue = buildActiveQueue(nodes);
       const queueItem = queue.available.find((item) => item.node.id === nodeId);
       const reason = queueItem?.reason ?? "";
@@ -492,6 +547,16 @@ async function handleApiRequest(request, response) {
         return true;
       }
       const actionPlanDigest = createAiContextDigest(suggested.plan);
+      const signature = createAiResultSignature({ node, artifact, contextDigest, actionPlanDigest });
+      const saved = readAiResult({ dataRoot, aiResultsRoot, kind: "ai-result", nodeId, signature });
+      if (saved?.result?.url) {
+        sendJson(response, 200, {
+          result: saved.result,
+          persistedAt: saved.updatedAt,
+          source: "filesystem",
+        });
+        return true;
+      }
       const generatedResult = await readOrCreateAiResultOutput({
         nodeId,
         node,
@@ -670,7 +735,7 @@ async function refreshTaskNodeAiResult(nodeId) {
     force: true,
   });
 
-  const signature = createAiResultSignature({ node, artifact });
+  const signature = createAiResultSignature({ node, artifact, contextDigest, actionPlanDigest });
   const saved = readAiResult({ dataRoot, aiResultsRoot, kind: "ai-result", nodeId, signature });
   const result = await publishAiResult({
     node,

@@ -128,6 +128,37 @@ export async function generateTaskNodeSplit({
   }
 }
 
+export async function generateWorkspaceIntelligence({
+  node,
+  reason = "",
+  relatedRecords = [],
+  aiContext = null,
+  contextCandidates = [],
+  serviceRoot = process.cwd(),
+  dataRoot = null,
+  timeoutMs = 120_000,
+  env = defaultEnv,
+  includePath = true,
+} = {}) {
+  const generator = findLocalActionPlanGenerator({ serviceRoot, dataRoot, env, includePath });
+  if (!generator || !node) return createBlankWorkspaceIntelligence();
+
+  try {
+    const prompt = buildWorkspaceIntelligencePrompt({ node, reason, relatedRecords, aiContext, contextCandidates });
+    const output = await runGenerator(generator, prompt, { cwd: serviceRoot, timeoutMs, env });
+    return {
+      ...parseWorkspaceIntelligenceOutput(output),
+      provider: generator.name,
+    };
+  } catch (error) {
+    return {
+      ...createBlankWorkspaceIntelligence(),
+      provider: generator.name,
+      error: error.message,
+    };
+  }
+}
+
 export function findLocalActionPlanGenerator({
   serviceRoot = process.cwd(),
   dataRoot = null,
@@ -295,6 +326,36 @@ export function buildTaskNodeSplitPrompt({ node, relatedRecords = [], aiContext 
   ].join("\n");
 }
 
+export function buildWorkspaceIntelligencePrompt({ node, reason = "", relatedRecords = [], aiContext = null, contextCandidates = [] }) {
+  return [
+    "你是 Polaris 当前任务节点工作台助手。",
+    "请根据当前任务、任务描述、上游任务和知识/技能/产物候选，判断这个任务为什么现在要做，并初次选择 AI 执行这个任务时应该带入的上下文。",
+    "只输出 JSON，不要输出 Markdown 或解释文字。",
+    'JSON 格式：{"whyNow":{"summary":"一句话解释","tags":[{"text":"方向先定","tone":"strong"}]},"contextRefs":["knowledge:k1","skills:s1","artifacts:a1"]}',
+    "要求：",
+    "- whyNow.tags 生成 3 到 6 个短标签，标签必须生动、直接、能解释当前优先级。",
+    "- tone 只能是 strong、ready、unlock、probe、neutral，用来表达颜色，不要表达尺寸。",
+    "- contextRefs 只能从下方候选上下文 ref 中选择，最多 10 个。",
+    "- 优先选择与任务描述、上游依赖、当前产物路径最相关的 Knowledge、Skill、Artifact。",
+    "- 如果候选上下文不足，可以返回空数组，但不要编造 ref。",
+    "",
+    "任务节点：",
+    `- id：${node.id}`,
+    `- 标题：${node.title}`,
+    `- 优先级：${node.priority ?? "P2"}`,
+    `- 描述：${node.description}`,
+    reason ? `- 队列推荐原因：${reason}` : null,
+    "",
+    "当前 AI 上下文候选摘要：",
+    formatAiContext({ aiContext, relatedRecords }),
+    "",
+    "可选择的上下文 ref：",
+    formatContextCandidates(contextCandidates),
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
+}
+
 export function parseActionPlanOutput(output) {
   const text = typeof output === "string" ? output.trim() : "";
   if (!text) return createBlankActionPlan();
@@ -354,6 +415,16 @@ export function parseTaskNodeSplitOutput(output) {
     summary: "",
     nodes: parsePlainTextSteps(text),
   });
+}
+
+export function parseWorkspaceIntelligenceOutput(output) {
+  const text = typeof output === "string" ? output.trim() : "";
+  if (!text) return createBlankWorkspaceIntelligence();
+  if (isNonContentStatusText(text)) return createBlankWorkspaceIntelligence();
+
+  const jsonPayload = parseJsonPayload(text);
+  if (!jsonPayload) return createBlankWorkspaceIntelligence();
+  return normalizeWorkspaceIntelligence(jsonPayload);
 }
 
 function runGenerator(generator, prompt, { cwd, timeoutMs, env }) {
@@ -505,7 +576,9 @@ function hasNativePolarisPayload(payload) {
         Object.hasOwn(payload, "resultType") ||
         Object.hasOwn(payload, "resultOutput") ||
         Object.hasOwn(payload, "points") ||
-        Object.hasOwn(payload, "nodes")),
+        Object.hasOwn(payload, "nodes") ||
+        Object.hasOwn(payload, "whyNow") ||
+        Object.hasOwn(payload, "contextRefs")),
   );
 }
 
@@ -545,7 +618,7 @@ function scoreGeneratorText(text, key) {
   if (/^(response|reply|answer|final)$/i.test(key)) score += 40;
   if (/^(content|text|output|value|result)$/i.test(key)) score += 25;
   if (/^\s*[{[]/.test(text)) score += 60;
-  if (/"(summary|steps|title|brief|nodes|markdown|resultType|nextActions)"\s*:/.test(text)) score += 80;
+  if (/"(summary|steps|title|brief|nodes|markdown|resultType|nextActions|whyNow|contextRefs)"\s*:/.test(text)) score += 80;
   if (/[\u4e00-\u9fff]/.test(text)) score += 10;
   if (text.length > 30) score += Math.min(30, Math.floor(text.length / 40));
   return score;
@@ -772,6 +845,50 @@ function normalizeTaskNodeSplit(payload) {
   };
 }
 
+function normalizeWorkspaceIntelligence(payload) {
+  const workspace = payload?.workspaceIntelligence ?? payload?.intelligence ?? payload;
+  const whyNow = workspace?.whyNow && typeof workspace.whyNow === "object" ? workspace.whyNow : {};
+
+  return {
+    whyNow: {
+      summary: typeof whyNow.summary === "string" ? whyNow.summary.trim() : "",
+      tags: normalizeWorkspaceTags(whyNow.tags ?? workspace?.whyNowTags ?? workspace?.tags),
+    },
+    contextRefs: normalizeContextRefs(workspace?.contextRefs ?? workspace?.contexts ?? workspace?.refs),
+  };
+}
+
+function normalizeWorkspaceTags(tags) {
+  if (!Array.isArray(tags)) return [];
+  return tags
+    .map((tag) => {
+      if (typeof tag === "string") {
+        const text = tag.trim();
+        return text ? { text, tone: "neutral" } : null;
+      }
+      if (!tag || typeof tag !== "object") return null;
+      const text = typeof tag.text === "string" ? tag.text.trim() : "";
+      if (!text) return null;
+      return {
+        text,
+        tone: normalizeWorkspaceTone(tag.tone),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
+function normalizeWorkspaceTone(value) {
+  const tone = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (["strong", "ready", "unlock", "probe", "neutral"].includes(tone)) return tone;
+  return "neutral";
+}
+
+function normalizeContextRefs(refs) {
+  if (!Array.isArray(refs)) return [];
+  return uniqueValues(refs.map((ref) => (typeof ref === "string" ? ref.trim() : "")).filter(Boolean)).slice(0, 10);
+}
+
 function normalizeSplitNodes(nodes) {
   if (!Array.isArray(nodes)) return [];
   return nodes
@@ -867,6 +984,41 @@ function createBlankTaskNodeSplit() {
     nodes: [],
     provider: null,
   };
+}
+
+function createBlankWorkspaceIntelligence() {
+  return {
+    whyNow: {
+      summary: "",
+      tags: [],
+    },
+    contextRefs: [],
+    provider: null,
+  };
+}
+
+function formatContextCandidates(candidates = []) {
+  const lines = candidates
+    .filter((candidate) => candidate?.ref)
+    .slice(0, 40)
+    .map((candidate) => {
+      const detail = [
+        candidate.description ? `描述：${candidate.description}` : "",
+        candidate.usage ? `用法：${candidate.usage}` : "",
+        candidate.date ? `日期：${candidate.date}` : "",
+      ]
+        .filter(Boolean)
+        .join("；");
+      return [
+        `- ref：${candidate.ref}`,
+        `  类型：${candidate.kind ?? "context"}`,
+        `  标题：${candidate.title ?? candidate.brief ?? "未命名上下文"}`,
+        detail ? `  ${detail}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
+    });
+  return lines.join("\n") || "无";
 }
 
 function isExecutableFile(filePath) {

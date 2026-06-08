@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { sampleNodes } from "../src/sample-tree.js";
 import {
+  applyWorkspaceIntelligenceToNode,
   buildActiveQueue,
   buildAiContextForNode,
   completeTask,
   deleteTaskNode,
+  getContextCandidateRecords,
   getRecordsForNode,
   moveTaskNode,
   refreshTaskPriorities,
@@ -313,5 +315,41 @@ describe("app logic", () => {
     assert.equal(context.knowledge.length, 3);
     assert.equal(context.skills.length, 4);
     assert.equal(context.skills[0].id, "s-manual");
+  });
+
+  it("persists AI-selected workspace context without overriding user exclusions", () => {
+    const node = createNode({
+      id: "current",
+      title: "Current",
+      description: "Current task",
+      aiActions: ["plan"],
+      contextRefs: {
+        include: ["knowledge:k1"],
+        exclude: ["skills:s2"],
+      },
+    });
+    const candidates = getContextCandidateRecords({
+      knowledge: [{ id: "k1", kind: "knowledge", title: "Keep", relatedNodeIds: [] }],
+      skills: [{ id: "s2", kind: "skills", title: "Excluded", relatedNodeIds: [] }],
+      artifacts: [{ id: "a3", kind: "artifacts", title: "Artifact", relatedNodeIds: [] }],
+    });
+    const updated = applyWorkspaceIntelligenceToNode(
+      node,
+      {
+        provider: "hermes",
+        whyNow: {
+          summary: "先处理当前任务。",
+          tags: [{ text: "方向先定", tone: "strong" }],
+        },
+        contextRefs: ["skills:s2", "artifacts:a3", "unknown:x"],
+      },
+      candidates.map((candidate) => candidate.ref),
+      "2026-06-08T00:00:00.000Z",
+    );
+
+    assert.deepEqual(updated.contextRefs.include, ["knowledge:k1", "artifacts:a3"]);
+    assert.deepEqual(updated.contextRefs.exclude, ["skills:s2"]);
+    assert.equal(updated.aiInsights.whyNow.provider, "hermes");
+    assert.deepEqual(updated.aiInsights.whyNow.tags, [{ text: "方向先定", tone: "strong" }]);
   });
 });

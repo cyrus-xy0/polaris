@@ -6,7 +6,7 @@ import { renderMarkdownToHtml } from "./markdown-renderer.js";
 const aiResultDirName = "ai-results";
 
 const legacyAiContextVersion = "rich-context-v3-openclaw-content";
-const aiAnalysisCacheVersion = "task-card-v1";
+const aiAnalysisCacheVersion = "task-card-v2-context";
 const aiResultVersion = "executed-ai-result-v2";
 
 export function createAiContextDigest(aiContext = null) {
@@ -17,6 +17,8 @@ export function createSuggestedActionPlanSignature({ node, reason = "", contextD
   return JSON.stringify({
     version: aiAnalysisCacheVersion,
     ...serializeTaskCardSignature(node),
+    reason,
+    contextDigest,
   });
 }
 
@@ -26,6 +28,8 @@ export function createDraftOutputSignature({ node, artifact = null, contextDiges
     ...serializeTaskCardSignature(node),
     artifactTitle: artifact?.title ?? "",
     artifactType: artifact?.docType ?? "",
+    contextDigest,
+    actionPlanDigest,
   });
 }
 
@@ -36,6 +40,8 @@ export function createAiResultSignature({ node, artifact = null, contextDigest =
     ...serializeTaskCardSignature(node),
     artifactTitle: artifact?.title ?? "",
     artifactType: artifact?.docType ?? "",
+    contextDigest,
+    actionPlanDigest,
   });
 }
 
@@ -174,6 +180,13 @@ function signaturesMatchForCache(kind, savedSignature, requestedSignature) {
   if (kind === "draft-output" || kind === "ai-result" || kind === "ai-result-output") {
     if (!sameSignatureValue(saved.artifactTitle, requested.artifactTitle)) return false;
     if (!sameSignatureValue(saved.artifactType, requested.artifactType)) return false;
+    if (!sameSignatureValue(saved.contextDigest, requested.contextDigest)) return false;
+    if (!sameSignatureValue(saved.actionPlanDigest, requested.actionPlanDigest)) return false;
+  }
+
+  if (kind === "suggested-action-plan") {
+    if (!sameSignatureValue(saved.reason, requested.reason)) return false;
+    if (!sameSignatureValue(saved.contextDigest, requested.contextDigest)) return false;
   }
 
   if (kind === "ai-result" || kind === "ai-result-output") {

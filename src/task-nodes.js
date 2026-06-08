@@ -56,12 +56,18 @@ export function validateNode(node) {
     if (!Array.isArray(node.contextRefs.include)) errors.push("contextRefs.include must be an array");
     if (!Array.isArray(node.contextRefs.exclude)) errors.push("contextRefs.exclude must be an array");
   }
+  if (!node.aiInsights || typeof node.aiInsights !== "object") {
+    errors.push("aiInsights must be an object");
+  } else if (!node.aiInsights.whyNow || typeof node.aiInsights.whyNow !== "object") {
+    errors.push("aiInsights.whyNow must be an object");
+  }
 
   return errors;
 }
 
 export function createNode(input) {
   const contextRefs = normalizeContextRefs(input.contextRefs);
+  const aiInsights = normalizeAiInsights(input.aiInsights);
   const node = {
     id: input.id,
     parentId: input.parentId ?? null,
@@ -75,6 +81,7 @@ export function createNode(input) {
     conclusion: input.conclusion ?? null,
     result: input.result ?? null,
     contextRefs,
+    aiInsights,
     createdFrom: input.createdFrom ?? CREATED_FROM.USER,
   };
 
@@ -96,6 +103,38 @@ function normalizeContextRefs(contextRefs = {}) {
 function normalizeContextRefList(value) {
   if (!Array.isArray(value)) return [];
   return [...new Set(value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean))];
+}
+
+function normalizeAiInsights(aiInsights = {}) {
+  const whyNow = aiInsights && typeof aiInsights === "object" && aiInsights.whyNow && typeof aiInsights.whyNow === "object"
+    ? aiInsights.whyNow
+    : {};
+  return {
+    whyNow: {
+      tags: normalizeWhyNowTags(whyNow.tags),
+      summary: typeof whyNow.summary === "string" ? whyNow.summary.trim() : "",
+      provider: typeof whyNow.provider === "string" ? whyNow.provider.trim() : null,
+      updatedAt: typeof whyNow.updatedAt === "string" ? whyNow.updatedAt : null,
+    },
+  };
+}
+
+function normalizeWhyNowTags(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((tag) => {
+      if (typeof tag === "string") {
+        const text = tag.trim();
+        return text ? { text, tone: "neutral" } : null;
+      }
+      if (!tag || typeof tag !== "object") return null;
+      const text = typeof tag.text === "string" ? tag.text.trim() : "";
+      if (!text) return null;
+      const tone = typeof tag.tone === "string" ? tag.tone.trim() : "neutral";
+      return { text, tone: tone || "neutral" };
+    })
+    .filter(Boolean)
+    .slice(0, 8);
 }
 
 export function indexNodes(nodes) {

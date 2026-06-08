@@ -104,6 +104,27 @@ export function createFallbackTaskNodeSplit(node) {
   };
 }
 
+export function createFallbackWorkspaceIntelligence({ node, reason = "", contextCandidates = [] } = {}) {
+  const dependencyCount = Array.isArray(node?.dependencies) ? node.dependencies.length : 0;
+  const contextRefs = contextCandidates
+    .filter((candidate) => candidate?.ref)
+    .slice(0, 8)
+    .map((candidate) => candidate.ref);
+
+  return {
+    whyNow: {
+      summary: reason || "AI 服务暂不可用，已用本地规则保留当前任务的执行判断。",
+      tags: [
+        { text: node?.priority === "P0" ? "当前优先" : "可推进", tone: node?.priority === "P0" ? "strong" : "ready" },
+        { text: dependencyCount ? `前置 ${dependencyCount}` : "无前置", tone: "ready" },
+        { text: "保留判断", tone: "neutral" },
+      ],
+    },
+    contextRefs,
+    provider: "local-fallback",
+  };
+}
+
 function getActionPlanSteps(actionPlan) {
   const steps = normalizeStepList(actionPlan?.steps);
   return steps.length > 0 ? steps : [...defaultActionSteps];

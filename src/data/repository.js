@@ -259,7 +259,7 @@ function writeTaskNodesFile(filePath, nodes) {
 function readTaskNodesFromDb(db) {
   const rows = db
     .prepare(
-      `SELECT id, parent_id, title, description, ai_actions, dependencies, state, priority, priority_override, conclusion, result, context_refs, created_from
+      `SELECT id, parent_id, title, description, ai_actions, dependencies, state, priority, priority_override, conclusion, result, context_refs, ai_insights, created_from
        FROM task_nodes
        ORDER BY position ASC, rowid ASC`,
     )
@@ -279,6 +279,7 @@ function readTaskNodesFromDb(db) {
       conclusion: parseJson(row.conclusion, null),
       result: parseJson(row.result, null),
       contextRefs: parseJson(row.context_refs, {}),
+      aiInsights: parseJson(row.ai_insights, {}),
       createdFrom: row.created_from,
     }),
   );
@@ -298,6 +299,7 @@ function serializeTaskNodes(nodes) {
     conclusion: node.conclusion ?? null,
     result: node.result ?? null,
     contextRefs: node.contextRefs ?? { include: [], exclude: [] },
+    aiInsights: node.aiInsights ?? { whyNow: { tags: [], summary: "", provider: null, updatedAt: null } },
     createdFrom: node.createdFrom,
   }));
 }
@@ -317,6 +319,7 @@ function ensureSchema(db) {
       conclusion TEXT,
       result TEXT,
       context_refs TEXT NOT NULL DEFAULT '{"include":[],"exclude":[]}',
+      ai_insights TEXT NOT NULL DEFAULT '{"whyNow":{"tags":[],"summary":"","provider":null,"updatedAt":null}}',
       created_from TEXT NOT NULL,
       position INTEGER NOT NULL
     );
@@ -354,6 +357,9 @@ function ensureTaskNodeColumns(db) {
   if (!columns.has("context_refs")) {
     db.exec(`ALTER TABLE task_nodes ADD COLUMN context_refs TEXT NOT NULL DEFAULT '{"include":[],"exclude":[]}'`);
   }
+  if (!columns.has("ai_insights")) {
+    db.exec(`ALTER TABLE task_nodes ADD COLUMN ai_insights TEXT NOT NULL DEFAULT '{"whyNow":{"tags":[],"summary":"","provider":null,"updatedAt":null}}'`);
+  }
   const currentColumns = new Set(db.prepare("PRAGMA table_info(task_nodes)").all().map((column) => column.name));
   if (currentColumns.has("tag")) {
     migrateTaskNodesWithoutTag(db);
@@ -375,14 +381,15 @@ function migrateTaskNodesWithoutTag(db) {
       conclusion TEXT,
       result TEXT,
       context_refs TEXT NOT NULL DEFAULT '{"include":[],"exclude":[]}',
+      ai_insights TEXT NOT NULL DEFAULT '{"whyNow":{"tags":[],"summary":"","provider":null,"updatedAt":null}}',
       created_from TEXT NOT NULL,
       position INTEGER NOT NULL
     );
 
     INSERT INTO task_nodes_next (
-      id, parent_id, title, description, ai_actions, dependencies, state, priority, priority_override, conclusion, result, context_refs, created_from, position
+      id, parent_id, title, description, ai_actions, dependencies, state, priority, priority_override, conclusion, result, context_refs, ai_insights, created_from, position
     )
-    SELECT id, parent_id, title, description, ai_actions, dependencies, state, priority, priority_override, conclusion, result, context_refs, created_from, position
+    SELECT id, parent_id, title, description, ai_actions, dependencies, state, priority, priority_override, conclusion, result, context_refs, ai_insights, created_from, position
     FROM task_nodes;
 
     DROP TABLE task_nodes;
@@ -1093,8 +1100,8 @@ function findMarkdownSource(project, kind, libraryPath, markdownPath) {
 function replaceTaskNodes(db, nodes) {
   const insert = db.prepare(`
     INSERT INTO task_nodes (
-      id, parent_id, title, description, ai_actions, dependencies, state, priority, priority_override, conclusion, result, context_refs, created_from, position
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      id, parent_id, title, description, ai_actions, dependencies, state, priority, priority_override, conclusion, result, context_refs, ai_insights, created_from, position
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   db.exec("BEGIN");
@@ -1114,6 +1121,7 @@ function replaceTaskNodes(db, nodes) {
         JSON.stringify(node.conclusion),
         JSON.stringify(node.result),
         JSON.stringify(node.contextRefs ?? { include: [], exclude: [] }),
+        JSON.stringify(node.aiInsights ?? { whyNow: { tags: [], summary: "", provider: null, updatedAt: null } }),
         node.createdFrom,
         position,
       );

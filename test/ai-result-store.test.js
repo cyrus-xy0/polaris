@@ -85,19 +85,19 @@ describe("AI result store", () => {
     );
   });
 
-  it("keeps AI analysis signatures stable when only surrounding context changes", () => {
+  it("changes AI analysis signatures when execution context changes", () => {
     const node = createNode();
     const artifact = { title: "差异点草稿", docType: "Feishu Doc" };
 
-    assert.equal(
+    assert.notEqual(
       createSuggestedActionPlanSignature({ node, reason: "A", contextDigest: "context-a" }),
       createSuggestedActionPlanSignature({ node, reason: "B", contextDigest: "context-b" }),
     );
-    assert.equal(
+    assert.notEqual(
       createDraftOutputSignature({ node, artifact, contextDigest: "context-a", actionPlanDigest: "plan-a" }),
       createDraftOutputSignature({ node, artifact, contextDigest: "context-b", actionPlanDigest: "plan-b" }),
     );
-    assert.equal(
+    assert.notEqual(
       createAiResultSignature({ node, artifact, contextDigest: "context-a", actionPlanDigest: "plan-a" }),
       createAiResultSignature({ node, artifact, contextDigest: "context-b", actionPlanDigest: "plan-b" }),
     );
@@ -107,7 +107,7 @@ describe("AI result store", () => {
     );
   });
 
-  it("reuses legacy local results that only differ by context digest", () => {
+  it("does not reuse legacy local results when execution context changes", () => {
     const dataRoot = mkdtempSync(join(tmpdir(), "polaris-ai-legacy-results-"));
     const node = createNode();
     const legacySignature = JSON.stringify({
@@ -141,7 +141,7 @@ describe("AI result store", () => {
       signature: createSuggestedActionPlanSignature({ node, reason: "新队列原因", contextDigest: "new-context" }),
     });
 
-    assert.equal(readBack.plan.summary, "沿用本地旧分析。");
+    assert.equal(readBack, null);
 
     const artifact = { title: "差异点草稿", docType: "Feishu Doc" };
     const legacyDraftSignature = JSON.stringify({
@@ -182,7 +182,7 @@ describe("AI result store", () => {
       }),
     });
 
-    assert.equal(draftReadBack.output.summary, "沿用本地旧草稿。");
+    assert.equal(draftReadBack, null);
   });
 
   it("writes the AI result link target as a local HTML document", () => {

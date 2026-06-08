@@ -41,6 +41,7 @@ let nodeEditorCloseTimer = null;
 const suggestedActionPlanCache = new Map();
 const draftOutputCache = new Map();
 const aiResultCache = new Map();
+const workspaceIntelligenceRequests = new Set();
 let saveNodesRequestId = 0;
 const splittingNodeIds = new Set();
 let nodeEditorDependencyNodeId = null;
@@ -463,12 +464,19 @@ function renderWorkflowIntelligence(item) {
   const dependencyCount = node.dependencies?.length ?? 0;
   const completedDependencies = getCompletedDependencyCount(node);
   const contextRecords = createContextRecords(context);
-  const reasonSignals = createWhyNowSignals(node, {
-    dependencyCount,
-    completedDependencies,
-  });
+  const persistedTags = normalizeWhyNowTags(node.aiInsights?.whyNow?.tags);
+  const reasonSignals =
+    persistedTags.length > 0
+      ? persistedTags
+      : createFallbackWhyNowTags(
+          createWhyNowSignals(node, {
+            dependencyCount,
+            completedDependencies,
+          }),
+        );
 
   elements.workflowSignals?.replaceChildren(createSignalSummary(reasonSignals));
+  ensureWorkspaceIntelligence(node.id);
 
   elements.contextUsedList.replaceChildren(
     createContextToolbar(node, contextRecords),
@@ -515,6 +523,10 @@ function createWhyNowSignals(node, { dependencyCount, completedDependencies }) {
       detail: depsReady ? "前置已经齐了，现在推进不会空转。" : "还有前置没完成，先推进容易返工。",
     },
   ];
+}
+
+function createFallbackWhyNowTags(signals) {
+  return signals.flatMap((signal) => signal.tags.map((tag) => ({ text: tag, tone: getSignalTone(signal.label) })));
 }
 
 function countTaskDependents(nodeId) {
@@ -575,26 +587,41 @@ function getNodeSearchText(node) {
   return `${node.title ?? ""} ${node.description ?? ""} ${(node.aiActions ?? []).join(" ")}`;
 }
 
-function createSignalSummary(signals) {
+function createSignalSummary(tags) {
   const summary = document.createElement("article");
   summary.className = "signal-summary";
 
-  const primarySignal = signals.find((signal) => signal.label === "Direction") ?? signals[0];
-  const primary = document.createElement("div");
-  primary.className = "signal-primary";
-  primary.append(createSignalChip(primarySignal.tags[0], "strong"));
-
   const chipRow = document.createElement("div");
   chipRow.className = "signal-chip-row";
-  chipRow.replaceChildren(
-    ...signals
-      .flatMap((signal) => signal.tags.map((tag) => ({ tag, label: signal.label, isPrimary: signal === primarySignal && tag === primarySignal.tags[0] })))
-      .filter((item) => !item.isPrimary)
-      .map((item) => createSignalChip(item.tag, getSignalTone(item.label))),
-  );
+  chipRow.replaceChildren(...normalizeWhyNowTags(tags).map((tag) => createSignalChip(tag.text, tag.tone)));
 
-  summary.append(primary, chipRow);
+  summary.append(chipRow);
   return summary;
+}
+
+function normalizeWhyNowTags(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((tag) => {
+      if (typeof tag === "string") {
+        const text = tag.trim();
+        return text ? { text, tone: "neutral" } : null;
+      }
+      if (!tag || typeof tag !== "object") return null;
+      const text = typeof tag.text === "string" ? tag.text.trim() : "";
+      if (!text) return null;
+      return {
+        text,
+        tone: normalizeSignalTone(tag.tone),
+      };
+    })
+    .filter(Boolean);
+}
+
+function normalizeSignalTone(value) {
+  const tone = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (["strong", "ready", "unlock", "probe", "neutral"].includes(tone)) return tone;
+  return "neutral";
 }
 
 function createSignalChip(text, tone = "neutral") {
@@ -771,6 +798,28 @@ function updateNodeContextRefs(nodeId, update) {
   saveNodes();
 }
 
+async function ensureWorkspaceIntelligence(nodeId) {
+  const node = nodes.find((candidate) => candidate.id === nodeId);
+  if (!node || normalizeWhyNowTags(node.aiInsights?.whyNow?.tags).length > 0) return;
+  if (workspaceIntelligenceRequests.has(nodeId)) return;
+
+  workspaceIntelligenceRequests.add(nodeId);
+  try {
+    const payload = await requestJson(`/api/task-nodes/${encodeURIComponent(nodeId)}/workspace-intelligence`, {
+      method: "POST",
+    });
+    if (Array.isArray(payload.nodes)) {
+      nodes = hydrateNodes(payload.nodes);
+      clearAiGenerationCaches();
+      render();
+    }
+  } catch (error) {
+    console.error("Failed to generate workspace intelligence", error);
+  } finally {
+    workspaceIntelligenceRequests.delete(nodeId);
+  }
+}
+
 function normalizeNodeContextRefs(contextRefs = {}) {
   return {
     include: Array.isArray(contextRefs.include) ? contextRefs.include : [],
@@ -884,13 +933,15 @@ function normalizeSuggestedActionPlan(plan = {}) {
 
 function getSuggestedActionPlanSignature(node, reason) {
   return JSON.stringify({
-    version: "task-card-v1",
+    version: "task-card-v2-context",
     id: node.id,
     title: node.title,
     description: node.description,
     dependencies: normalizeSignatureArray(node.dependencies),
     state: node.state,
     priority: node.priority ?? "P2",
+    reason,
+    contextRefs: getContextRefsSignature(node),
   });
 }
 
@@ -1046,7 +1097,7 @@ function createAiErrorDraftOutput(error) {
 
 function getDraftOutputSignature(node, artifact, reason = "") {
   return JSON.stringify({
-    version: "task-card-v1",
+    version: "task-card-v2-context",
     id: node.id,
     title: node.title,
     description: node.description,
@@ -1055,7 +1106,17 @@ function getDraftOutputSignature(node, artifact, reason = "") {
     priority: node.priority ?? "P2",
     artifactTitle: artifact?.title ?? "",
     artifactType: artifact?.docType ?? "",
+    reason,
+    contextRefs: getContextRefsSignature(node),
   });
+}
+
+function getContextRefsSignature(node) {
+  const refs = normalizeNodeContextRefs(node.contextRefs);
+  return {
+    include: normalizeSignatureArray(refs.include),
+    exclude: normalizeSignatureArray(refs.exclude),
+  };
 }
 
 function normalizeSignatureArray(value) {
