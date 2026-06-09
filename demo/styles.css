@@ -4834,11 +4834,10 @@ body {
 }
 
 .tree-node-description {
-  display: -webkit-box;
+  display: block;
   padding: 13px 14px;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  overflow: visible;
+  overflow-wrap: anywhere;
   font-size: 13px;
   line-height: 1.55;
 }
@@ -4855,11 +4854,32 @@ body {
 
 /* Breakdown redesign: make the map read as divide-and-conquer problem cards. */
 .tree-only {
+  position: relative;
   background:
     linear-gradient(rgba(36, 75, 42, 0.035) 1px, transparent 1px),
     linear-gradient(90deg, rgba(36, 75, 42, 0.035) 1px, transparent 1px),
     linear-gradient(180deg, rgba(249, 244, 231, 0.96), rgba(244, 236, 217, 0.88));
   background-size: 32px 32px, 32px 32px, auto;
+}
+
+.tree-only::before {
+  position: sticky;
+  top: 18px;
+  left: 18px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(36, 75, 42, 0.2);
+  border-radius: 6px;
+  color: rgba(36, 75, 42, 0.72);
+  background: rgba(255, 249, 236, 0.88);
+  box-shadow: 0 10px 22px rgba(36, 75, 42, 0.08);
+  font-size: 11px;
+  font-weight: 820;
+  letter-spacing: 0.04em;
+  content: "北极星 → 子问题 → 行动节点";
 }
 
 .tree-children {
@@ -4879,6 +4899,22 @@ body {
   box-shadow: 0 1px 0 rgba(255, 249, 236, 0.72);
 }
 
+.tree-family.has-multiple-children > .tree-children::after {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  border: 3px solid rgba(255, 249, 236, 0.92);
+  border-radius: 50%;
+  background: var(--forest);
+  box-shadow:
+    0 0 0 1px rgba(36, 75, 42, 0.28),
+    0 8px 16px rgba(36, 75, 42, 0.12);
+  content: "";
+  transform: translateX(-50%);
+}
+
 .tree-children > .tree-family::before {
   top: -28px;
   width: 3px;
@@ -4892,11 +4928,13 @@ body {
   border: 1px solid rgba(36, 75, 42, 0.22);
   border-radius: 8px;
   background:
-    linear-gradient(180deg, rgba(255, 252, 243, 0.98), rgba(248, 242, 226, 0.9)),
+    linear-gradient(180deg, rgba(255, 253, 247, 0.99), rgba(249, 243, 229, 0.92)),
+    linear-gradient(90deg, rgba(36, 75, 42, 0.045), rgba(255, 249, 236, 0) 62%),
     rgba(255, 249, 236, 0.92);
   box-shadow:
-    0 18px 34px rgba(36, 75, 42, 0.13),
-    0 5px 0 rgba(36, 75, 42, 0.08),
+    0 20px 38px rgba(36, 75, 42, 0.15),
+    0 6px 0 rgba(36, 75, 42, 0.1),
+    0 0 0 4px rgba(255, 249, 236, 0.62),
     inset 0 1px 0 rgba(255, 255, 255, 0.82);
   overflow: visible;
 }
@@ -4907,7 +4945,7 @@ body {
   width: 8px;
   border-radius: 8px 0 0 8px;
   background:
-    linear-gradient(180deg, var(--node-state-accent), rgba(36, 75, 42, 0.72)),
+    linear-gradient(180deg, var(--node-state-accent), rgba(36, 75, 42, 0.82)),
     var(--forest);
   opacity: 1;
 }
@@ -4916,28 +4954,42 @@ body {
   --node-kind-tint: rgba(36, 75, 42, 0.08);
   border-color: rgba(36, 75, 42, 0.28);
   background:
-    linear-gradient(180deg, rgba(255, 252, 243, 0.98), rgba(247, 241, 224, 0.92)),
-    linear-gradient(90deg, rgba(36, 75, 42, 0.08), rgba(255, 249, 236, 0) 56%);
+    linear-gradient(180deg, rgba(255, 253, 247, 0.99), rgba(247, 241, 224, 0.92)),
+    linear-gradient(90deg, rgba(36, 75, 42, 0.1), rgba(255, 249, 236, 0) 58%);
 }
 
-.tree-family.is-leaf > .tree-node-card {
+.tree-family.is-action-leaf > .tree-node-card {
   --node-kind-tint: rgba(221, 145, 170, 0.08);
   border-color: rgba(36, 75, 42, 0.18);
   box-shadow:
-    0 12px 24px rgba(36, 75, 42, 0.1),
-    0 4px 0 rgba(36, 75, 42, 0.06),
+    0 14px 26px rgba(36, 75, 42, 0.11),
+    0 4px 0 rgba(36, 75, 42, 0.07),
+    0 0 0 3px rgba(255, 249, 236, 0.54),
     inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.tree-family.is-action-leaf > .tree-node-card::before {
+  background:
+    linear-gradient(180deg, rgba(221, 145, 170, 0.92), rgba(122, 46, 72, 0.72)),
+    var(--rose);
 }
 
 .tree-family.is-root > .tree-node-card {
   border-color: rgba(36, 75, 42, 0.38);
   background:
-    linear-gradient(180deg, rgba(255, 252, 243, 0.98), rgba(244, 236, 217, 0.94)),
-    linear-gradient(120deg, rgba(36, 75, 42, 0.12), rgba(221, 145, 170, 0.06) 70%);
+    linear-gradient(180deg, rgba(255, 253, 247, 0.99), rgba(244, 236, 217, 0.95)),
+    linear-gradient(120deg, rgba(36, 75, 42, 0.14), rgba(221, 145, 170, 0.08) 70%);
   box-shadow:
-    0 26px 52px rgba(36, 75, 42, 0.18),
-    0 7px 0 rgba(36, 75, 42, 0.12),
+    0 30px 58px rgba(36, 75, 42, 0.2),
+    0 8px 0 rgba(36, 75, 42, 0.14),
+    0 0 0 5px rgba(255, 249, 236, 0.7),
     inset 0 1px 0 rgba(255, 255, 255, 0.86);
+}
+
+.tree-family.is-root > .tree-node-card::before {
+  background:
+    linear-gradient(180deg, rgba(221, 145, 170, 0.95), rgba(122, 46, 72, 0.84)),
+    var(--rose);
 }
 
 .tree-family.has-children > .tree-node-card::after {
@@ -4960,6 +5012,23 @@ body {
     inset 0 1px 0 rgba(255, 255, 255, 0.86);
 }
 
+.tree-node-card.is-dragging {
+  box-shadow:
+    0 18px 34px rgba(36, 75, 42, 0.16),
+    0 0 0 3px rgba(36, 75, 42, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.tree-node-card.is-drop-inside,
+.tree-node-card.is-drop-reparent {
+  border-color: rgba(36, 75, 42, 0.66);
+  box-shadow:
+    0 24px 46px rgba(36, 75, 42, 0.18),
+    0 0 0 4px rgba(36, 75, 42, 0.16),
+    0 6px 0 rgba(36, 75, 42, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86);
+}
+
 .tree-node-header {
   display: grid;
   gap: 8px;
@@ -4973,6 +5042,8 @@ body {
 }
 
 .tree-node-header::before {
+  display: inline-flex;
+  align-items: center;
   justify-self: start;
   min-height: 20px;
   padding: 0 7px;
@@ -4992,10 +5063,10 @@ body {
   color: rgba(122, 46, 72, 0.86);
   border-color: rgba(221, 145, 170, 0.42);
   background: rgba(221, 145, 170, 0.12);
-  content: "大问题";
+  content: "北极星";
 }
 
-.tree-family.is-leaf > .tree-node-card .tree-node-header::before {
+.tree-family.is-action-leaf > .tree-node-card .tree-node-header::before {
   content: "行动节点";
 }
 
@@ -5088,6 +5159,7 @@ body {
 }
 
 .tree-node-description {
+  display: block;
   padding: 12px 13px;
   border-color: rgba(36, 75, 42, 0.14);
   border-radius: 7px;
@@ -5095,6 +5167,10 @@ body {
   background:
     linear-gradient(180deg, rgba(255, 249, 236, 0.82), rgba(244, 236, 217, 0.58)),
     rgba(255, 249, 236, 0.72);
+  overflow: visible;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: initial;
+  -webkit-line-clamp: unset;
   font-size: 13px;
   line-height: 1.48;
 }

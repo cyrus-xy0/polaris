@@ -2173,6 +2173,7 @@ function createTreeNode(node, focus, depth) {
   const wrapper = document.createElement("div");
   const hasChildren = node.children.length > 0;
   const childCount = node.displayChildCount ?? node.children.length;
+  const hasRealChildren = childCount > 0;
   const isSelected = node.id === selectedTreeNodeId;
   const isAncestor = focus.ancestorIds.has(node.id);
   const isDescendant = focus.descendantIds.has(node.id);
@@ -2186,6 +2187,8 @@ function createTreeNode(node, focus, depth) {
     "tree-family",
     depth === 0 ? "is-root" : "",
     hasChildren ? "has-children" : "is-leaf",
+    depth > 0 && hasRealChildren ? "is-subproblem" : "",
+    depth > 0 && !hasRealChildren ? "is-action-leaf" : "",
     node.children.length > 1 ? "has-multiple-children" : "has-one-child",
     isSelected ? "is-selected-family" : "",
     isAncestor ? "is-ancestor-family" : "",
