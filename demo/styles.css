@@ -23,6 +23,7 @@
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in-out-soft: cubic-bezier(0.65, 0, 0.35, 1);
   --ease-spring-soft: cubic-bezier(0.18, 0.9, 0.24, 1);
+  --ease-smooth: cubic-bezier(0.2, 0, 0, 1);
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display",
     "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
@@ -1144,9 +1145,8 @@ button {
   backdrop-filter: blur(12px);
   opacity: 1;
   transition:
-    opacity var(--motion-base) var(--ease-out-soft),
-    backdrop-filter var(--motion-base) var(--ease-out-soft),
-    background var(--motion-base) var(--ease-out-soft);
+    opacity 220ms var(--ease-smooth),
+    background 220ms var(--ease-smooth);
 }
 
 .node-editor-drawer[hidden] {
@@ -1175,9 +1175,11 @@ button {
     inset 0 1px 0 rgba(255, 255, 255, 0.88);
   opacity: 1;
   transform: translateX(0) scale(1);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
   transition:
-    transform var(--motion-slow) var(--ease-spring-soft),
-    opacity var(--motion-base) var(--ease-out-soft);
+    transform 300ms var(--ease-smooth),
+    opacity 220ms var(--ease-smooth);
 }
 
 .node-editor-drawer.is-closing .tree-editor {
@@ -1430,8 +1432,7 @@ button {
   flex-direction: column;
   min-width: var(--tree-family-width, 214px);
   transition:
-    min-width var(--motion-slow) var(--ease-in-out-soft),
-    opacity var(--motion-base) var(--ease-out-soft);
+    opacity 220ms var(--ease-smooth);
 }
 
 .tree-family.is-collapsed {
@@ -1472,15 +1473,12 @@ button {
   isolation: isolate;
   overflow: visible;
   will-change: transform, opacity;
+  backface-visibility: hidden;
+  transform: translateZ(0);
   transition:
-    width var(--motion-slow) var(--ease-in-out-soft),
-    min-height var(--motion-slow) var(--ease-in-out-soft),
-    transform var(--motion-base) var(--ease-spring-soft),
-    opacity var(--motion-base) var(--ease-out-soft),
-    filter var(--motion-base) var(--ease-out-soft),
-    border-color var(--motion-base) var(--ease-out-soft),
-    box-shadow var(--motion-base) var(--ease-out-soft),
-    background var(--motion-base) var(--ease-out-soft);
+    transform 220ms var(--ease-smooth),
+    opacity 180ms var(--ease-smooth),
+    border-color 180ms var(--ease-smooth);
 }
 
 .tree-node-card::before {
@@ -1544,7 +1542,7 @@ button {
 
 .tree-node-card:hover,
 .tree-node-card.is-selected {
-  transform: translateY(-4px) scale(1.018);
+  transform: translate3d(0, -3px, 0) scale(1.01);
   border-color: var(--node-state-border);
   background:
     linear-gradient(90deg, var(--node-state-tint), rgba(255, 255, 255, 0) 48%),
@@ -1558,14 +1556,13 @@ button {
 }
 
 .tree-node-card.is-dragging {
-  transform: scale(0.982);
+  transform: translateZ(0) scale(0.982);
   opacity: 0.46;
-  filter: saturate(0.72);
   cursor: grabbing;
 }
 
 .tree-node-card.is-drop-inside {
-  transform: translateY(-3px) scale(1.012);
+  transform: translate3d(0, -2px, 0) scale(1.008);
   border-color: rgba(47, 128, 117, 0.72);
   box-shadow:
     0 0 0 5px rgba(47, 128, 117, 0.13),
@@ -1619,7 +1616,7 @@ button {
 }
 
 .tree-node-card.is-drop-reparent {
-  transform: translateY(-4px) scale(1.03);
+  transform: translate3d(0, -3px, 0) scale(1.014);
   border-color: rgba(47, 128, 117, 0.82);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(237, 249, 244, 0.74)),
@@ -1628,7 +1625,6 @@ button {
     0 0 0 5px rgba(47, 128, 117, 0.16),
     0 22px 58px rgba(47, 128, 117, 0.2);
   opacity: 1;
-  filter: blur(0) saturate(1);
 }
 
 .tree-node-card.is-drop-reparent .tree-node-content::after {
@@ -1949,11 +1945,11 @@ button {
   font-weight: 560;
   line-height: 1;
   transition:
-    transform var(--motion-base) var(--ease-spring-soft),
-    border-color var(--motion-base) var(--ease-out-soft),
-    color var(--motion-base) var(--ease-out-soft),
-    background var(--motion-base) var(--ease-out-soft),
-    opacity var(--motion-base) var(--ease-out-soft);
+    transform 180ms var(--ease-smooth),
+    border-color 180ms var(--ease-smooth),
+    color 180ms var(--ease-smooth),
+    background 180ms var(--ease-smooth),
+    opacity 180ms var(--ease-smooth);
 }
 
 .tree-node-card.is-pending .tree-state-toggle {
@@ -2073,10 +2069,9 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
   transition:
-    transform var(--motion-base) var(--ease-spring-soft),
-    border-color var(--motion-base) var(--ease-out-soft),
-    background var(--motion-base) var(--ease-out-soft),
-    box-shadow var(--motion-base) var(--ease-out-soft);
+    transform 180ms var(--ease-smooth),
+    border-color 180ms var(--ease-smooth),
+    background 180ms var(--ease-smooth);
 }
 
 .tree-record-chip.is-artifact {
@@ -2098,10 +2093,9 @@ button {
   text-decoration: none;
   white-space: nowrap;
   transition:
-    transform var(--motion-base) var(--ease-spring-soft),
-    border-color var(--motion-base) var(--ease-out-soft),
-    background var(--motion-base) var(--ease-out-soft),
-    box-shadow var(--motion-base) var(--ease-out-soft);
+    transform 180ms var(--ease-smooth),
+    border-color 180ms var(--ease-smooth),
+    background 180ms var(--ease-smooth);
 }
 
 .tree-node-result-link:hover,
@@ -2135,8 +2129,8 @@ a.tree-record-chip:focus-visible {
   transform: translateX(6px);
   z-index: 2;
   transition:
-    opacity var(--motion-base) var(--ease-out-soft),
-    transform var(--motion-base) var(--ease-spring-soft);
+    opacity 180ms var(--ease-smooth),
+    transform 200ms var(--ease-smooth);
 }
 
 .tree-node-card:hover .tree-node-actions,
@@ -2700,11 +2694,12 @@ a.tree-record-chip:focus-visible {
     0 12px 30px rgba(66, 61, 48, 0.07),
     inset 0 1px 0 rgba(255, 255, 255, 0.82);
   overflow: hidden;
+  will-change: transform;
+  backface-visibility: hidden;
   transition:
-    transform var(--motion-base) var(--ease-spring-soft),
-    border-color var(--motion-base) var(--ease-out-soft),
-    box-shadow var(--motion-base) var(--ease-out-soft),
-    background var(--motion-base) var(--ease-out-soft);
+    transform 200ms var(--ease-smooth),
+    border-color 180ms var(--ease-smooth),
+    background 180ms var(--ease-smooth);
 }
 
 .method-card::before {
@@ -2721,7 +2716,7 @@ a.tree-record-chip:focus-visible {
 .method-card:hover,
 .method-card:focus-within {
   z-index: 2;
-  transform: translateY(-3px);
+  transform: translate3d(0, -2px, 0);
   border-color: rgba(182, 120, 44, 0.24);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 252, 245, 0.74)),
@@ -2779,21 +2774,21 @@ a.tree-record-chip:focus-visible {
   display: grid;
   gap: 12px;
   max-height: 0;
-  margin-top: 0;
+  padding-top: 0;
   opacity: 0;
   overflow: hidden;
   transform: translateY(-4px);
   transition:
-    max-height 320ms var(--ease-in-out-soft),
-    margin-top var(--motion-base) var(--ease-out-soft),
-    opacity var(--motion-base) var(--ease-out-soft),
-    transform var(--motion-base) var(--ease-spring-soft);
+    max-height 260ms var(--ease-smooth),
+    padding-top 220ms var(--ease-smooth),
+    opacity 180ms var(--ease-smooth),
+    transform 220ms var(--ease-smooth);
 }
 
 .method-card:hover .method-card-detail,
 .method-card:focus-within .method-card-detail {
   max-height: 260px;
-  margin-top: 14px;
+  padding-top: 14px;
   opacity: 1;
   transform: translateY(0);
 }
@@ -4453,15 +4448,13 @@ body {
   grid-template-columns: minmax(0, 1fr) 86px;
   align-items: center;
   gap: 0 12px;
-  min-height: 52px;
+  min-height: 74px;
   padding: 12px 12px;
   overflow: hidden;
   contain: layout paint;
   transition:
-    min-height 320ms var(--ease-in-out-soft),
-    border-color var(--motion-base) var(--ease-out-soft),
-    background var(--motion-base) var(--ease-out-soft),
-    box-shadow var(--motion-base) var(--ease-out-soft);
+    border-color 180ms var(--ease-smooth),
+    background 180ms var(--ease-smooth);
 }
 
 .queue-card::after {
@@ -4525,6 +4518,7 @@ body {
   width: 100%;
   max-height: 0;
   margin: 0;
+  padding-top: 0;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   color: rgba(244, 236, 217, 0.68);
@@ -4533,24 +4527,24 @@ body {
   opacity: 0;
   transform: translateY(-4px);
   transition:
-    max-height 320ms var(--ease-in-out-soft),
-    margin-top var(--motion-base) var(--ease-out-soft),
-    opacity var(--motion-base) var(--ease-out-soft),
-    transform var(--motion-base) var(--ease-spring-soft);
+    max-height 240ms var(--ease-smooth),
+    padding-top 200ms var(--ease-smooth),
+    opacity 180ms var(--ease-smooth),
+    transform 220ms var(--ease-smooth);
 }
 
 .queue-card:hover,
 .queue-card.is-hovered,
 .queue-card.is-selected {
-  min-height: 104px;
+  min-height: 74px;
 }
 
 .queue-card.is-current {
-  min-height: 62px;
+  min-height: 74px;
 }
 
 .queue-card.is-current.is-selected {
-  min-height: 104px;
+  min-height: 74px;
 }
 
 .queue-card:hover,
@@ -4563,7 +4557,7 @@ body {
 .queue-card.is-hovered .queue-card-description,
 .queue-card.is-selected .queue-card-description {
   max-height: 3.1em;
-  margin-top: 7px;
+  padding-top: 7px;
   opacity: 1;
   transform: translateY(0);
 }
@@ -4702,10 +4696,14 @@ body {
     overflow: visible;
   }
 
-  .current-panel,
-  .queue-panel {
+  .current-panel {
     max-height: none;
     overflow: visible;
+  }
+
+  .queue-panel {
+    max-height: calc(100vh - 118px);
+    overflow: hidden;
   }
 
   .current-node-intelligence {
@@ -4960,11 +4958,12 @@ body {
   background:
     linear-gradient(180deg, rgba(255, 249, 236, 0.92), rgba(244, 236, 217, 0.76)),
     rgba(255, 249, 236, 0.78);
+  will-change: transform;
+  backface-visibility: hidden;
   transition:
-    border-color var(--motion-base) var(--ease-out-soft),
-    background var(--motion-base) var(--ease-out-soft),
-    box-shadow var(--motion-base) var(--ease-out-soft),
-    transform var(--motion-base) var(--ease-spring-soft);
+    border-color 180ms var(--ease-smooth),
+    background 180ms var(--ease-smooth),
+    transform 200ms var(--ease-smooth);
 }
 
 #methods-view .knowledge-cluster-header {
@@ -5049,10 +5048,9 @@ body {
   line-height: 1;
   cursor: pointer;
   transition:
-    border-color var(--motion-base) var(--ease-out-soft),
-    background var(--motion-base) var(--ease-out-soft),
-    box-shadow var(--motion-base) var(--ease-out-soft),
-    transform var(--motion-base) var(--ease-spring-soft);
+    border-color 180ms var(--ease-smooth),
+    background 180ms var(--ease-smooth),
+    transform 180ms var(--ease-smooth);
 }
 
 #methods-view .knowledge-cluster-collapse::before {
@@ -5067,7 +5065,7 @@ body {
 #methods-view .knowledge-cluster-collapse:focus-visible,
 #methods-view .section-collapse-toggle:hover,
 #methods-view .section-collapse-toggle:focus-visible {
-  transform: translateY(-1px);
+  transform: translate3d(0, -1px, 0);
   border-color: rgba(36, 75, 42, 0.34);
   background: rgba(36, 75, 42, 0.12);
   outline: none;
@@ -5088,10 +5086,9 @@ body {
   line-height: 1;
   cursor: pointer;
   transition:
-    border-color var(--motion-base) var(--ease-out-soft),
-    background var(--motion-base) var(--ease-out-soft),
-    box-shadow var(--motion-base) var(--ease-out-soft),
-    transform var(--motion-base) var(--ease-spring-soft);
+    border-color 180ms var(--ease-smooth),
+    background 180ms var(--ease-smooth),
+    transform 180ms var(--ease-smooth);
 }
 
 #methods-view .section-collapse-toggle::before {
@@ -5133,8 +5130,7 @@ body {
 
 #methods-view .knowledge-row-meta {
   grid-column: 1;
-  display: grid;
-  grid-template-columns: 72px minmax(150px, 1fr);
+  display: flex;
   align-items: center;
   gap: 5px;
   min-width: 0;
@@ -5146,9 +5142,10 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
+  width: auto;
   min-width: 0;
   min-height: 18px;
+  margin: 0;
   padding: 0 6px;
   border: 1px solid rgba(36, 75, 42, 0.14);
   border-radius: 5px;
@@ -5162,9 +5159,9 @@ body {
 }
 
 #methods-view .knowledge-row-tag {
+  max-width: 120px;
   color: rgba(29, 35, 25, 0.52);
   background: rgba(255, 249, 236, 0.7);
-  justify-content: flex-start;
 }
 
 #methods-view .knowledge-row-body {
