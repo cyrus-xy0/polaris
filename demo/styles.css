@@ -4445,14 +4445,16 @@ body {
   position: relative;
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 86px;
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr) 68px;
+  grid-template-rows: auto auto;
+  align-items: start;
   gap: 0 12px;
-  min-height: 74px;
-  padding: 12px 12px;
+  min-height: 56px;
+  padding: 11px 12px;
   overflow: hidden;
   contain: layout paint;
   transition:
+    min-height 240ms var(--ease-smooth),
     border-color 180ms var(--ease-smooth),
     background 180ms var(--ease-smooth);
 }
@@ -4464,19 +4466,21 @@ body {
 .queue-card-copy {
   display: grid;
   grid-column: 1;
+  grid-row: 1 / 3;
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
 }
 
 .queue-card-priority {
-  align-self: center;
+  align-self: start;
   justify-self: stretch;
   grid-column: 2;
+  grid-row: 1;
   display: inline-grid;
   place-items: center;
   min-width: 0;
-  height: 32px;
+  height: 28px;
   padding: 0 8px;
   overflow: hidden;
   border: 1px solid rgba(244, 236, 217, 0.24);
@@ -4504,13 +4508,12 @@ body {
 
 .queue-card-title {
   display: -webkit-box;
-  align-self: center;
   margin: 0;
   padding-right: 0;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   font-size: 13px;
-  line-height: 1.35;
+  line-height: 1.28;
 }
 
 .queue-card-description {
@@ -4534,38 +4537,33 @@ body {
 }
 
 .queue-card:hover,
-.queue-card.is-hovered,
-.queue-card.is-selected {
-  min-height: 74px;
+.queue-card.is-hovered {
+  min-height: 116px;
 }
 
 .queue-card.is-current {
-  min-height: 74px;
+  min-height: 56px;
 }
 
 .queue-card.is-current.is-selected {
-  min-height: 74px;
+  min-height: 56px;
 }
 
 .queue-card:hover,
-.queue-card.is-hovered,
-.queue-card.is-selected {
-  align-items: center;
+.queue-card.is-hovered {
+  align-items: start;
 }
 
 .queue-card:hover .queue-card-description,
-.queue-card.is-hovered .queue-card-description,
-.queue-card.is-selected .queue-card-description {
-  max-height: 3.1em;
-  padding-top: 7px;
+.queue-card.is-hovered .queue-card-description {
+  max-height: 3.2em;
+  padding-top: 9px;
   opacity: 1;
   transform: translateY(0);
 }
 
 .queue-card.is-current .queue-card-title,
 .queue-card.is-current .queue-card-description,
-.queue-card.is-selected .queue-card-title,
-.queue-card.is-selected .queue-card-description,
 .queue-card:hover .queue-card-title,
 .queue-card:hover .queue-card-description {
   overflow-wrap: anywhere;
@@ -4853,6 +4851,269 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Breakdown redesign: make the map read as divide-and-conquer problem cards. */
+.tree-only {
+  background:
+    linear-gradient(rgba(36, 75, 42, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(36, 75, 42, 0.035) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(249, 244, 231, 0.96), rgba(244, 236, 217, 0.88));
+  background-size: 32px 32px, 32px 32px, auto;
+}
+
+.tree-children {
+  gap: 20px;
+  padding-top: 54px;
+}
+
+.tree-family.has-multiple-children > .tree-children::before {
+  top: 27px;
+  right: 64px;
+  left: 64px;
+  height: 3px;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, rgba(36, 75, 42, 0), rgba(36, 75, 42, 0.42), rgba(36, 75, 42, 0)),
+    rgba(36, 75, 42, 0.08);
+  box-shadow: 0 1px 0 rgba(255, 249, 236, 0.72);
+}
+
+.tree-children > .tree-family::before {
+  top: -28px;
+  width: 3px;
+  height: 28px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(36, 75, 42, 0.2), rgba(36, 75, 42, 0.46));
+  box-shadow: 0 0 0 3px rgba(255, 249, 236, 0.72);
+}
+
+.tree-node-card {
+  border: 1px solid rgba(36, 75, 42, 0.22);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 252, 243, 0.98), rgba(248, 242, 226, 0.9)),
+    rgba(255, 249, 236, 0.92);
+  box-shadow:
+    0 18px 34px rgba(36, 75, 42, 0.13),
+    0 5px 0 rgba(36, 75, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  overflow: visible;
+}
+
+.tree-node-card::before {
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  border-radius: 8px 0 0 8px;
+  background:
+    linear-gradient(180deg, var(--node-state-accent), rgba(36, 75, 42, 0.72)),
+    var(--forest);
+  opacity: 1;
+}
+
+.tree-family.has-children > .tree-node-card {
+  --node-kind-tint: rgba(36, 75, 42, 0.08);
+  border-color: rgba(36, 75, 42, 0.28);
+  background:
+    linear-gradient(180deg, rgba(255, 252, 243, 0.98), rgba(247, 241, 224, 0.92)),
+    linear-gradient(90deg, rgba(36, 75, 42, 0.08), rgba(255, 249, 236, 0) 56%);
+}
+
+.tree-family.is-leaf > .tree-node-card {
+  --node-kind-tint: rgba(221, 145, 170, 0.08);
+  border-color: rgba(36, 75, 42, 0.18);
+  box-shadow:
+    0 12px 24px rgba(36, 75, 42, 0.1),
+    0 4px 0 rgba(36, 75, 42, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.tree-family.is-root > .tree-node-card {
+  border-color: rgba(36, 75, 42, 0.38);
+  background:
+    linear-gradient(180deg, rgba(255, 252, 243, 0.98), rgba(244, 236, 217, 0.94)),
+    linear-gradient(120deg, rgba(36, 75, 42, 0.12), rgba(221, 145, 170, 0.06) 70%);
+  box-shadow:
+    0 26px 52px rgba(36, 75, 42, 0.18),
+    0 7px 0 rgba(36, 75, 42, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86);
+}
+
+.tree-family.has-children > .tree-node-card::after {
+  bottom: -30px;
+  width: 3px;
+  height: 30px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(36, 75, 42, 0.52), rgba(36, 75, 42, 0.18));
+  box-shadow: 0 0 0 3px rgba(255, 249, 236, 0.72);
+}
+
+.tree-node-card:hover,
+.tree-node-card.is-selected {
+  transform: translate3d(0, -3px, 0);
+  border-color: rgba(221, 145, 170, 0.7);
+  box-shadow:
+    0 24px 46px rgba(36, 75, 42, 0.17),
+    0 0 0 3px rgba(221, 145, 170, 0.16),
+    0 6px 0 rgba(36, 75, 42, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86);
+}
+
+.tree-node-header {
+  display: grid;
+  gap: 8px;
+  min-height: 0;
+  padding: 14px 56px 13px 22px;
+  border-radius: 8px 8px 0 0;
+  border-bottom: 1px solid rgba(36, 75, 42, 0.12);
+  background:
+    linear-gradient(90deg, rgba(36, 75, 42, 0.08), rgba(255, 249, 236, 0) 70%),
+    rgba(255, 249, 236, 0.42);
+}
+
+.tree-node-header::before {
+  justify-self: start;
+  min-height: 20px;
+  padding: 0 7px;
+  border: 1px solid rgba(36, 75, 42, 0.2);
+  border-radius: 5px;
+  color: rgba(36, 75, 42, 0.76);
+  background: rgba(36, 75, 42, 0.07);
+  font-size: 9px;
+  font-weight: 820;
+  line-height: 18px;
+  letter-spacing: 0.08em;
+  text-transform: none;
+  content: "子问题";
+}
+
+.tree-family.is-root > .tree-node-card .tree-node-header::before {
+  color: rgba(122, 46, 72, 0.86);
+  border-color: rgba(221, 145, 170, 0.42);
+  background: rgba(221, 145, 170, 0.12);
+  content: "大问题";
+}
+
+.tree-family.is-leaf > .tree-node-card .tree-node-header::before {
+  content: "行动节点";
+}
+
+.tree-node-title,
+.tree-family.is-root > .tree-node-card .tree-node-title {
+  color: rgba(29, 35, 25, 0.92);
+  font-weight: 820;
+  letter-spacing: 0;
+}
+
+.tree-node-title {
+  font-size: 14px;
+  line-height: 1.28;
+}
+
+.tree-family.is-root > .tree-node-card .tree-node-title {
+  font-size: 20px;
+  line-height: 1.24;
+}
+
+.tree-node-detail {
+  align-items: center;
+  gap: 7px;
+  padding: 10px 22px 11px;
+  border-top: 0;
+  border-bottom: 1px solid rgba(36, 75, 42, 0.1);
+  background: rgba(255, 249, 236, 0.54);
+}
+
+.tree-node-meta {
+  min-height: 26px;
+  padding: 0 9px;
+  border: 1px solid rgba(36, 75, 42, 0.16);
+  border-radius: 5px;
+  color: rgba(36, 75, 42, 0.72);
+  background: rgba(36, 75, 42, 0.06);
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.tree-node-meta::before {
+  width: 0;
+  height: 0;
+  margin: 0;
+}
+
+.tree-node-priority,
+.tree-state-toggle,
+.tree-node-result-link {
+  border-radius: 5px;
+}
+
+.tree-node-priority {
+  min-width: 34px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid rgba(36, 75, 42, 0.14);
+  font-size: 11px;
+  font-weight: 820;
+}
+
+.tree-node-priority.priority-p0 {
+  color: #7a2e48;
+  border-color: rgba(221, 145, 170, 0.54);
+  background: rgba(221, 145, 170, 0.16);
+}
+
+.tree-node-priority.priority-p1 {
+  color: #14371a;
+  border-color: rgba(36, 75, 42, 0.2);
+  background: rgba(36, 75, 42, 0.09);
+}
+
+.tree-node-priority.priority-p2 {
+  color: rgba(29, 35, 25, 0.62);
+  border-color: rgba(36, 75, 42, 0.16);
+  background: rgba(255, 249, 236, 0.72);
+}
+
+.tree-state-toggle {
+  height: 26px;
+  padding: 0 9px;
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.tree-node-body {
+  padding: 13px 22px 17px;
+  background: linear-gradient(180deg, rgba(255, 249, 236, 0.34), rgba(255, 249, 236, 0.08));
+}
+
+.tree-node-description {
+  padding: 12px 13px;
+  border-color: rgba(36, 75, 42, 0.14);
+  border-radius: 7px;
+  color: rgba(29, 35, 25, 0.7);
+  background:
+    linear-gradient(180deg, rgba(255, 249, 236, 0.82), rgba(244, 236, 217, 0.58)),
+    rgba(255, 249, 236, 0.72);
+  font-size: 13px;
+  line-height: 1.48;
+}
+
+.tree-node-records {
+  padding: 11px;
+  border-color: rgba(36, 75, 42, 0.14);
+  border-radius: 7px;
+  background: rgba(255, 249, 236, 0.58);
+}
+
+.tree-node-actions {
+  top: 10px;
+  right: 10px;
+  border-radius: 7px;
+  background: rgba(255, 249, 236, 0.88);
+  box-shadow:
+    0 10px 20px rgba(36, 75, 42, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
 @media (max-width: 720px) {
