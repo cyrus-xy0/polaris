@@ -1438,7 +1438,16 @@ function createQueueCard(item, index, currentNodeId) {
   description.className = "queue-card-description";
   description.textContent = node.description;
 
-  card.append(title, description);
+  const copy = document.createElement("div");
+  copy.className = "queue-card-copy";
+  copy.append(title, description);
+
+  const priority = document.createElement("span");
+  priority.className = "queue-card-priority";
+  priority.textContent = node.priority ?? "P2";
+  priority.setAttribute("aria-hidden", "true");
+
+  card.append(copy, priority);
   card.addEventListener("mouseenter", () => card.classList.add("is-hovered"));
   card.addEventListener("mouseleave", () => card.classList.remove("is-hovered"));
   card.addEventListener("focus", () => card.classList.add("is-hovered"));
@@ -2610,7 +2619,7 @@ function renderMethods() {
 
   elements.intermediateGrid.replaceChildren(...createArtifactCards(completedTaskResults));
   elements.skillGrid.replaceChildren(...createSkillCards(library.skills));
-  elements.knowledgeGrid.replaceChildren(...createKnowledgeGroups(library.knowledge));
+  elements.knowledgeGrid.replaceChildren(...createKnowledgeGroupColumns(library.knowledge));
   renderWorkbenchSectionStates();
 }
 
@@ -2748,6 +2757,24 @@ function createKnowledgeGroups(items) {
   empty.className = "catalog-empty";
   empty.innerHTML = "<h3>还没有 Knowledge</h3><p>在 knowledge 目录新增 md 文件后重启服务，这里会显示可复用判断。</p>";
   return [empty];
+}
+
+function createKnowledgeGroupColumns(items) {
+  const cards = createKnowledgeGroups(items);
+  if (cards.length <= 1 || cards.some((card) => card.classList.contains("catalog-empty"))) {
+    return cards;
+  }
+
+  const columns = [document.createElement("div"), document.createElement("div")];
+  columns.forEach((column) => {
+    column.className = "knowledge-column";
+  });
+
+  cards.forEach((card, index) => {
+    columns[index % columns.length].append(card);
+  });
+
+  return columns;
 }
 
 function groupItemsByType(items) {
