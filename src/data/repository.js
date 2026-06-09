@@ -26,6 +26,9 @@ const defaultAiConfig = {
   timeoutMs: 120_000,
   splitTimeoutMs: 60_000,
 };
+const defaultDeploymentConfig = {
+  nginxProxyTimeoutSeconds: 150,
+};
 const defaultTaskNodesStorage = {
   label: "Task Nodes",
   path: defaultLocalPaths.taskNodes,
@@ -463,6 +466,7 @@ function loadProject(dataRoot) {
     database: normalizeFileStorage(localConfig.paths.database, dataRoot, defaultLocalPaths.database),
     aiResults: normalizeDirectoryStorage(localConfig.paths.aiResults, dataRoot, defaultLocalPaths.aiResults),
     ai: localConfig.ai,
+    deployment: localConfig.deployment,
     sources: localConfig.sources,
   };
 
@@ -493,6 +497,7 @@ function createDefaultLocalConfig(legacyProject = {}) {
       aiResults: defaultLocalPaths.aiResults,
     },
     ai: defaultAiConfig,
+    deployment: defaultDeploymentConfig,
     sources: legacyProject?.sources ?? defaultSources,
   };
 }
@@ -514,6 +519,7 @@ function normalizeLocalConfig(config, legacyProject, dataRoot) {
       aiResults: normalizeStoragePath(rawPaths.aiResults, defaultLocalPaths.aiResults),
     },
     ai: normalizeAiConfig(config?.ai),
+    deployment: normalizeDeploymentConfig(config?.deployment),
     sources: normalizeProjectSources(config?.sources ?? legacyProject?.sources, dataRoot),
   };
 }
@@ -522,6 +528,15 @@ function normalizeAiConfig(config) {
   return {
     timeoutMs: normalizePositiveInteger(config?.timeoutMs, defaultAiConfig.timeoutMs),
     splitTimeoutMs: normalizePositiveInteger(config?.splitTimeoutMs, defaultAiConfig.splitTimeoutMs),
+  };
+}
+
+function normalizeDeploymentConfig(config) {
+  return {
+    nginxProxyTimeoutSeconds: normalizePositiveInteger(
+      config?.nginxProxyTimeoutSeconds,
+      defaultDeploymentConfig.nginxProxyTimeoutSeconds,
+    ),
   };
 }
 
@@ -594,7 +609,12 @@ function normalizeTaskNodesFilePath(storagePath) {
 }
 
 function shouldRewriteLocalConfig(config) {
-  return hasUnsupportedSources(config) || hasLegacyTaskNodesDirectoryPath(config?.paths?.taskNodes) || hasMissingAiConfig(config);
+  return (
+    hasUnsupportedSources(config) ||
+    hasLegacyTaskNodesDirectoryPath(config?.paths?.taskNodes) ||
+    hasMissingAiConfig(config) ||
+    hasMissingDeploymentConfig(config)
+  );
 }
 
 function hasUnsupportedSources(config) {
@@ -613,6 +633,10 @@ function hasMissingAiConfig(config) {
     !isPositiveIntegerConfigValue(config.ai.timeoutMs) ||
     !isPositiveIntegerConfigValue(config.ai.splitTimeoutMs)
   );
+}
+
+function hasMissingDeploymentConfig(config) {
+  return !config?.deployment || !isPositiveIntegerConfigValue(config.deployment.nginxProxyTimeoutSeconds);
 }
 
 function isPositiveIntegerConfigValue(value) {
@@ -635,15 +659,18 @@ function serializeProject(project) {
     localConfig: {
       fileName: localConfigFileName,
       paths: {
-      taskNodes: project.taskNodes.path,
-      database: project.database.path,
-      aiResults: project.aiResults.path,
+        taskNodes: project.taskNodes.path,
+        database: project.database.path,
+        aiResults: project.aiResults.path,
+      },
+      ai: {
+        timeoutMs: project.ai.timeoutMs,
+        splitTimeoutMs: project.ai.splitTimeoutMs,
+      },
+      deployment: {
+        nginxProxyTimeoutSeconds: project.deployment.nginxProxyTimeoutSeconds,
+      },
     },
-    ai: {
-      timeoutMs: project.ai.timeoutMs,
-      splitTimeoutMs: project.ai.splitTimeoutMs,
-    },
-  },
     sources: project.sources.map(({ id, kind, label, path, defaultType }) => ({
       id,
       kind,
@@ -665,6 +692,9 @@ function serializeLocalConfig(project) {
     ai: {
       timeoutMs: project.ai.timeoutMs,
       splitTimeoutMs: project.ai.splitTimeoutMs,
+    },
+    deployment: {
+      nginxProxyTimeoutSeconds: project.deployment.nginxProxyTimeoutSeconds,
     },
     sources: project.sources.map(({ id, kind, label, path, defaultType }) => ({
       id,

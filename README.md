@@ -95,6 +95,9 @@ polaris-data/
     "timeoutMs": 120000,
     "splitTimeoutMs": 60000
   },
+  "deployment": {
+    "nginxProxyTimeoutSeconds": 150
+  },
   "sources": [
     {
       "id": "default-knowledge",
@@ -118,7 +121,7 @@ polaris-data/
 
 `paths.database` controls the SQLite runtime mirror, and `paths.aiResults` controls generated action-plan/result JSON plus fallback HTML output. Both may also be relative to the data directory or absolute local paths.
 
-`ai.timeoutMs` controls action-plan, draft-output, and executed AI-result generation. `ai.splitTimeoutMs` controls manual AI child-node generation. These values live in `polaris.local.json` in the user-owned data directory and are preserved across project code updates; environment variables can still override them for a single process. Changes apply after restarting the local server.
+`ai.timeoutMs` controls action-plan, draft-output, and executed AI-result generation. `ai.splitTimeoutMs` controls manual AI child-node generation. `deployment.nginxProxyTimeoutSeconds` controls the recommended nginx `proxy_read_timeout` and `proxy_send_timeout` values for reverse-proxy deployments, defaulting to `150` seconds so nginx waits longer than the default 120-second AI generation timeout. These values live in `polaris.local.json` in the user-owned data directory and are preserved across project code updates; environment variables can still override AI timeouts for a single process. Changes apply after restarting the local server and reloading nginx.
 
 To connect your own knowledge or skill folder, stop the server, add another `sources` entry in `polaris.local.json`, and restart. `path` may be relative to the data directory or an absolute local path:
 
@@ -259,8 +262,24 @@ Polaris reads AI timeout defaults from the user-owned `polaris.local.json`, so e
 
 - `ai.timeoutMs` defaults to `120000` for action plans, draft output, and AI result generation. `POLARIS_AI_TIMEOUT_MS` can override it for a single server process.
 - `ai.splitTimeoutMs` defaults to `60000` for manual AI child-node generation. `POLARIS_AI_SPLIT_TIMEOUT_MS` can override it for a single server process.
+- `deployment.nginxProxyTimeoutSeconds` defaults to `150` for nginx reverse proxies. Use that value for both `proxy_read_timeout` and `proxy_send_timeout`, or increase it when `ai.timeoutMs` is larger than 120 seconds.
 - `POLARIS_FEISHU_TIMEOUT_MS` defaults to `8000` per `lark-cli` operation before falling back to local HTML.
 - Persistent AI timeout changes should be made in the active data directory's `polaris.local.json`, not in files tracked by the repo.
+
+When Polaris is served behind nginx, make the proxy timeout longer than AI generation. For the default config:
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:4173;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection 'upgrade';
+    proxy_set_header Host $host;
+    proxy_cache_bypass $http_upgrade;
+    proxy_read_timeout 150s;
+    proxy_send_timeout 150s;
+}
+```
 
 Deployment servers can run with `openclaw` only. Polaris discovers `openclaw` before `hermes`, invokes it as `openclaw agent --agent "${POLARIS_OPENCLAW_AGENT:-main}" --message "<prompt>" --thinking "${POLARIS_OPENCLAW_THINKING:-low}" --json`, and accepts JSON or plain text from the response. `hermes` is only a fallback provider and is not required when `openclaw` is executable in the service root, `bin/`, `<data-dir>/bin`, or `PATH`.
 

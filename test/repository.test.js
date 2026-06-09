@@ -470,6 +470,9 @@ describe("local data repository", () => {
           timeoutMs: 120_000,
           splitTimeoutMs: 60_000,
         },
+        deployment: {
+          nginxProxyTimeoutSeconds: 150,
+        },
       });
       assert.ok(existsSync(join(dataRoot, "polaris.project.json")));
       assert.ok(existsSync(join(dataRoot, "polaris.local.json")));
@@ -502,6 +505,9 @@ describe("local data repository", () => {
             timeoutMs: 180_000,
             splitTimeoutMs: 90_000,
           },
+          deployment: {
+            nginxProxyTimeoutSeconds: 210,
+          },
           sources: [],
         },
         null,
@@ -522,6 +528,12 @@ describe("local data repository", () => {
       assert.deepEqual(localConfig.ai, {
         timeoutMs: 180_000,
         splitTimeoutMs: 90_000,
+      });
+      assert.deepEqual(project.localConfig.deployment, {
+        nginxProxyTimeoutSeconds: 210,
+      });
+      assert.deepEqual(localConfig.deployment, {
+        nginxProxyTimeoutSeconds: 210,
       });
     } finally {
       rmSync(dataRoot, { recursive: true, force: true });
@@ -586,6 +598,46 @@ describe("local data repository", () => {
       assert.deepEqual(localConfig.ai, {
         timeoutMs: 120_000,
         splitTimeoutMs: 60_000,
+      });
+    } finally {
+      rmSync(dataRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("adds missing deployment timeout defaults to legacy local config", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
+    writeFileSync(
+      join(dataRoot, "polaris.local.json"),
+      JSON.stringify(
+        {
+          version: 1,
+          paths: {
+            taskNodes: "task-nodes.json",
+            database: "polaris.db",
+            aiResults: "ai-results",
+          },
+          ai: {
+            timeoutMs: 120_000,
+            splitTimeoutMs: 60_000,
+          },
+          sources: [],
+        },
+        null,
+        2,
+      ),
+    );
+
+    try {
+      const repository = createRepository({ dataRoot, dbPath: join(dataRoot, "polaris.db") });
+      const project = repository.getProject();
+      repository.close();
+      const localConfig = JSON.parse(readFileSync(join(dataRoot, "polaris.local.json"), "utf8"));
+
+      assert.deepEqual(project.localConfig.deployment, {
+        nginxProxyTimeoutSeconds: 150,
+      });
+      assert.deepEqual(localConfig.deployment, {
+        nginxProxyTimeoutSeconds: 150,
       });
     } finally {
       rmSync(dataRoot, { recursive: true, force: true });
