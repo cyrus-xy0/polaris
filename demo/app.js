@@ -138,6 +138,82 @@ function normalizeAppMetadata(rawApp = {}) {
   };
 }
 
+function createRichTextFragment(text) {
+  const fragment = document.createDocumentFragment();
+  const source = String(text ?? "").replace(/\r\n?/g, "\n");
+  const lines = source.split("\n");
+  let paragraphLines = [];
+  let list = null;
+
+  const appendInlineMarkdown = (parent, value) => {
+    const pattern = /\*\*([^*\n]+?)\*\*/g;
+    let lastIndex = 0;
+    let match = pattern.exec(value);
+    while (match) {
+      if (match.index > lastIndex) {
+        parent.append(document.createTextNode(value.slice(lastIndex, match.index)));
+      }
+      const strong = document.createElement("strong");
+      strong.textContent = match[1];
+      parent.append(strong);
+      lastIndex = pattern.lastIndex;
+      match = pattern.exec(value);
+    }
+    if (lastIndex < value.length) {
+      parent.append(document.createTextNode(value.slice(lastIndex)));
+    }
+  };
+
+  const flushParagraph = () => {
+    if (paragraphLines.length === 0) return;
+    const paragraph = document.createElement("p");
+    paragraphLines.forEach((line, index) => {
+      if (index > 0) paragraph.append(document.createElement("br"));
+      appendInlineMarkdown(paragraph, line);
+    });
+    fragment.append(paragraph);
+    paragraphLines = [];
+  };
+
+  const flushList = () => {
+    if (!list) return;
+    fragment.append(list);
+    list = null;
+  };
+
+  for (const line of lines) {
+    const listMatch = line.match(/^\s*[-*]\s+(.+)$/);
+    if (listMatch) {
+      flushParagraph();
+      if (!list) list = document.createElement("ul");
+      const item = document.createElement("li");
+      appendInlineMarkdown(item, listMatch[1]);
+      list.append(item);
+      continue;
+    }
+
+    if (line.trim() === "") {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    flushList();
+    paragraphLines.push(line);
+  }
+
+  flushParagraph();
+  flushList();
+  return fragment;
+}
+
+function createTreeNodeDescription(descriptionText) {
+  const description = document.createElement("div");
+  description.className = "tree-node-description";
+  description.append(createRichTextFragment(descriptionText));
+  return description;
+}
+
 async function saveNodes() {
   const requestId = ++saveNodesRequestId;
   try {
@@ -2264,10 +2340,7 @@ function createTreeNode(node, focus, depth) {
     const body = document.createElement("div");
     body.className = "tree-node-body";
 
-    const description = document.createElement("p");
-    description.className = "tree-node-description";
-    description.textContent = node.description;
-    body.append(description);
+    body.append(createTreeNodeDescription(node.description));
 
     const records = document.createElement("div");
     records.className = "tree-node-records";

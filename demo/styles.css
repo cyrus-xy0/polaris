@@ -4454,7 +4454,6 @@ body {
   overflow: hidden;
   contain: layout paint;
   transition:
-    min-height 240ms var(--ease-smooth),
     border-color 180ms var(--ease-smooth),
     background 180ms var(--ease-smooth);
 }
@@ -4517,17 +4516,16 @@ body {
 }
 
 .queue-card-description {
-  display: -webkit-box;
+  display: block;
   width: 100%;
   max-height: 0;
   margin: 0;
   padding-top: 0;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
   color: rgba(244, 236, 217, 0.68);
   font-size: 12px;
   line-height: 1.42;
   opacity: 0;
+  white-space: pre-wrap;
   transform: translateY(-4px);
   transition:
     max-height 240ms var(--ease-smooth),
@@ -4538,7 +4536,7 @@ body {
 
 .queue-card:hover,
 .queue-card.is-hovered {
-  min-height: 116px;
+  min-height: 56px;
 }
 
 .queue-card.is-current {
@@ -4556,7 +4554,7 @@ body {
 
 .queue-card:hover .queue-card-description,
 .queue-card.is-hovered .queue-card-description {
-  max-height: 3.2em;
+  max-height: 999px;
   padding-top: 9px;
   opacity: 1;
   transform: translateY(0);
@@ -5173,6 +5171,33 @@ body {
   -webkit-line-clamp: unset;
   font-size: 13px;
   line-height: 1.48;
+}
+
+.tree-node-description p,
+.tree-node-description ul {
+  margin: 0;
+}
+
+.tree-node-description p + p,
+.tree-node-description p + ul,
+.tree-node-description ul + p,
+.tree-node-description ul + ul {
+  margin-top: 8px;
+}
+
+.tree-node-description ul {
+  display: grid;
+  gap: 5px;
+  padding-left: 18px;
+}
+
+.tree-node-description li {
+  padding-left: 2px;
+}
+
+.tree-node-description strong {
+  color: rgba(29, 35, 25, 0.88);
+  font-weight: 860;
 }
 
 .tree-node-records {
