@@ -144,6 +144,7 @@ function createRichTextFragment(text) {
   const lines = source.split("\n");
   let paragraphLines = [];
   let list = null;
+  let listType = null;
 
   const appendInlineMarkdown = (parent, value) => {
     const pattern = /\*\*([^*\n]+?)\*\*/g;
@@ -179,15 +180,22 @@ function createRichTextFragment(text) {
     if (!list) return;
     fragment.append(list);
     list = null;
+    listType = null;
   };
 
   for (const line of lines) {
-    const listMatch = line.match(/^\s*[-*]\s+(.+)$/);
-    if (listMatch) {
+    const unorderedListMatch = line.match(/^\s*[-*]\s+(.+)$/);
+    const orderedListMatch = line.match(/^\s*\d+[.)]\s+(.+)$/);
+    if (unorderedListMatch || orderedListMatch) {
       flushParagraph();
-      if (!list) list = document.createElement("ul");
+      const nextListType = orderedListMatch ? "ol" : "ul";
+      if (list && listType !== nextListType) flushList();
+      if (!list) {
+        list = document.createElement(nextListType);
+        listType = nextListType;
+      }
       const item = document.createElement("li");
-      appendInlineMarkdown(item, listMatch[1]);
+      appendInlineMarkdown(item, (orderedListMatch ?? unorderedListMatch)[1]);
       list.append(item);
       continue;
     }
@@ -2220,9 +2228,12 @@ function getTreeNodeDropPosition(event, card, targetId) {
   if (card.classList.contains("is-ghost")) return "inside";
 
   const rect = card.getBoundingClientRect();
-  const ratio = (event.clientY - rect.top) / Math.max(rect.height, 1);
-  if (ratio < 0.28) return "before";
-  if (ratio > 0.72) return "after";
+  const xRatio = (event.clientX - rect.left) / Math.max(rect.width, 1);
+  const yRatio = (event.clientY - rect.top) / Math.max(rect.height, 1);
+  if (xRatio < 0.24 || (xRatio < 0.38 && yRatio > 0.18 && yRatio < 0.82)) return "before";
+  if (xRatio > 0.76 || (xRatio > 0.62 && yRatio > 0.18 && yRatio < 0.82)) return "after";
+  if (yRatio < 0.2) return "before";
+  if (yRatio > 0.8) return "after";
   return "inside";
 }
 
@@ -2547,6 +2558,12 @@ function addRootNode() {
 function deleteTreeNode(nodeId) {
   const update = deleteTaskNode(nodes, nodeId);
   if (!update.parentId) return;
+
+  const node = indexNodes(nodes).byId.get(nodeId);
+  const descendantCount = Math.max(0, update.deletedIds.size - 1);
+  const details = descendantCount > 0 ? `，以及它下面的 ${descendantCount} 个子节点` : "";
+  const confirmed = window.confirm(`确认删除「${node?.title ?? "这个节点"}」${details}吗？此操作会立即保存。`);
+  if (!confirmed) return;
 
   runTreeTransition(() => {
     nodes = update.nodes;

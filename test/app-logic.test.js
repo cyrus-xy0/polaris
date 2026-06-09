@@ -69,6 +69,24 @@ describe("app logic", () => {
     assert.deepEqual(rootChildren, ["c", "a", "b"]);
   });
 
+  it("moves a nested task node before a target sibling under another parent", () => {
+    const nodes = [
+      createNode({ id: "root", title: "Root" }),
+      createNode({ id: "a", parentId: "root", title: "A" }),
+      createNode({ id: "a1", parentId: "a", title: "A1" }),
+      createNode({ id: "b", parentId: "root", title: "B" }),
+      createNode({ id: "b1", parentId: "b", title: "B1" }),
+    ];
+
+    const movedNodes = moveTaskNode(nodes, { nodeId: "a1", targetId: "b1", position: "before" });
+    const tree = buildTree(movedNodes)[0];
+    const a = tree.children.find((node) => node.id === "a");
+    const b = tree.children.find((node) => node.id === "b");
+
+    assert.deepEqual(a.children.map((node) => node.id), []);
+    assert.deepEqual(b.children.map((node) => node.id), ["a1", "b1"]);
+  });
+
   it("reparents a task node with its child subtree intact", () => {
     const nodes = [
       createNode({ id: "root", title: "Root" }),

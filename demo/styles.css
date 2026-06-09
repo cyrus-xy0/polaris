@@ -1577,11 +1577,11 @@ button {
 .tree-node-card.is-drop-before .tree-node-content::before,
 .tree-node-card.is-drop-after .tree-node-content::after {
   position: absolute;
-  right: 14px;
-  left: 14px;
-  height: 4px;
+  top: 12px;
+  bottom: 12px;
+  width: 4px;
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(47, 128, 117, 0), rgba(47, 128, 117, 0.92), rgba(47, 128, 117, 0));
+  background: linear-gradient(180deg, rgba(47, 128, 117, 0), rgba(47, 128, 117, 0.92), rgba(47, 128, 117, 0));
   box-shadow: 0 0 0 4px rgba(47, 128, 117, 0.12);
   content: "";
   pointer-events: none;
@@ -1589,11 +1589,11 @@ button {
 }
 
 .tree-node-card.is-drop-before .tree-node-content::before {
-  top: -9px;
+  left: -9px;
 }
 
 .tree-node-card.is-drop-after .tree-node-content::after {
-  bottom: -9px;
+  right: -9px;
 }
 
 .tree-node-card.is-selected {
@@ -5184,18 +5184,25 @@ body {
 }
 
 .tree-node-description p,
-.tree-node-description ul {
+.tree-node-description ul,
+.tree-node-description ol {
   margin: 0;
 }
 
 .tree-node-description p + p,
 .tree-node-description p + ul,
+.tree-node-description p + ol,
 .tree-node-description ul + p,
-.tree-node-description ul + ul {
+.tree-node-description ul + ul,
+.tree-node-description ul + ol,
+.tree-node-description ol + p,
+.tree-node-description ol + ul,
+.tree-node-description ol + ol {
   margin-top: 8px;
 }
 
-.tree-node-description ul {
+.tree-node-description ul,
+.tree-node-description ol {
   display: grid;
   gap: 5px;
   padding-left: 18px;
