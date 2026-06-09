@@ -108,7 +108,7 @@ export function createFallbackWorkspaceIntelligence({ node, reason = "", context
   const dependencyCount = Array.isArray(node?.dependencies) ? node.dependencies.length : 0;
   const contextRefs = contextCandidates
     .filter((candidate) => candidate?.ref)
-    .slice(0, 8)
+    .slice(0, 5)
     .map((candidate) => candidate.ref);
 
   return {

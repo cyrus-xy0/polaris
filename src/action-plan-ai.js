@@ -335,7 +335,7 @@ export function buildWorkspaceIntelligencePrompt({ node, reason = "", relatedRec
     "要求：",
     "- whyNow.tags 生成 3 到 6 个短标签，标签必须生动、直接、能解释当前优先级。",
     "- tone 只能是 strong、ready、unlock、probe、neutral，用来表达颜色，不要表达尺寸。",
-    "- contextRefs 只能从下方候选上下文 ref 中选择，最多 10 个。",
+    "- contextRefs 只能从下方候选上下文 ref 中选择，最多 5 个。",
     "- 优先选择与任务描述、上游依赖、当前产物路径最相关的 Knowledge、Skill、Artifact。",
     "- 如果候选上下文不足，可以返回空数组，但不要编造 ref。",
     "",

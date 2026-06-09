@@ -565,8 +565,8 @@ function renderWorkflowIntelligence(item) {
   elements.contextUsedList.replaceChildren(
     createContextToolbar(node, contextRecords),
     ...(contextRecords.length > 0
-      ? contextRecords.map((entry) => createContextItem(entry, node))
-      : [createPanelEmpty("当前节点暂未绑定专属上下文，会使用全局 Knowledge / Skill 作为默认输入。")]),
+      ? createContextRecordDisplay(contextRecords, node)
+      : [createPanelEmpty("当前节点未绑定上下文；AI 只会使用任务卡片和相关描述。")]),
   );
 }
 
@@ -630,6 +630,10 @@ function countTaskDependents(nodeId) {
     stack.push(...(directDependentsById.get(dependentId) ?? []));
   }
   return seen.size;
+}
+
+function getDirectDependentNodes(nodeId) {
+  return nodes.filter((candidate) => (candidate.dependencies ?? []).includes(nodeId));
 }
 
 function getDirectionSignal(node) {
@@ -728,6 +732,45 @@ function createContextRecords(context) {
     ...context.skills.map((record) => ({ kind: "Skill", record })),
     ...context.artifacts.map((record) => ({ kind: "Artifact", record })),
   ];
+}
+
+function createContextRecordDisplay(contextRecords, node) {
+  if (contextRecords.length <= 1) return contextRecords.map((entry) => createContextItem(entry, node));
+
+  const details = document.createElement("details");
+  details.className = "context-dropdown";
+  details.open = true;
+
+  const summary = document.createElement("summary");
+  summary.className = "context-dropdown-summary";
+
+  const title = document.createElement("span");
+  title.className = "context-dropdown-title";
+  title.textContent = `已选上下文 ${contextRecords.length} 条`;
+
+  const meta = document.createElement("span");
+  meta.className = "context-dropdown-meta";
+  meta.textContent = formatContextKindSummary(contextRecords);
+
+  summary.append(title, meta);
+
+  const list = document.createElement("div");
+  list.className = "context-dropdown-list";
+  list.append(...contextRecords.map((entry) => createContextItem(entry, node)));
+
+  details.append(summary, list);
+  return [details];
+}
+
+function formatContextKindSummary(contextRecords) {
+  const counts = contextRecords.reduce((totals, entry) => {
+    totals.set(entry.kind, (totals.get(entry.kind) ?? 0) + 1);
+    return totals;
+  }, new Map());
+  return ["Knowledge", "Skill", "Artifact"]
+    .filter((kind) => counts.has(kind))
+    .map((kind) => `${kind} ${counts.get(kind)}`)
+    .join(" · ");
 }
 
 function createContextToolbar(node, contextRecords) {
@@ -862,10 +905,26 @@ function addContextFromInput(nodeId, value) {
 }
 
 function removeNodeContextRef(nodeId, ref) {
-  updateNodeContextRefs(nodeId, ({ include, exclude }) => ({
-    include: include.filter((item) => item !== ref),
-    exclude: [...new Set([...exclude, ref])],
-  }));
+  const visibleRefs = getVisibleNodeContextRefs(nodeId);
+  updateNodeContextRefs(nodeId, ({ include, exclude }) => {
+    const nextInclude = include.filter((item) => item !== ref);
+    return {
+      include: nextInclude,
+      exclude: [...new Set([...exclude, ref, ...(nextInclude.length === 0 ? visibleRefs : [])])],
+    };
+  });
+}
+
+function getVisibleNodeContextRefs(nodeId) {
+  const node = nodes.find((candidate) => candidate.id === nodeId);
+  if (!node) return [];
+  const queue = buildActiveQueue(nodes);
+  const item = queue.current?.node?.id === nodeId
+    ? queue.current
+    : [...(queue.available ?? []), ...(queue.blocked ?? [])].find((candidate) => candidate.node.id === nodeId);
+  const reason = item?.reason ?? "";
+  const context = buildAiContextForNode({ nodes, library, nodeId, reason });
+  return createContextRecords(context).map((entry) => getRecordContextRef(entry.record));
 }
 
 function updateNodeContextRefs(nodeId, update) {
@@ -2323,6 +2382,11 @@ function createTreeNode(node, focus, depth) {
   meta.className = "tree-node-meta";
   meta.textContent = childCount > 0 ? `${childCount} 个子节点` : "叶子行动";
 
+  const dependencyNodes = (node.dependencies ?? []).map((dependencyId) => focus.index.byId.get(dependencyId)).filter(Boolean);
+  const dependentNodes = getDirectDependentNodes(node.id);
+  const dependencyTag = createTreeDependencyTag("before", dependencyNodes);
+  const dependentTag = createTreeDependencyTag("after", dependentNodes);
+
   const priority = document.createElement("span");
   priority.className = `tree-node-priority priority-${String(node.priority ?? "P2").toLowerCase()}`;
   priority.textContent = node.priority ?? "P2";
@@ -2340,7 +2404,7 @@ function createTreeNode(node, focus, depth) {
 
   const detail = document.createElement("span");
   detail.className = "tree-node-detail";
-  detail.append(meta, priority, stateToggle);
+  detail.append(meta, dependencyTag, dependentTag, priority, stateToggle);
   if (isDone && primaryResultRecord) {
     detail.append(createTreeResultLink(primaryResultRecord));
   }
@@ -2475,6 +2539,24 @@ function createTreeResultLink(record) {
     event.stopPropagation();
   });
   return link;
+}
+
+function createTreeDependencyTag(kind, relatedNodes) {
+  const count = relatedNodes.length;
+  const label = kind === "before" ? "前置" : "后置";
+  const tag = document.createElement("span");
+  tag.className = [
+    "tree-node-dependency-tag",
+    kind === "before" ? "is-before" : "is-after",
+    count > 0 ? "has-related-nodes" : "has-no-related-nodes",
+  ].join(" ");
+  tag.textContent = count > 0 ? `${label} ${count}` : `无${label}`;
+  tag.title =
+    count > 0
+      ? `${label}节点：${relatedNodes.map((relatedNode) => relatedNode.title).join("、")}`
+      : `没有${label}节点`;
+  tag.ariaLabel = tag.title;
+  return tag;
 }
 
 function createTreeActionButton(label, title, onClick, tone = "default") {

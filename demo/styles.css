@@ -3994,6 +3994,9 @@ body {
 
 .context-list {
   display: grid;
+  align-content: start;
+  align-items: start;
+  grid-auto-rows: max-content;
   gap: 8px;
   margin-top: 12px;
   min-height: 0;
@@ -4599,6 +4602,8 @@ body {
 .context-toolbar {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  align-self: stretch;
   gap: 7px;
   margin-bottom: 2px;
 }
@@ -4609,6 +4614,7 @@ body {
 .context-remove-button {
   min-width: 0;
   min-height: 30px;
+  height: 30px;
   border: 1px solid rgba(36, 75, 42, 0.18);
   border-radius: 6px;
   font: inherit;
@@ -4657,6 +4663,51 @@ body {
   grid-template-columns: 86px minmax(0, 1fr) auto;
   align-items: center;
   gap: 7px;
+}
+
+.context-dropdown {
+  display: block;
+  min-width: 0;
+}
+
+.context-dropdown-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(36, 75, 42, 0.16);
+  border-radius: 6px;
+  color: var(--forest);
+  background: rgba(255, 249, 236, 0.78);
+  font-size: 12px;
+  font-weight: 820;
+  cursor: pointer;
+}
+
+.context-dropdown-summary::marker {
+  color: rgba(36, 75, 42, 0.64);
+}
+
+.context-dropdown-title,
+.context-dropdown-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-dropdown-meta {
+  color: rgba(36, 75, 42, 0.56);
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.context-dropdown-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 7px;
 }
 
 .context-item p {
@@ -5122,9 +5173,36 @@ body {
 }
 
 .tree-node-priority,
+.tree-node-dependency-tag,
 .tree-state-toggle,
 .tree-node-result-link {
   border-radius: 5px;
+}
+
+.tree-node-dependency-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid rgba(36, 75, 42, 0.14);
+  color: rgba(36, 75, 42, 0.68);
+  background: rgba(255, 249, 236, 0.72);
+  font-size: 11px;
+  font-weight: 760;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.tree-node-dependency-tag.has-related-nodes.is-before {
+  color: #245f56;
+  border-color: rgba(47, 128, 117, 0.28);
+  background: rgba(47, 128, 117, 0.1);
+}
+
+.tree-node-dependency-tag.has-related-nodes.is-after {
+  color: #7a2e48;
+  border-color: rgba(221, 145, 170, 0.42);
+  background: rgba(221, 145, 170, 0.13);
 }
 
 .tree-node-priority {

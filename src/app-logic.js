@@ -1,5 +1,7 @@
 import { TASK_PRIORITIES, TASK_STATES, buildExecutableQueue, createNode, deriveEffectiveStates, indexNodes } from "./task-nodes.js";
 
+const maxAiContextRecords = 5;
+
 const studyRealCasesActions = [
   "定案例筛选口径",
   "找真实落地案例",
@@ -195,9 +197,11 @@ export function getContextCandidateRecords(library = {}) {
 export function applyWorkspaceIntelligenceToNode(node, intelligence = {}, validRefs = [], updatedAt = new Date().toISOString()) {
   const currentRefs = normalizeContextRefs(node.contextRefs);
   const validRefSet = new Set(validRefs);
-  const selectedRefs = normalizeContextRefList(intelligence.contextRefs).filter(
-    (ref) => validRefSet.has(ref) && !currentRefs.exclude.includes(ref),
-  );
+  const selectedRefs = isContextManuallyCleared(currentRefs)
+    ? []
+    : normalizeContextRefList(intelligence.contextRefs)
+        .filter((ref) => validRefSet.has(ref) && !currentRefs.exclude.includes(ref))
+        .slice(0, maxAiContextRecords);
   const whyNow = intelligence.whyNow && typeof intelligence.whyNow === "object" ? intelligence.whyNow : {};
   return createNode({
     ...node,
@@ -243,25 +247,26 @@ export function buildAiContextForNode({ nodes = [], library = {}, nodeId, reason
     .map(serializeTaskContext);
   const relatedNodeIds = new Set([node.id, ...upstreamTaskIds]);
   const contextRefs = normalizeContextRefs(node.contextRefs);
-  const knowledge = selectContextRecords(library.knowledge, relatedNodeIds, {
-    includeGlobal: true,
-    globalLimit: 3,
-    limit: 6,
-    includeRefs: contextRefs.include,
-    excludeRefs: contextRefs.exclude,
-  });
-  const skills = selectContextRecords(library.skills, relatedNodeIds, {
-    includeGlobal: true,
-    globalLimit: 3,
-    limit: 6,
-    includeRefs: contextRefs.include,
-    excludeRefs: contextRefs.exclude,
-  });
-  const artifacts = selectContextRecords(library.artifacts, relatedNodeIds, {
-    limit: 4,
-    includeRefs: contextRefs.include,
-    excludeRefs: contextRefs.exclude,
-  });
+  const selectedContextRecords = isContextManuallyCleared(contextRefs)
+    ? []
+    : selectRelevantContextRecords({
+        records: getAllRecords(library),
+        relatedNodeIds,
+        contextText: [
+          node.title,
+          node.description,
+          ...(node.aiActions ?? []),
+          reason,
+          ...lineage.flatMap((item) => [item.title, item.description]),
+          ...upstreamTasks.flatMap((item) => [item.title, item.description, ...(item.aiActions ?? [])]),
+        ].join(" "),
+        includeRefs: contextRefs.include,
+        excludeRefs: contextRefs.exclude,
+        limit: maxAiContextRecords,
+      });
+  const knowledge = selectedContextRecords.filter((record) => record.kind === "knowledge");
+  const skills = selectedContextRecords.filter((record) => record.kind === "skills");
+  const artifacts = selectedContextRecords.filter((record) => record.kind === "artifacts");
   const accumulatedResults = nodes
     .filter((item) => item.id !== node.id && (item.result || item.conclusion))
     .map(serializeTaskContext)
@@ -410,31 +415,67 @@ function getLineage(node, index) {
   return lineage;
 }
 
-function selectContextRecords(
-  records = [],
-  relatedNodeIds,
-  { includeGlobal = false, globalLimit = 4, limit = 8, includeRefs = [], excludeRefs = [] } = {},
-) {
-  const direct = [];
-  const global = [];
-  const manual = [];
+function selectRelevantContextRecords({ records = [], relatedNodeIds, contextText = "", includeRefs = [], excludeRefs = [], limit = maxAiContextRecords } = {}) {
   const includeRefSet = new Set(includeRefs);
   const excludeRefSet = new Set(excludeRefs);
+  const tokens = tokenizeContextText(contextText);
 
-  for (const record of records ?? []) {
-    if (excludeRefSet.has(getRecordContextRef(record)) || excludeRefSet.has(record.id)) {
-      continue;
-    }
-    if (includeRefSet.has(getRecordContextRef(record)) || includeRefSet.has(record.id)) {
-      manual.push(serializeRecordContext(record));
-    } else if (record.relatedNodeIds?.some((id) => relatedNodeIds.has(id))) {
-      direct.push(serializeRecordContext(record));
-    } else if (includeGlobal) {
-      global.push(serializeRecordContext(record));
-    }
-  }
+  return (records ?? [])
+    .map((record, index) => {
+      const ref = getRecordContextRef(record);
+      if (excludeRefSet.has(ref) || excludeRefSet.has(record.id)) return null;
 
-  return [...manual, ...direct, ...global.slice(0, globalLimit)].slice(0, limit);
+      const isManual = includeRefSet.has(ref) || includeRefSet.has(record.id);
+      const isDirect = record.relatedNodeIds?.some((id) => relatedNodeIds.has(id));
+      const textScore = scoreRecordRelevance(record, tokens);
+      const score = (isManual ? 1000 : 0) + (isDirect ? 500 : 0) + textScore;
+      if (!isManual && !isDirect && textScore <= 0) return null;
+
+      return {
+        record: serializeRecordContext(record),
+        score,
+        index,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .slice(0, limit)
+    .map((entry) => entry.record);
+}
+
+function isContextManuallyCleared(contextRefs = {}) {
+  return contextRefs.include.length === 0 && contextRefs.exclude.length > 0;
+}
+
+function tokenizeContextText(value) {
+  return [
+    ...new Set(
+      String(value ?? "")
+        .toLowerCase()
+        .split(/[^a-z0-9\u4e00-\u9fa5]+/i)
+        .map((token) => token.trim())
+        .filter((token) => token.length >= 2),
+    ),
+  ].slice(0, 60);
+}
+
+function scoreRecordRelevance(record, tokens) {
+  if (tokens.length === 0) return 0;
+  const weightedFields = [
+    [record.title, 6],
+    [record.brief, 6],
+    [record.type, 3],
+    [record.docType, 3],
+    [record.description, 3],
+    [record.usage, 3],
+    [record.sourceDescription, 2],
+    [record.markdown, 1],
+  ];
+  return weightedFields.reduce((score, [field, weight]) => {
+    const text = String(field ?? "").toLowerCase();
+    if (!text) return score;
+    return score + tokens.filter((token) => text.includes(token)).length * weight;
+  }, 0);
 }
 
 function normalizeContextRefs(contextRefs = {}) {

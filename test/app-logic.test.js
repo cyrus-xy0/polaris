@@ -291,18 +291,18 @@ describe("app logic", () => {
     });
 
     assert.equal(context.knowledge.some((record) => record.id === "k-auto"), false);
-    assert.equal(context.knowledge.some((record) => record.id === "k-global"), true);
+    assert.equal(context.knowledge.some((record) => record.id === "k-global"), false);
     assert.equal(context.skills.some((record) => record.id === "s-manual"), true);
     assert.equal(context.artifacts.some((record) => record.id === "a-manual"), true);
   });
 
-  it("keeps automatically selected AI context compact while preserving manual includes", () => {
+  it("keeps AI-selected context relevant and capped while preserving manual includes", () => {
     const context = buildAiContextForNode({
       nodes: [
         createNode({
           id: "current",
-          title: "Current",
-          description: "Current task",
+          title: "Current launch analysis",
+          description: "Current task needs launch context",
           aiActions: ["use context"],
           contextRefs: {
             include: ["skills:s-manual"],
@@ -311,9 +311,10 @@ describe("app logic", () => {
       ],
       library: {
         knowledge: Array.from({ length: 8 }, (_, index) => ({
-          id: `k-global-${index}`,
+          id: `k-launch-${index}`,
           kind: "knowledge",
-          title: `Global knowledge ${index}`,
+          title: `Launch knowledge ${index}`,
+          description: "Relevant launch context",
           relatedNodeIds: [],
         })),
         skills: [
@@ -324,15 +325,47 @@ describe("app logic", () => {
             title: `Global skill ${index}`,
             relatedNodeIds: [],
           })),
+          { id: "s-launch", kind: "skills", title: "Launch skill", description: "Relevant launch context", relatedNodeIds: [] },
         ],
         artifacts: [],
       },
       nodeId: "current",
     });
 
-    assert.equal(context.knowledge.length, 3);
-    assert.equal(context.skills.length, 4);
+    const selected = [...context.knowledge, ...context.skills, ...context.artifacts];
+    assert.equal(selected.length, 5);
     assert.equal(context.skills[0].id, "s-manual");
+    assert.equal(selected.some((record) => record.id === "s-global-0"), false);
+  });
+
+  it("keeps AI context empty after the user manually clears bound context", () => {
+    const node = createNode({
+      id: "current",
+      title: "Launch plan",
+      description: "Needs launch context",
+      contextRefs: {
+        include: [],
+        exclude: ["knowledge:k1"],
+      },
+    });
+    const context = buildAiContextForNode({
+      nodes: [node],
+      library: {
+        knowledge: [{ id: "k2", kind: "knowledge", title: "Launch knowledge", description: "Relevant launch context", relatedNodeIds: ["current"] }],
+        skills: [{ id: "s1", kind: "skills", title: "Launch skill", description: "Relevant launch context", relatedNodeIds: ["current"] }],
+        artifacts: [],
+      },
+      nodeId: "current",
+    });
+    const updated = applyWorkspaceIntelligenceToNode(
+      node,
+      { contextRefs: ["knowledge:k2", "skills:s1"] },
+      ["knowledge:k2", "skills:s1"],
+    );
+
+    assert.deepEqual(context.knowledge, []);
+    assert.deepEqual(context.skills, []);
+    assert.deepEqual(updated.contextRefs.include, []);
   });
 
   it("persists AI-selected workspace context without overriding user exclusions", () => {
