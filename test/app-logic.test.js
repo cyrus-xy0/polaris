@@ -9,6 +9,7 @@ import {
   deleteTaskNode,
   getContextCandidateRecords,
   getRecordsForNode,
+  inheritAncestorDependencies,
   moveTaskNode,
   refreshTaskPriorities,
   resolvePreparedArtifact,
@@ -114,6 +115,21 @@ describe("app logic", () => {
     const movedNodes = moveTaskNode(nodes, { nodeId: "a", targetId: "a1", position: "inside" });
 
     assert.strictEqual(movedNodes, nodes);
+  });
+
+  it("inherits dependencies from every ancestor task node", () => {
+    const nodes = [
+      createNode({ id: "root", title: "Root", dependencies: ["setup"] }),
+      createNode({ id: "setup", title: "Setup" }),
+      createNode({ id: "research", title: "Research" }),
+      createNode({ id: "a", parentId: "root", title: "A", dependencies: ["research"] }),
+      createNode({ id: "a1", parentId: "a", title: "A1" }),
+    ];
+
+    const inherited = inheritAncestorDependencies(nodes);
+
+    assert.deepEqual(inherited.find((node) => node.id === "a").dependencies, ["setup", "research"]);
+    assert.deepEqual(inherited.find((node) => node.id === "a1").dependencies, ["setup", "research"]);
   });
 
   it("removes deleted nodes from remaining dependency lists", () => {
@@ -296,7 +312,7 @@ describe("app logic", () => {
     assert.equal(context.artifacts.some((record) => record.id === "a-manual"), true);
   });
 
-  it("keeps AI-selected context relevant and capped while preserving manual includes", () => {
+  it("keeps all relevant AI-selected context while preserving manual includes", () => {
     const context = buildAiContextForNode({
       nodes: [
         createNode({
@@ -333,9 +349,26 @@ describe("app logic", () => {
     });
 
     const selected = [...context.knowledge, ...context.skills, ...context.artifacts];
-    assert.equal(selected.length, 5);
+    assert.equal(selected.length, 10);
     assert.equal(context.skills[0].id, "s-manual");
     assert.equal(selected.some((record) => record.id === "s-global-0"), false);
+  });
+
+  it("persists all valid workspace intelligence context refs", () => {
+    const refs = Array.from({ length: 8 }, (_, index) => `knowledge:k${index}`);
+    const node = createNode({
+      id: "current",
+      title: "Current",
+      description: "Current task",
+      aiActions: ["plan"],
+    });
+    const updated = applyWorkspaceIntelligenceToNode(
+      node,
+      { contextRefs: refs },
+      refs,
+    );
+
+    assert.deepEqual(updated.contextRefs.include, refs);
   });
 
   it("keeps AI context empty after the user manually clears bound context", () => {

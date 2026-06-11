@@ -1,7 +1,5 @@
 import { TASK_PRIORITIES, TASK_STATES, buildExecutableQueue, createNode, deriveEffectiveStates, indexNodes } from "./task-nodes.js";
 
-const maxAiContextRecords = 5;
-
 const studyRealCasesActions = [
   "定案例筛选口径",
   "找真实落地案例",
@@ -200,8 +198,7 @@ export function applyWorkspaceIntelligenceToNode(node, intelligence = {}, validR
   const selectedRefs = isContextManuallyCleared(currentRefs)
     ? []
     : normalizeContextRefList(intelligence.contextRefs)
-        .filter((ref) => validRefSet.has(ref) && !currentRefs.exclude.includes(ref))
-        .slice(0, maxAiContextRecords);
+        .filter((ref) => validRefSet.has(ref) && !currentRefs.exclude.includes(ref));
   const whyNow = intelligence.whyNow && typeof intelligence.whyNow === "object" ? intelligence.whyNow : {};
   return createNode({
     ...node,
@@ -262,7 +259,6 @@ export function buildAiContextForNode({ nodes = [], library = {}, nodeId, reason
         ].join(" "),
         includeRefs: contextRefs.include,
         excludeRefs: contextRefs.exclude,
-        limit: maxAiContextRecords,
       });
   const knowledge = selectedContextRecords.filter((record) => record.kind === "knowledge");
   const skills = selectedContextRecords.filter((record) => record.kind === "skills");
@@ -403,6 +399,37 @@ export function getAncestorIds(nodes, nodeId) {
   return ids;
 }
 
+export function inheritAncestorDependencies(nodes = []) {
+  const index = indexNodes(nodes);
+  const inheritedByNodeId = new Map();
+
+  const getInheritedDependencies = (node) => {
+    if (!node?.id) return [];
+    if (inheritedByNodeId.has(node.id)) return inheritedByNodeId.get(node.id);
+
+    const parent = node.parentId ? index.byId.get(node.parentId) : null;
+    const inherited = parent
+      ? [...getInheritedDependencies(parent), ...(parent.dependencies ?? [])]
+      : [];
+    const uniqueInherited = [...new Set(inherited)].filter((dependencyId) => dependencyId !== node.id);
+    inheritedByNodeId.set(node.id, uniqueInherited);
+    return uniqueInherited;
+  };
+
+  return nodes.map((node) => {
+    const dependencies = [...new Set([...getInheritedDependencies(node), ...(node.dependencies ?? [])])].filter(
+      (dependencyId) => dependencyId !== node.id,
+    );
+    if (dependencies.length === node.dependencies.length && dependencies.every((dependencyId, index) => dependencyId === node.dependencies[index])) {
+      return node;
+    }
+    return createNode({
+      ...node,
+      dependencies,
+    });
+  });
+}
+
 function getLineage(node, index) {
   const lineage = [];
   let current = node;
@@ -415,7 +442,7 @@ function getLineage(node, index) {
   return lineage;
 }
 
-function selectRelevantContextRecords({ records = [], relatedNodeIds, contextText = "", includeRefs = [], excludeRefs = [], limit = maxAiContextRecords } = {}) {
+function selectRelevantContextRecords({ records = [], relatedNodeIds, contextText = "", includeRefs = [], excludeRefs = [] } = {}) {
   const includeRefSet = new Set(includeRefs);
   const excludeRefSet = new Set(excludeRefs);
   const tokens = tokenizeContextText(contextText);
@@ -439,7 +466,6 @@ function selectRelevantContextRecords({ records = [], relatedNodeIds, contextTex
     })
     .filter(Boolean)
     .sort((a, b) => b.score - a.score || a.index - b.index)
-    .slice(0, limit)
     .map((entry) => entry.record);
 }
 

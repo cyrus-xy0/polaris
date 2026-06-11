@@ -360,6 +360,13 @@ function getCompletedTaskResultRecords() {
   return dedupeOutputRecords(taskResults);
 }
 
+function getAllOutputRecords() {
+  return dedupeOutputRecords([
+    ...getCompletedTaskResultRecords(),
+    ...(library.artifacts ?? []),
+  ]);
+}
+
 function createTaskResultRecord(node) {
   const result = node?.result;
   const url = typeof result?.url === "string" ? result.url.trim() : "";
@@ -780,9 +787,9 @@ function createContextToolbar(node, contextRecords) {
 
   const typeOptions = [
     { value: "all", label: "All" },
-    { value: "Knowledge", label: "Knowledge" },
-    { value: "Skill", label: "Skill" },
-    { value: "Artifact", label: "Artifact" },
+    { value: "knowledge", label: "Knowledge" },
+    { value: "skills", label: "Skill" },
+    { value: "artifacts", label: "Artifact" },
   ];
   const typeSelect = document.createElement("select");
   typeSelect.className = "context-type-select";
@@ -833,7 +840,7 @@ function createContextToolbar(node, contextRecords) {
 
 function createContextCandidateOptions(currentRefs, type = "all") {
   return getContextCandidateRecords()
-    .filter((entry) => type === "all" || entry.kind === type)
+    .filter((entry) => type === "all" || entry.ref.startsWith(`${type}:`))
     .filter((entry) => !currentRefs.has(entry.ref))
     .slice(0, 24)
     .map((entry) => {
@@ -845,9 +852,9 @@ function createContextCandidateOptions(currentRefs, type = "all") {
 }
 
 function getContextAddPlaceholder(type = "all") {
-  if (type === "Knowledge") return "添加 Knowledge";
-  if (type === "Skill") return "添加 Skill";
-  if (type === "Artifact") return "添加 Artifact";
+  if (type === "knowledge") return "添加 Knowledge";
+  if (type === "skills") return "添加 Skill";
+  if (type === "artifacts") return "添加 Artifact";
   return "添加 Knowledge / Skill / Artifact";
 }
 
@@ -878,12 +885,19 @@ function createContextItem(entry, node) {
 
 function getContextCandidateRecords() {
   return [
-    ...library.knowledge.map((record) => ({ kind: "Knowledge", record })),
-    ...library.skills.map((record) => ({ kind: "Skill", record })),
-    ...library.artifacts.map((record) => ({ kind: "Artifact", record })),
+    ...library.knowledge.map((record) => createContextCandidate("Knowledge", record, "knowledge")),
+    ...library.skills.map((record) => createContextCandidate("Skill", record, "skills")),
+    ...library.artifacts.map((record) => createContextCandidate("Artifact", record, "artifacts")),
   ]
     .map((entry) => ({ ...entry, ref: getRecordContextRef(entry.record), title: getContextRecordTitle(entry.record) }))
     .sort((a, b) => a.kind.localeCompare(b.kind) || a.title.localeCompare(b.title));
+}
+
+function createContextCandidate(kind, record, fallbackRecordKind) {
+  return {
+    kind,
+    record: record.kind ? record : { ...record, kind: fallbackRecordKind },
+  };
 }
 
 function formatContextCandidateValue(entry) {
@@ -2790,9 +2804,9 @@ function closeNodeEditorFromBackdrop(event) {
 }
 
 function renderMethods() {
-  const completedTaskResults = getCompletedTaskResultRecords();
+  const outputRecords = getAllOutputRecords();
 
-  elements.intermediateGrid.replaceChildren(...createArtifactCards(completedTaskResults));
+  elements.intermediateGrid.replaceChildren(...createArtifactCards(outputRecords));
   elements.skillGrid.replaceChildren(...createSkillCards(library.skills));
   elements.knowledgeGrid.replaceChildren(...createKnowledgeGroupColumns(library.knowledge));
   renderWorkbenchSectionStates();

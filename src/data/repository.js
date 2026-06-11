@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { libraryItems } from "../../data/seed/library.js";
 import { sampleNodes } from "../../data/seed/task-nodes.js";
-import { refreshTaskPriorities } from "../app-logic.js";
+import { inheritAncestorDependencies, refreshTaskPriorities } from "../app-logic.js";
 import { getDefaultDataRoot } from "../config.js";
 import { createNode, indexNodes } from "../task-nodes.js";
 
@@ -178,7 +178,7 @@ export function normalizeTaskNodes(nodes) {
 
   let normalizedNodes;
   try {
-    normalizedNodes = nodes.map((node) => createNode(node));
+    normalizedNodes = inheritAncestorDependencies(nodes.map((node) => createNode(node)));
     indexNodes(normalizedNodes);
   } catch (error) {
     throw createHttpError(400, error.message);

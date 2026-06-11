@@ -87,6 +87,32 @@ describe("local data repository", () => {
     }
   });
 
+  it("persists inherited parent dependencies on child task nodes", () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
+    const dbPath = join(dataRoot, "polaris.db");
+
+    try {
+      const repository = createRepository({ dataRoot, dbPath });
+      const savedNodes = repository.saveTaskNodes([
+        createNode({ id: "root", title: "Root", dependencies: ["setup"] }),
+        createNode({ id: "setup", title: "Setup" }),
+        createNode({ id: "research", title: "Research" }),
+        createNode({ id: "child", parentId: "root", title: "Child", dependencies: ["research"] }),
+        createNode({ id: "grandchild", parentId: "child", title: "Grandchild" }),
+      ]);
+      const child = savedNodes.find((node) => node.id === "child");
+      const grandchild = savedNodes.find((node) => node.id === "grandchild");
+      const snapshot = JSON.parse(readFileSync(join(dataRoot, "task-nodes.json"), "utf8"));
+
+      assert.deepEqual(child.dependencies, ["setup", "research"]);
+      assert.deepEqual(grandchild.dependencies, ["setup", "research"]);
+      assert.deepEqual(snapshot.nodes.find((node) => node.id === "grandchild").dependencies, ["setup", "research"]);
+      repository.close();
+    } finally {
+      rmSync(dataRoot, { recursive: true, force: true });
+    }
+  });
+
   it("initializes missing portable priority data once", () => {
     const dataRoot = mkdtempSync(join(tmpdir(), "polaris-data-"));
     const dbPath = join(dataRoot, "polaris.db");
