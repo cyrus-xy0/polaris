@@ -218,6 +218,10 @@ function createRichTextFragment(text) {
   return fragment;
 }
 
+function renderCurrentSummary(text) {
+  elements.currentSummary.replaceChildren(createRichTextFragment(text));
+}
+
 function createTreeNodeDescription(descriptionText) {
   const description = document.createElement("div");
   description.className = "tree-node-description";
@@ -308,7 +312,7 @@ function renderLoadingState() {
   renderView();
   syncAiRefreshButton(null);
   elements.currentTitle.textContent = "正在加载本地数据";
-  elements.currentSummary.textContent = "任务节点、Skill 和知识库会从本地数据层读取。";
+  renderCurrentSummary("任务节点、Skill 和知识库会从本地数据层读取。");
   elements.currentPriority.textContent = "SQLite";
   elements.currentPriority.className = "node-chip muted";
   elements.currentRank.textContent = "数据层初始化中";
@@ -327,7 +331,7 @@ function renderFatalState(error) {
   renderView();
   syncAiRefreshButton(null);
   elements.currentTitle.textContent = "本地数据加载失败";
-  elements.currentSummary.textContent = error.message;
+  renderCurrentSummary(error.message);
   elements.currentPriority.textContent = "需要检查 server";
   elements.currentPriority.className = "node-chip muted";
   elements.currentRank.textContent = "API 未就绪";
@@ -368,6 +372,13 @@ function getAllOutputRecords() {
     ...getCompletedTaskResultRecords(),
     ...(library.artifacts ?? []),
   ]);
+}
+
+function getContextLibrary() {
+  return {
+    ...library,
+    artifacts: getAllOutputRecords(),
+  };
 }
 
 function createTaskResultRecord(node) {
@@ -488,7 +499,7 @@ function renderEmptyState() {
   }
 
   elements.currentTitle.textContent = "今天的叶子任务都完成了";
-  elements.currentSummary.textContent = "可以回到目标树继续拆分，或者复盘刚才完成的判断。";
+  renderCurrentSummary("可以回到目标树继续拆分，或者复盘刚才完成的判断。");
   elements.currentPriority.textContent = "队列已清空";
   elements.currentPriority.className = "node-chip muted";
   elements.currentRank.textContent = "队列位置：无";
@@ -507,7 +518,7 @@ function renderEmptyState() {
 
 function renderFirstRunEmptyState() {
   elements.currentTitle.textContent = "创建你的 Polaris 目标";
-  elements.currentSummary.textContent = "首次部署会保留空目标树，任务节点和结果只写入你的本地数据目录。";
+  renderCurrentSummary("首次部署会保留空目标树，任务节点和结果只写入你的本地数据目录。");
   elements.currentPriority.textContent = "空数据层";
   elements.currentPriority.className = "node-chip muted";
   elements.currentRank.textContent = "等待根目标";
@@ -536,7 +547,7 @@ function renderCurrent(item, queue) {
   const { node, reason } = item;
 
   elements.currentTitle.textContent = node.title;
-  elements.currentSummary.textContent = node.description;
+  renderCurrentSummary(node.description);
   elements.currentPriority.textContent = getPriorityLabel(node.id, queue);
   elements.currentPriority.className = `node-chip ${getPriorityClass(node.id, queue)}`;
   elements.currentRank.textContent = getQueueRankLabel(node.id, queue);
@@ -554,7 +565,7 @@ function renderWorkflowIntelligence(item) {
   }
 
   const { node, reason } = item;
-  const context = buildAiContextForNode({ nodes, library, nodeId: node.id, reason });
+  const context = buildAiContextForNode({ nodes, library: getContextLibrary(), nodeId: node.id, reason });
   const dependencyCount = node.dependencies?.length ?? 0;
   const completedDependencies = getCompletedDependencyCount(node);
   const contextRecords = createContextRecords(context);
@@ -890,7 +901,7 @@ function getContextCandidateRecords() {
   return [
     ...library.knowledge.map((record) => createContextCandidate("Knowledge", record, "knowledge")),
     ...library.skills.map((record) => createContextCandidate("Skill", record, "skills")),
-    ...library.artifacts.map((record) => createContextCandidate("Artifact", record, "artifacts")),
+    ...getAllOutputRecords().map((record) => createContextCandidate("Artifact", record, "artifacts")),
   ]
     .map((entry) => ({ ...entry, ref: getRecordContextRef(entry.record), title: getContextRecordTitle(entry.record) }))
     .sort((a, b) => a.kind.localeCompare(b.kind) || a.title.localeCompare(b.title));
@@ -899,7 +910,7 @@ function getContextCandidateRecords() {
 function createContextCandidate(kind, record, fallbackRecordKind) {
   return {
     kind,
-    record: record.kind ? record : { ...record, kind: fallbackRecordKind },
+    record: { ...record, kind: fallbackRecordKind },
   };
 }
 
@@ -940,7 +951,7 @@ function getVisibleNodeContextRefs(nodeId) {
     ? queue.current
     : [...(queue.available ?? []), ...(queue.blocked ?? [])].find((candidate) => candidate.node.id === nodeId);
   const reason = item?.reason ?? "";
-  const context = buildAiContextForNode({ nodes, library, nodeId, reason });
+  const context = buildAiContextForNode({ nodes, library: getContextLibrary(), nodeId, reason });
   return createContextRecords(context).map((entry) => getRecordContextRef(entry.record));
 }
 

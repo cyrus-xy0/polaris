@@ -327,6 +327,36 @@ describe("app logic", () => {
     assert.equal(context.artifacts.some((record) => record.id === "a-manual"), true);
   });
 
+  it("allows completed task result artifacts to be manually included as context", () => {
+    const context = buildAiContextForNode({
+      nodes: [
+        createNode({
+          id: "previous",
+          title: "Previous",
+          description: "Finished task",
+          result: {
+            source: "manual",
+            title: "Previous output",
+            url: "https://example.feishu.cn/docx/previous-output",
+          },
+        }),
+        createNode({
+          id: "current",
+          title: "Current",
+          description: "Use prior output",
+          contextRefs: {
+            include: ["artifacts:task-result-previous"],
+          },
+        }),
+      ],
+      library: { knowledge: [], skills: [], artifacts: [] },
+      nodeId: "current",
+    });
+
+    assert.equal(context.artifacts.some((record) => record.id === "task-result-previous"), true);
+    assert.equal(context.artifacts[0].title, "Previous output");
+  });
+
   it("keeps all relevant AI-selected context while preserving manual includes", () => {
     const context = buildAiContextForNode({
       nodes: [
@@ -427,11 +457,23 @@ describe("app logic", () => {
         exclude: ["skills:s2"],
       },
     });
-    const candidates = getContextCandidateRecords({
-      knowledge: [{ id: "k1", kind: "knowledge", title: "Keep", relatedNodeIds: [] }],
-      skills: [{ id: "s2", kind: "skills", title: "Excluded", relatedNodeIds: [] }],
-      artifacts: [{ id: "a3", kind: "artifacts", title: "Artifact", relatedNodeIds: [] }],
-    });
+    const candidates = getContextCandidateRecords(
+      {
+        knowledge: [{ id: "k1", kind: "knowledge", title: "Keep", relatedNodeIds: [] }],
+        skills: [{ id: "s2", kind: "skills", title: "Excluded", relatedNodeIds: [] }],
+        artifacts: [{ id: "a3", kind: "artifacts", title: "Artifact", relatedNodeIds: [] }],
+      },
+      [
+        createNode({
+          id: "done-task",
+          title: "Done task",
+          result: {
+            title: "Done task output",
+            url: "https://example.feishu.cn/docx/done-task-output",
+          },
+        }),
+      ],
+    );
     const updated = applyWorkspaceIntelligenceToNode(
       node,
       {
@@ -448,6 +490,7 @@ describe("app logic", () => {
 
     assert.deepEqual(updated.contextRefs.include, ["knowledge:k1", "artifacts:a3"]);
     assert.deepEqual(updated.contextRefs.exclude, ["skills:s2"]);
+    assert.equal(candidates.some((candidate) => candidate.ref === "artifacts:task-result-done-task"), true);
     assert.equal(updated.aiInsights.whyNow.provider, "hermes");
     assert.deepEqual(updated.aiInsights.whyNow.tags, [{ text: "方向先定", tone: "strong" }]);
   });

@@ -319,7 +319,7 @@ async function handleApiRequest(request, response) {
       const queueItem = queue.available.find((item) => item.node.id === nodeId);
       const reason = queueItem?.reason ?? "";
       const library = repository.getLibrary();
-      const contextCandidates = getContextCandidateRecords(library);
+      const contextCandidates = getContextCandidateRecords(library, nodes);
       const aiContext = buildAiContextForNode({ nodes, library, nodeId, reason });
       const generated = await generateWorkspaceIntelligence({
         node,

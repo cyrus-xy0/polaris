@@ -173,12 +173,26 @@ export function getAllRecords(library) {
   return [...(library.knowledge ?? []), ...(library.skills ?? []), ...(library.artifacts ?? [])];
 }
 
+export function getAllContextRecords(library = {}, nodes = []) {
+  const records = [
+    ...getAllRecords(library),
+    ...(nodes ?? []).map(createTaskResultArtifactRecord).filter(Boolean),
+  ];
+  const seen = new Set();
+  return records.filter((record) => {
+    const ref = getRecordContextRef(record);
+    if (seen.has(ref)) return false;
+    seen.add(ref);
+    return true;
+  });
+}
+
 export function getRecordsForNode(library, nodeId) {
   return getAllRecords(library).filter((item) => item.relatedNodeIds?.includes(nodeId));
 }
 
-export function getContextCandidateRecords(library = {}) {
-  return getAllRecords(library).map((record) => ({
+export function getContextCandidateRecords(library = {}, nodes = []) {
+  return getAllContextRecords(library, nodes).map((record) => ({
     ref: getRecordContextRef(record),
     id: record.id,
     kind: record.kind,
@@ -247,7 +261,7 @@ export function buildAiContextForNode({ nodes = [], library = {}, nodeId, reason
   const selectedContextRecords = isContextManuallyCleared(contextRefs)
     ? []
     : selectRelevantContextRecords({
-        records: getAllRecords(library),
+        records: getAllContextRecords(library, nodes),
         relatedNodeIds,
         contextText: [
           node.title,
@@ -522,6 +536,40 @@ function getRecordContextRef(record) {
 
 function getContextRecordTitle(record) {
   return record.brief || record.title || record.description || record.type || record.docType || "未命名上下文";
+}
+
+function createTaskResultArtifactRecord(node) {
+  const result = node?.result;
+  const url = typeof result?.url === "string" ? result.url.trim() : "";
+  if (!node || !url) return null;
+
+  const source = typeof result.source === "string" && result.source.trim() ? result.source.trim() : "task-result";
+  return {
+    id: `task-result-${node.id}`,
+    kind: "artifacts",
+    source,
+    docType:
+      typeof result.docType === "string" && result.docType.trim()
+        ? result.docType.trim()
+        : source === "manual"
+          ? "手动链接"
+          : "AI 结果",
+    title:
+      typeof result.title === "string" && result.title.trim()
+        ? result.title.trim()
+        : `${node.title ?? "任务"} 结果`,
+    description:
+      typeof result.description === "string" && result.description.trim()
+        ? result.description.trim()
+        : source === "manual"
+          ? "用户完成任务时绑定的结果链接。"
+          : "完成任务时生成并绑定的 AI 结果。",
+    url,
+    path: result.path,
+    relatedNodeIds: [node.id],
+    taskTitle: node.title,
+    isTaskResult: true,
+  };
 }
 
 function normalizeWhyNowTags(value) {
