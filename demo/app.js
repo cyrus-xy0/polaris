@@ -2210,7 +2210,10 @@ function getTreePanContainer() {
 }
 
 function isTreePanInteractiveTarget(target) {
-  return isTreeDragInteractiveTarget(target);
+  return (
+    target instanceof Element &&
+    Boolean(target.closest(".tree-node-card, button, a, input, textarea, select, [contenteditable='true']"))
+  );
 }
 
 function startTreePan(event) {
@@ -2225,9 +2228,7 @@ function startTreePan(event) {
     scrollLeft: scrollContainer.scrollLeft,
     scrollTop: scrollContainer.scrollTop,
     didPan: false,
-    suppressedDragCard: event.target instanceof Element ? event.target.closest(".tree-node-card[draggable='true']") : null,
   };
-  treePanState.suppressedDragCard?.setAttribute("draggable", "false");
   scrollContainer.setPointerCapture?.(event.pointerId);
 }
 
@@ -2251,7 +2252,6 @@ function finishTreePan(event) {
   if (!treePanState || event.pointerId !== treePanState.pointerId) return;
 
   const didPan = treePanState.didPan;
-  treePanState.suppressedDragCard?.setAttribute("draggable", "true");
   treePanState = null;
   scrollContainer?.releasePointerCapture?.(event.pointerId);
   scrollContainer?.classList.remove("is-panning");
