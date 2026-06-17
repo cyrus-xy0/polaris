@@ -70,6 +70,21 @@ describe("app logic", () => {
     assert.deepEqual(rootChildren, ["c", "a", "b"]);
   });
 
+  it("reorders sibling task nodes by moving a node after the target subtree", () => {
+    const nodes = [
+      createNode({ id: "root", title: "Root" }),
+      createNode({ id: "a", parentId: "root", title: "A" }),
+      createNode({ id: "a1", parentId: "a", title: "A1" }),
+      createNode({ id: "b", parentId: "root", title: "B" }),
+      createNode({ id: "c", parentId: "root", title: "C" }),
+    ];
+
+    const movedNodes = moveTaskNode(nodes, { nodeId: "c", targetId: "a", position: "after" });
+    const rootChildren = buildTree(movedNodes)[0].children.map((node) => node.id);
+
+    assert.deepEqual(rootChildren, ["a", "c", "b"]);
+  });
+
   it("moves a nested task node before a target sibling under another parent", () => {
     const nodes = [
       createNode({ id: "root", title: "Root" }),

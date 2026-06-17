@@ -50,6 +50,9 @@ let nodeEditorDependencyQuery = "";
 let nodeEditorBackdropPointerStarted = false;
 let draggingTreeNodeId = null;
 let treeDropTarget = null;
+let treePanState = null;
+let suppressNextTreeClick = false;
+let suppressTreeClickTimer = null;
 let refreshingAiNodeId = null;
 const aiAnalyzingText = "AI 正在分析";
 const newRootNodeTitle = "新的 Polaris 目标";
@@ -2202,6 +2205,80 @@ function isTreeDragInteractiveTarget(target) {
   return target instanceof Element && Boolean(target.closest("button, a, input, textarea, select, [contenteditable='true']"));
 }
 
+function getTreePanContainer() {
+  return elements.treeMap?.parentElement ?? null;
+}
+
+function isTreePanInteractiveTarget(target) {
+  return isTreeDragInteractiveTarget(target);
+}
+
+function startTreePan(event) {
+  const scrollContainer = getTreePanContainer();
+  if (!scrollContainer || event.button !== 0 || isTreePanInteractiveTarget(event.target)) return;
+  if (event.target instanceof Element && event.target.closest(".node-editor-drawer, .markdown-editor")) return;
+
+  treePanState = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    scrollLeft: scrollContainer.scrollLeft,
+    scrollTop: scrollContainer.scrollTop,
+    didPan: false,
+    suppressedDragCard: event.target instanceof Element ? event.target.closest(".tree-node-card[draggable='true']") : null,
+  };
+  treePanState.suppressedDragCard?.setAttribute("draggable", "false");
+  scrollContainer.setPointerCapture?.(event.pointerId);
+}
+
+function moveTreePan(event) {
+  const scrollContainer = getTreePanContainer();
+  if (!scrollContainer || !treePanState || event.pointerId !== treePanState.pointerId) return;
+
+  const deltaX = event.clientX - treePanState.startX;
+  const deltaY = event.clientY - treePanState.startY;
+  if (!treePanState.didPan && Math.hypot(deltaX, deltaY) < 5) return;
+
+  treePanState.didPan = true;
+  scrollContainer.classList.add("is-panning");
+  scrollContainer.scrollLeft = treePanState.scrollLeft - deltaX;
+  scrollContainer.scrollTop = treePanState.scrollTop - deltaY;
+  event.preventDefault();
+}
+
+function finishTreePan(event) {
+  const scrollContainer = getTreePanContainer();
+  if (!treePanState || event.pointerId !== treePanState.pointerId) return;
+
+  const didPan = treePanState.didPan;
+  treePanState.suppressedDragCard?.setAttribute("draggable", "true");
+  treePanState = null;
+  scrollContainer?.releasePointerCapture?.(event.pointerId);
+  scrollContainer?.classList.remove("is-panning");
+
+  if (didPan) {
+    suppressNextTreeClick = true;
+    if (suppressTreeClickTimer) window.clearTimeout(suppressTreeClickTimer);
+    suppressTreeClickTimer = window.setTimeout(() => {
+      suppressNextTreeClick = false;
+      suppressTreeClickTimer = null;
+    }, 160);
+    event.preventDefault();
+    event.stopPropagation();
+  }
+}
+
+function cancelTreeClickAfterPan(event) {
+  if (!suppressNextTreeClick) return;
+  suppressNextTreeClick = false;
+  if (suppressTreeClickTimer) {
+    window.clearTimeout(suppressTreeClickTimer);
+    suppressTreeClickTimer = null;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+}
+
 function startTreeNodeDrag(event, nodeId) {
   if (isTreeDragInteractiveTarget(event.target)) {
     event.preventDefault();
@@ -2303,10 +2380,10 @@ function getTreeNodeDropPosition(event, card, targetId) {
   const rect = card.getBoundingClientRect();
   const xRatio = (event.clientX - rect.left) / Math.max(rect.width, 1);
   const yRatio = (event.clientY - rect.top) / Math.max(rect.height, 1);
-  if (xRatio < 0.24 || (xRatio < 0.38 && yRatio > 0.18 && yRatio < 0.82)) return "before";
-  if (xRatio > 0.76 || (xRatio > 0.62 && yRatio > 0.18 && yRatio < 0.82)) return "after";
-  if (yRatio < 0.2) return "before";
-  if (yRatio > 0.8) return "after";
+  if (xRatio < 0.32) return "before";
+  if (xRatio > 0.56) return "after";
+  if (yRatio < 0.16) return "before";
+  if (yRatio > 0.84) return "after";
   return "inside";
 }
 
@@ -2557,18 +2634,19 @@ function createTreeResultLink(record) {
 
 function createTreeDependencyTag(kind, relatedNodes) {
   const count = relatedNodes.length;
-  const label = kind === "before" ? "前置" : "后置";
+  const label = kind === "before" ? "前置节点" : "后置节点";
+  const relationDescription = kind === "before" ? "依赖这些节点的结果" : "这些节点依赖当前节点的结果";
   const tag = document.createElement("span");
   tag.className = [
     "tree-node-dependency-tag",
     kind === "before" ? "is-before" : "is-after",
     count > 0 ? "has-related-nodes" : "has-no-related-nodes",
   ].join(" ");
-  tag.textContent = count > 0 ? `${label} ${count}` : `无${label}`;
+  tag.textContent = count > 0 ? `有${label}` : `无${label}`;
   tag.title =
     count > 0
-      ? `${label}节点：${relatedNodes.map((relatedNode) => relatedNode.title).join("、")}`
-      : `没有${label}节点`;
+      ? `${relationDescription}：${relatedNodes.map((relatedNode) => relatedNode.title).join("、")}（共 ${count} 个）`
+      : `没有${label}`;
   tag.ariaLabel = tag.title;
   return tag;
 }
@@ -3373,6 +3451,11 @@ elements.nodeEditorDependencySearch.addEventListener("keydown", (event) => {
 elements.nodeEditorClose.addEventListener("click", closeNodeEditor);
 elements.nodeEditorDrawer.addEventListener("pointerdown", rememberNodeEditorBackdropPointer);
 elements.nodeEditorDrawer.addEventListener("click", closeNodeEditorFromBackdrop);
+getTreePanContainer()?.addEventListener("pointerdown", startTreePan);
+getTreePanContainer()?.addEventListener("pointermove", moveTreePan);
+getTreePanContainer()?.addEventListener("pointerup", finishTreePan);
+getTreePanContainer()?.addEventListener("pointercancel", finishTreePan);
+getTreePanContainer()?.addEventListener("click", cancelTreeClickAfterPan, true);
 elements.manualResultUrl.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();

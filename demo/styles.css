@@ -5330,7 +5330,18 @@ body {
   height: calc(100vh - 126px);
   min-height: 0;
   max-height: calc(100vh - 126px);
+  cursor: grab;
   overflow: auto;
+  touch-action: none;
+  user-select: none;
+}
+
+#tree-view .tree-only.is-panning {
+  cursor: grabbing;
+}
+
+#tree-view .tree-only.is-panning .tree-node-card {
+  cursor: grabbing;
 }
 
 @media (max-width: 1180px) {
