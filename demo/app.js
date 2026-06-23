@@ -33,6 +33,7 @@ let autoFilledResultUrl = "";
 const expandedKnowledgeGroups = new Set();
 const collapsedKnowledgeGroups = new Set();
 const collapsedWorkbenchSections = new Set(readCollapsedWorkbenchSections());
+const expandedWorkbenchCatalogs = new Set();
 let nodeEditorFeedback = null;
 let nodeEditorDraft = null;
 let isNodeEditorOpen = false;
@@ -2897,21 +2898,25 @@ function closeNodeEditorFromBackdrop(event) {
 
 function renderMethods() {
   const outputRecords = getAllOutputRecords();
+  const isOutputExpanded = expandedWorkbenchCatalogs.has("output");
+  const isSkillExpanded = expandedWorkbenchCatalogs.has("skill");
 
   updateWorkbenchStats(outputRecords, library.skills, library.knowledge);
-  updateWorkbenchDensity(outputRecords, library.skills, library.knowledge);
-  elements.intermediateGrid.replaceChildren(...createArtifactCards(outputRecords));
-  elements.skillGrid.replaceChildren(...createSkillCards(library.skills));
+  updateWorkbenchDensity(outputRecords, library.skills, library.knowledge, { isOutputExpanded, isSkillExpanded });
+  elements.intermediateGrid.replaceChildren(...createArtifactCards(outputRecords, { expanded: isOutputExpanded }));
+  elements.skillGrid.replaceChildren(...createSkillCards(library.skills, { expanded: isSkillExpanded }));
   elements.knowledgeGrid.replaceChildren(...createKnowledgeGroupColumns(library.knowledge));
   renderWorkbenchSectionStates();
 }
 
-function updateWorkbenchDensity(artifacts, skills, knowledge) {
+function updateWorkbenchDensity(artifacts, skills, knowledge, options = {}) {
   const outputSection = elements.intermediateGrid?.closest("[data-workbench-section='output']");
   const skillSection = elements.skillGrid?.closest("[data-workbench-section='skill']");
   const knowledgeSection = elements.knowledgeGrid?.closest("[data-workbench-section='knowledge']");
   outputSection?.classList.toggle("is-dense", artifacts.length >= 8);
+  outputSection?.classList.toggle("is-catalog-expanded", Boolean(options.isOutputExpanded));
   skillSection?.classList.toggle("is-dense", skills.length >= 5);
+  skillSection?.classList.toggle("is-catalog-expanded", Boolean(options.isSkillExpanded));
   knowledgeSection?.classList.toggle("is-dense", knowledge.length >= 6);
 }
 
@@ -2981,9 +2986,13 @@ function writeCollapsedWorkbenchSections() {
   }
 }
 
-function createArtifactCards(items) {
+function createArtifactCards(items, options = {}) {
   if (items.length > 0) {
-    return [...items.map(createArtifactCard), createCatalogFooter("查看全部产物")];
+    const footerLabel = options.expanded ? "收起产物" : "查看全部产物";
+    return [
+      ...items.map(createArtifactCard),
+      createCatalogFooter(footerLabel, () => toggleWorkbenchCatalog("output"), options.expanded),
+    ];
   }
 
   const empty = document.createElement("article");
@@ -2992,11 +3001,24 @@ function createArtifactCards(items) {
   return [empty];
 }
 
-function createCatalogFooter(label) {
-  const footer = document.createElement("div");
+function createCatalogFooter(label, onClick, expanded = false) {
+  const footer = document.createElement("button");
   footer.className = "catalog-stream-footer";
+  footer.type = "button";
   footer.textContent = `${label} ->`;
+  footer.setAttribute("aria-expanded", String(expanded));
+  footer.addEventListener("click", onClick);
   return footer;
+}
+
+function toggleWorkbenchCatalog(catalogName) {
+  if (!catalogName) return;
+  if (expandedWorkbenchCatalogs.has(catalogName)) {
+    expandedWorkbenchCatalogs.delete(catalogName);
+  } else {
+    expandedWorkbenchCatalogs.add(catalogName);
+  }
+  renderMethods();
 }
 
 function createArtifactCard(item) {
@@ -3056,10 +3078,14 @@ function getArtifactTypeLabel(item) {
   return rawType.replace(/^飞书\s*/i, "").replace(/^手动\s*/i, "") || "Link";
 }
 
-function createSkillCards(items) {
+function createSkillCards(items, options = {}) {
   if (items.length > 0) {
-    const visibleItems = items.slice(0, 3);
-    return [...visibleItems.map((item, index) => createSkillCard(item, { showType: false, index })), createCatalogFooter("查看全部能力")];
+    const visibleItems = options.expanded ? items : items.slice(0, 3);
+    const footerLabel = options.expanded ? "收起能力" : "查看全部能力";
+    return [
+      ...visibleItems.map((item, index) => createSkillCard(item, { showType: false, index })),
+      createCatalogFooter(footerLabel, () => toggleWorkbenchCatalog("skill"), options.expanded),
+    ];
   }
 
   const empty = document.createElement("article");
