@@ -177,10 +177,12 @@
         <div class="knowledge-layout knowledge-workbench">
           <section class="knowledge-section current-result-section glass" data-workbench-section="output">
             <div class="canvas-header">
-              <div>
+              <div class="section-title">
                 <p class="panel-kicker">Artifacts</p>
-                <h2>产物索引</h2>
+                <h2>产物流</h2>
+                <p class="section-brief">按任务沉淀输出，支持长列表快速扫描与跳转。</p>
               </div>
+              <span class="section-stat" id="artifact-stat">0 条</span>
               <button
                 class="section-collapse-toggle"
                 type="button"
@@ -196,10 +198,12 @@
 
           <section class="knowledge-section skill-section glass" data-workbench-section="skill">
             <div class="canvas-header">
-              <div>
+              <div class="section-title">
                 <p class="panel-kicker">Skill</p>
-                <h2>可调用能力</h2>
+                <h2>能力工具箱</h2>
+                <p class="section-brief">少量高频方法，作为执行节点可复用的工具。</p>
               </div>
+              <span class="section-stat" id="skill-stat">0 条</span>
               <button
                 class="section-collapse-toggle"
                 type="button"
@@ -215,10 +219,12 @@
 
           <section class="knowledge-section reusable-knowledge-section glass" data-workbench-section="knowledge">
             <div class="canvas-header">
-              <div>
+              <div class="section-title">
                 <p class="panel-kicker">Knowledge</p>
-                <h2>可复用知识索引</h2>
+                <h2>知识地图</h2>
+                <p class="section-brief">左侧看行业判断，右侧看可执行方法和实践轨道。</p>
               </div>
+              <span class="section-stat" id="knowledge-stat">0 条</span>
               <button
                 class="section-collapse-toggle"
                 type="button"

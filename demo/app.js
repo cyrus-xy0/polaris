@@ -99,6 +99,9 @@ const elements = {
   knowledgeGrid: document.querySelector("#knowledge-grid"),
   skillGrid: document.querySelector("#skill-grid"),
   intermediateGrid: document.querySelector("#intermediate-grid"),
+  artifactStat: document.querySelector("#artifact-stat"),
+  skillStat: document.querySelector("#skill-stat"),
+  knowledgeStat: document.querySelector("#knowledge-stat"),
   workbenchSections: [...document.querySelectorAll("[data-workbench-section]")],
   workbenchToggles: [...document.querySelectorAll("[data-workbench-toggle]")],
   markdownEditor: document.querySelector("#markdown-editor"),
@@ -2895,10 +2898,28 @@ function closeNodeEditorFromBackdrop(event) {
 function renderMethods() {
   const outputRecords = getAllOutputRecords();
 
+  updateWorkbenchStats(outputRecords, library.skills, library.knowledge);
+  updateWorkbenchDensity(outputRecords, library.skills, library.knowledge);
   elements.intermediateGrid.replaceChildren(...createArtifactCards(outputRecords));
   elements.skillGrid.replaceChildren(...createSkillCards(library.skills));
   elements.knowledgeGrid.replaceChildren(...createKnowledgeGroupColumns(library.knowledge));
   renderWorkbenchSectionStates();
+}
+
+function updateWorkbenchDensity(artifacts, skills, knowledge) {
+  const outputSection = elements.intermediateGrid?.closest("[data-workbench-section='output']");
+  const skillSection = elements.skillGrid?.closest("[data-workbench-section='skill']");
+  const knowledgeSection = elements.knowledgeGrid?.closest("[data-workbench-section='knowledge']");
+  outputSection?.classList.toggle("is-dense", artifacts.length >= 8);
+  skillSection?.classList.toggle("is-dense", skills.length >= 5);
+  knowledgeSection?.classList.toggle("is-dense", knowledge.length >= 6);
+}
+
+function updateWorkbenchStats(artifacts, skills, knowledge) {
+  const knowledgeGroups = groupItemsByType(knowledge);
+  if (elements.artifactStat) elements.artifactStat.textContent = `${artifacts.length} 条`;
+  if (elements.skillStat) elements.skillStat.textContent = `${skills.length} 条`;
+  if (elements.knowledgeStat) elements.knowledgeStat.textContent = `${knowledge.length} 条 · ${knowledgeGroups.length} 类`;
 }
 
 function renderWorkbenchSectionStates() {
@@ -2961,7 +2982,9 @@ function writeCollapsedWorkbenchSections() {
 }
 
 function createArtifactCards(items) {
-  if (items.length > 0) return items.map(createArtifactCard);
+  if (items.length > 0) {
+    return [...items.map(createArtifactCard), createCatalogFooter("查看全部产物")];
+  }
 
   const empty = document.createElement("article");
   empty.className = "artifact-card catalog-empty";
@@ -2969,38 +2992,57 @@ function createArtifactCards(items) {
   return [empty];
 }
 
+function createCatalogFooter(label) {
+  const footer = document.createElement("div");
+  footer.className = "catalog-stream-footer";
+  footer.textContent = `${label} ->`;
+  return footer;
+}
+
 function createArtifactCard(item) {
   const card = document.createElement("article");
   card.className = "artifact-card method-card output-result-card";
 
-  const header = document.createElement("div");
-  header.className = "output-result-header";
+  const icon = document.createElement("span");
+  icon.className = `artifact-row-icon is-${getArtifactTypeLabel(item).toLowerCase()}`;
+  icon.textContent = getArtifactTypeIcon(item);
+
+  const body = document.createElement("div");
+  body.className = "artifact-row-body";
 
   const taskTitle = document.createElement("p");
   taskTitle.className = "output-task-name";
   taskTitle.textContent = item.taskTitle ?? getNodeTitle(item.relatedNodeIds?.[0]);
 
+  const source = document.createElement("p");
+  source.className = "artifact-row-source";
+  source.textContent = item.title || "飞书 / Doc";
+
+  body.append(taskTitle, source);
+
   const typeTag = document.createElement("span");
   typeTag.className = "output-doc-type";
   typeTag.textContent = getArtifactTypeLabel(item);
-
-  header.append(taskTitle, typeTag);
 
   const link = document.createElement("a");
   link.className = "output-doc-link";
   link.href = item.url;
   link.target = "_blank";
   link.rel = "noreferrer";
-  link.textContent = getArtifactLinkLabel(item);
+  link.textContent = "打开";
   link.title = `打开结果：${item.title}`;
 
-  card.append(header, link);
+  card.append(icon, body, typeTag, link);
   return card;
 }
 
-function getArtifactLinkLabel(item) {
-  const docType = item.docType || "结果文档";
-  return `查看${docType}`;
+function getArtifactTypeIcon(item) {
+  const type = getArtifactTypeLabel(item);
+  if (type === "Base") return "B";
+  if (type === "Sheet") return "S";
+  if (type === "HTML") return "H";
+  if (type === "Doc") return "D";
+  return "L";
 }
 
 function getArtifactTypeLabel(item) {
@@ -3015,7 +3057,10 @@ function getArtifactTypeLabel(item) {
 }
 
 function createSkillCards(items) {
-  if (items.length > 0) return items.map((item) => createSkillCard(item, { showType: false }));
+  if (items.length > 0) {
+    const visibleItems = items.slice(0, 3);
+    return [...visibleItems.map((item, index) => createSkillCard(item, { showType: false, index })), createCatalogFooter("查看全部能力")];
+  }
 
   const empty = document.createElement("article");
   empty.className = "catalog-empty";
@@ -3024,7 +3069,34 @@ function createSkillCards(items) {
 }
 
 function createSkillCard(item, options = {}) {
-  return createEditableIndexCard(item, "skill-card", options);
+  const card = document.createElement("article");
+  card.className = "method-card index-card skill-card is-md-file";
+  card.role = "button";
+  card.tabIndex = 0;
+
+  const icon = document.createElement("span");
+  icon.className = "skill-card-icon";
+  icon.textContent = `S${(options.index ?? 0) + 1}`;
+
+  const body = document.createElement("div");
+  body.className = "skill-card-body";
+
+  const title = document.createElement("h3");
+  title.textContent = item.title;
+
+  const description = document.createElement("p");
+  description.textContent = item.description;
+
+  body.append(title, description);
+  card.append(icon, body);
+  card.addEventListener("click", () => openMarkdownEditor(item));
+  card.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openMarkdownEditor(item);
+    }
+  });
+  return card;
 }
 
 function createKnowledgeGroups(items) {
@@ -3038,47 +3110,41 @@ function createKnowledgeGroups(items) {
 }
 
 function createKnowledgeGroupColumns(items) {
-  const cards = createKnowledgeGroups(items);
-  if (cards.length <= 1 || cards.some((card) => card.classList.contains("catalog-empty"))) {
-    return cards;
-  }
-
-  const columns = [document.createElement("div"), document.createElement("div")];
-  columns.forEach((column) => {
-    column.className = "knowledge-column";
-  });
-
-  cards.forEach((card, index) => {
-    columns[index % columns.length].append(card);
-  });
-
-  return columns;
+  return createKnowledgeGroups(items);
 }
 
 function groupItemsByType(items) {
-  const groups = new Map();
+  const lanes = {
+    insight: [],
+    practice: [],
+    general: [],
+  };
   for (const item of items) {
-    const type = item.type || "未分类";
-    if (!groups.has(type)) groups.set(type, []);
-    groups.get(type).push(item);
+    lanes[getKnowledgeGroupRole(item.type)].push(item);
   }
 
-  return [...groups.entries()].map(([type, groupItems]) => ({
-    type,
-    items: groupItems,
-  }));
+  if (lanes.insight.length === 0 && lanes.practice.length > 2) {
+    lanes.insight = lanes.practice.slice(0, 2);
+    lanes.practice = lanes.practice.slice(2);
+  }
+
+  return [
+    { type: "industry-insights", items: lanes.insight, role: "insight" },
+    { type: "methods-and-practices", items: [...lanes.practice, ...lanes.general], role: "practice" },
+  ].filter((group) => group.items.length > 0);
 }
 
 function createKnowledgeGroupCard(group) {
   const isCollapsed = collapsedKnowledgeGroups.has(group.type);
   const isExpanded = expandedKnowledgeGroups.has(group.type);
-  const visibleLimit = 4;
+  const visibleLimit = getKnowledgeVisibleLimit(group);
   const visibleItems = isCollapsed ? [] : isExpanded ? group.items : group.items.slice(0, visibleLimit);
   const hiddenCount = Math.max(0, group.items.length - visibleItems.length);
 
   const cluster = document.createElement("article");
-  cluster.className = `knowledge-cluster ${getKnowledgeGroupClass(group.type)} ${isExpanded ? "is-open" : ""} ${isCollapsed ? "is-collapsed" : ""}`;
+  cluster.className = `knowledge-cluster knowledge-lane ${getKnowledgeGroupClass(group.type)} is-${group.role} ${isExpanded ? "is-open" : ""} ${isCollapsed ? "is-collapsed" : ""}`;
   cluster.dataset.groupType = group.type;
+  cluster.dataset.groupRole = group.role;
 
   const header = document.createElement("div");
   header.className = "knowledge-cluster-header";
@@ -3095,15 +3161,19 @@ function createKnowledgeGroupCard(group) {
     toggleKnowledgeGroupCollapsed(group.type);
   });
 
+  const laneIcon = document.createElement("span");
+  laneIcon.className = "knowledge-lane-icon";
+  laneIcon.textContent = group.role === "insight" ? "IN" : "PR";
+
   const heading = document.createElement("div");
   heading.className = "knowledge-cluster-heading";
 
   const label = document.createElement("span");
   label.className = "knowledge-cluster-label";
-  label.textContent = getKnowledgeGroupHeaderLabel(group.type);
+  label.textContent = getKnowledgeLaneLabel(group);
 
   const title = document.createElement("h3");
-  title.textContent = getKnowledgeGroupTitle(group);
+  title.textContent = getKnowledgeLaneTitle(group);
 
   heading.append(label, title);
 
@@ -3149,15 +3219,27 @@ function createKnowledgeGroupCard(group) {
     meta.append(toggle);
   }
 
-  header.append(heading, summary, meta);
+  header.append(laneIcon, heading, summary, meta);
 
   const list = document.createElement("div");
   list.className = "knowledge-entry-list";
   list.hidden = isCollapsed;
-  list.replaceChildren(...visibleItems.map((item) => createKnowledgeCard(item)));
+  list.replaceChildren(...visibleItems.map((item, index) => createKnowledgeCard(item, { index, role: group.role })));
 
   cluster.append(header, list);
   return cluster;
+}
+
+function getKnowledgeLaneLabel(group) {
+  if (group.role === "insight") return "行业洞察";
+  if (group.role === "practice") return "方法实践";
+  return getKnowledgeGroupHeaderLabel(group.type);
+}
+
+function getKnowledgeLaneTitle(group) {
+  if (group.role === "insight") return "行业洞察与判断";
+  if (group.role === "practice") return "方法论与实践轨道";
+  return getKnowledgeGroupTitle(group);
 }
 
 function getKnowledgeGroupTitle(group) {
@@ -3174,8 +3256,40 @@ function getKnowledgeSourceCount(group) {
   return paths.size || 1;
 }
 
+function getKnowledgeVisibleLimit(group) {
+  if (group.role === "insight") return 2;
+  if (group.role === "practice") return 5;
+  return 4;
+}
+
+function getKnowledgeGroupPriority(role) {
+  if (role === "insight") return 1;
+  if (role === "practice") return 2;
+  return 3;
+}
+
+function getKnowledgeGroupRole(type) {
+  const normalized = String(type ?? "").toLowerCase();
+  if (normalized.includes("行业") || normalized.includes("洞察") || normalized.includes("insight") || normalized.includes("industry")) return "insight";
+  if (
+    normalized.includes("方法") ||
+    normalized.includes("实践") ||
+    normalized.includes("method") ||
+    normalized.includes("practice") ||
+    normalized.includes("workflow") ||
+    normalized.includes("agent") ||
+    normalized.includes("application") ||
+    normalized.includes("principle") ||
+    normalized.includes("rule")
+  ) return "practice";
+  return "general";
+}
+
 function getKnowledgeGroupClass(type) {
   const normalized = String(type ?? "").toLowerCase();
+  const role = getKnowledgeGroupRole(type);
+  if (role === "insight") return "is-insight";
+  if (role === "practice") return "is-practice";
   if (normalized.includes("workflow")) return "is-workflow";
   if (normalized.includes("agent")) return "is-agent";
   if (normalized.includes("application")) return "is-application";
@@ -3308,7 +3422,17 @@ function createKnowledgeCard(item, options = {}) {
   title.textContent = knowledgeTitle;
 
   body.append(title);
-  card.append(meta, body);
+
+  if (options.role === "insight") {
+    card.append(body, meta);
+  } else if (options.role === "practice") {
+    const index = document.createElement("span");
+    index.className = "knowledge-row-index";
+    index.textContent = String((options.index ?? 0) + 1).padStart(2, "0");
+    card.append(index, body, meta);
+  } else {
+    card.append(meta, body);
+  }
   card.addEventListener("click", () => openMarkdownEditor(item));
   card.addEventListener("keydown", (event) => {
     if (event.key === "Enter" || event.key === " ") {

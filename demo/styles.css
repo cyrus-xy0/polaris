@@ -5394,17 +5394,76 @@ body {
 
 /* Playbook QA: turn text-heavy libraries into scannable categorized indexes. */
 #methods-view .knowledge-layout {
-  align-items: start;
+  align-items: stretch;
+  grid-template-columns: minmax(620px, 1.48fr) minmax(360px, 0.72fr);
+  grid-template-rows: auto auto;
+  gap: 16px;
 }
 
 #methods-view .knowledge-section {
+  min-height: 0;
   overflow: hidden;
+  padding: 18px;
 }
 
 #methods-view .knowledge-section .canvas-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: start;
+  gap: 10px;
   margin-bottom: 14px;
   padding-bottom: 12px;
-  border-bottom: 1px solid rgba(36, 75, 42, 0.14);
+  border-bottom: 1px solid rgba(36, 75, 42, 0.12);
+}
+
+#methods-view .section-title {
+  min-width: 0;
+}
+
+#methods-view .section-brief {
+  max-width: 560px;
+  margin: 6px 0 0;
+  color: rgba(29, 35, 25, 0.52);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+#methods-view .section-stat {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(36, 75, 42, 0.14);
+  border-radius: 6px;
+  color: rgba(36, 75, 42, 0.76);
+  background: rgba(255, 249, 236, 0.74);
+  font-size: 11px;
+  font-weight: 820;
+  white-space: nowrap;
+}
+
+#methods-view .current-result-section {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: start;
+}
+
+#methods-view .current-result-section.is-dense {
+  align-self: start;
+}
+
+#methods-view .skill-section {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+}
+
+#methods-view .reusable-knowledge-section {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  margin-top: 0;
+  align-self: start;
 }
 
 #methods-view .knowledge-section .panel-kicker {
@@ -5446,9 +5505,46 @@ body {
 
 #methods-view .reusable-knowledge-section .knowledge-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(280px, 1fr));
+  grid-template-columns: minmax(320px, 0.72fr) minmax(540px, 1.28fr);
   gap: 14px;
   align-items: start;
+  max-height: none;
+  padding-right: 0;
+  overflow: visible;
+}
+
+#methods-view .reusable-knowledge-section.is-dense .knowledge-grid {
+  max-height: none;
+}
+
+#methods-view .reusable-knowledge-section .knowledge-grid > .knowledge-cluster:only-child,
+#methods-view .reusable-knowledge-section .knowledge-grid > .catalog-empty:only-child {
+  grid-column: 1 / -1;
+}
+
+#methods-view .current-result-section .knowledge-grid {
+  grid-template-columns: repeat(2, minmax(230px, 1fr));
+  grid-auto-rows: minmax(112px, auto);
+  gap: 11px;
+  max-height: 360px;
+  padding-right: 4px;
+  overflow: auto;
+}
+
+#methods-view .current-result-section.is-dense .knowledge-grid {
+  flex: 1;
+  max-height: min(62vh, 620px);
+}
+
+#methods-view .skill-section .knowledge-grid {
+  gap: 8px;
+  max-height: 260px;
+  padding-right: 4px;
+  overflow: auto;
+}
+
+#methods-view .skill-section.is-dense .knowledge-grid {
+  max-height: 260px;
 }
 
 #methods-view .knowledge-column {
@@ -5461,8 +5557,8 @@ body {
 #methods-view .knowledge-cluster {
   position: relative;
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  gap: 10px;
+  padding: 13px;
   border-left-width: 5px;
   background:
     linear-gradient(180deg, rgba(255, 249, 236, 0.92), rgba(244, 236, 217, 0.76)),
@@ -5473,6 +5569,35 @@ body {
     border-color 180ms var(--ease-smooth),
     background 180ms var(--ease-smooth),
     transform 200ms var(--ease-smooth);
+}
+
+#methods-view .knowledge-cluster.is-insight {
+  min-height: 142px;
+  background:
+    linear-gradient(180deg, rgba(244, 248, 253, 0.92), rgba(231, 238, 246, 0.74)),
+    rgba(92, 120, 155, 0.06);
+}
+
+#methods-view .knowledge-cluster.is-insight .knowledge-cluster-label,
+#methods-view .knowledge-cluster.is-insight .knowledge-cluster-count,
+#methods-view .knowledge-cluster.is-insight .knowledge-cluster-source {
+  color: rgba(36, 80, 109, 0.78);
+  border-color: rgba(92, 120, 155, 0.18);
+  background: rgba(92, 120, 155, 0.1);
+}
+
+#methods-view .knowledge-cluster.is-practice {
+  background:
+    linear-gradient(180deg, rgba(255, 249, 236, 0.94), rgba(244, 236, 217, 0.78)),
+    rgba(182, 120, 44, 0.04);
+}
+
+#methods-view .knowledge-cluster.is-practice .knowledge-cluster-label,
+#methods-view .knowledge-cluster.is-practice .knowledge-cluster-count,
+#methods-view .knowledge-cluster.is-practice .knowledge-cluster-source {
+  color: rgba(111, 88, 44, 0.78);
+  border-color: rgba(174, 153, 107, 0.2);
+  background: rgba(174, 153, 107, 0.11);
 }
 
 #methods-view .knowledge-cluster-header {
@@ -5493,7 +5618,7 @@ body {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   color: var(--ink);
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 780;
   line-height: 1.26;
 }
@@ -5527,7 +5652,7 @@ body {
 #methods-view .knowledge-cluster-summary {
   margin: 0;
   color: rgba(29, 35, 25, 0.58);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.4;
 }
 
@@ -5620,7 +5745,32 @@ body {
 
 #methods-view .knowledge-entry-list {
   display: grid;
-  gap: 8px;
+  gap: 7px;
+}
+
+#methods-view .method-card.artifact-card.output-result-card {
+  grid-template-rows: 1fr auto;
+  min-height: 112px;
+  padding: 14px 15px 13px 18px;
+}
+
+#methods-view .output-result-card .output-task-name {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 14px;
+  line-height: 1.34;
+}
+
+#methods-view .output-result-card .output-doc-type {
+  min-height: 20px;
+  padding: 0 7px;
+  font-size: 10px;
+}
+
+#methods-view .output-result-card .output-doc-link {
+  font-size: 11px;
 }
 
 #methods-view .knowledge-row.method-card {
@@ -5692,15 +5842,605 @@ body {
 
 #methods-view .method-card.skill-card {
   display: block;
+  padding: 11px 12px 10px 15px;
 }
 
 #methods-view .method-card.skill-card::before {
   content: none;
 }
 
-@media (max-width: 980px) {
+#methods-view .method-card.skill-card h3 {
+  font-size: 13px;
+  line-height: 1.34;
+}
+
+#methods-view .method-card.skill-card p {
+  margin-top: 5px;
+  -webkit-line-clamp: 2;
+  font-size: 11px;
+  line-height: 1.42;
+}
+
+@media (max-width: 1180px) {
+  #methods-view .knowledge-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    min-height: 0;
+  }
+
+  #methods-view .current-result-section,
+  #methods-view .skill-section,
+  #methods-view .reusable-knowledge-section {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  #methods-view .current-result-section .knowledge-grid,
+  #methods-view .skill-section .knowledge-grid,
+  #methods-view .reusable-knowledge-section .knowledge-grid {
+    max-height: none;
+  }
+
+  #methods-view .reusable-knowledge-section .knowledge-grid {
+    grid-template-columns: repeat(2, minmax(260px, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  #methods-view .knowledge-section .canvas-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  #methods-view .section-stat {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: start;
+  }
+
+  #methods-view .current-result-section .knowledge-grid {
+    grid-template-columns: 1fr;
+  }
+
   #methods-view .reusable-knowledge-section .knowledge-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Playbook image-first redesign: output stream, tool shelf, knowledge map. */
+#methods-view {
+  max-width: min(1760px, calc(100vw - 96px));
+}
+
+#methods-view .knowledge-layout {
+  grid-template-columns: minmax(720px, 1fr) minmax(360px, 420px);
+  gap: 14px 18px;
+}
+
+#methods-view .knowledge-section {
+  border: 1px solid rgba(36, 75, 42, 0.16);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 252, 242, 0.94), rgba(249, 244, 231, 0.9)),
+    rgba(255, 249, 236, 0.9);
+  box-shadow:
+    0 16px 40px rgba(66, 61, 48, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+#methods-view .knowledge-section::before {
+  width: 4px;
+  border-radius: 8px 0 0 8px;
+  background: #24512f;
+}
+
+#methods-view .current-result-section {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: stretch;
+}
+
+#methods-view .skill-section {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: stretch;
+}
+
+#methods-view .reusable-knowledge-section {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+#methods-view .knowledge-section .canvas-header {
+  margin-bottom: 12px;
+  padding-bottom: 11px;
+  border-bottom-color: rgba(36, 75, 42, 0.13);
+}
+
+#methods-view .knowledge-section .panel-kicker {
+  margin-bottom: 7px;
+  color: rgba(36, 75, 42, 0.72);
+  letter-spacing: 0.16em;
+}
+
+#methods-view .canvas-header h2,
+#methods-view .knowledge-section h2,
+#methods-view .current-result-section .canvas-header h2,
+#methods-view .skill-section .canvas-header h2,
+#methods-view .reusable-knowledge-section .canvas-header h2 {
+  color: #151a18;
+  font-size: 26px;
+  font-weight: 820;
+  line-height: 1.18;
+}
+
+#methods-view .section-brief {
+  max-width: 520px;
+  color: rgba(29, 35, 25, 0.56);
+  font-size: 12px;
+}
+
+#methods-view .section-stat,
+#methods-view .section-collapse-toggle {
+  border-color: rgba(36, 75, 42, 0.14);
+  border-radius: 6px;
+  background: rgba(255, 249, 236, 0.72);
+}
+
+#methods-view .current-result-section .knowledge-grid {
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+  grid-auto-rows: auto;
+  gap: 10px 12px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+#methods-view .current-result-section.is-dense .knowledge-grid {
+  max-height: min(58vh, 560px);
+}
+
+#methods-view .method-card.artifact-card.output-result-card {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  align-items: start;
+  gap: 8px 10px;
+  min-height: 74px;
+  padding: 12px;
+  border-width: 1px;
+  border-color: rgba(36, 75, 42, 0.11);
+  border-radius: 7px;
+  background:
+    linear-gradient(180deg, rgba(255, 253, 246, 0.9), rgba(250, 246, 236, 0.78)),
+    rgba(255, 253, 246, 0.86);
+  box-shadow: none;
+}
+
+#methods-view .method-card.artifact-card.output-result-card::before {
+  content: none;
+}
+
+#methods-view .artifact-row-icon,
+#methods-view .skill-card-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(36, 75, 42, 0.14);
+  border-radius: 6px;
+  color: #24512f;
+  background: rgba(195, 219, 204, 0.46);
+  font-size: 11px;
+  font-weight: 820;
+}
+
+#methods-view .artifact-row-icon.is-base {
+  color: #365875;
+  background: rgba(198, 216, 229, 0.58);
+}
+
+#methods-view .artifact-row-body {
+  min-width: 0;
+}
+
+#methods-view .output-result-card .output-task-name {
+  margin: 0;
+  color: #1d2319;
+  font-size: 14px;
+  font-weight: 760;
+  line-height: 1.28;
+}
+
+#methods-view .artifact-row-source {
+  display: -webkit-box;
+  margin: 4px 0 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  color: rgba(29, 35, 25, 0.52);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+#methods-view .output-result-card .output-doc-type {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  min-height: 22px;
+  border-radius: 6px;
+  color: rgba(36, 75, 42, 0.72);
+  background: rgba(36, 75, 42, 0.07);
+  font-size: 10px;
+  font-weight: 760;
+}
+
+#methods-view .output-result-card .output-doc-link {
+  grid-column: 3;
+  grid-row: 2;
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 0 9px;
+  border: 1px solid rgba(36, 75, 42, 0.12);
+  border-radius: 6px;
+  color: #24512f;
+  background: rgba(255, 249, 236, 0.86);
+  font-size: 11px;
+  font-weight: 760;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+#methods-view .catalog-stream-footer {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  color: #24512f;
+  font-size: 12px;
+  font-weight: 780;
+}
+
+#methods-view .skill-section {
+  background:
+    linear-gradient(180deg, rgba(247, 250, 250, 0.94), rgba(240, 246, 247, 0.88)),
+    rgba(242, 248, 249, 0.9);
+}
+
+#methods-view .skill-section::before {
+  background: #365875;
+}
+
+#methods-view .skill-section .knowledge-grid,
+#methods-view .skill-section.is-dense .knowledge-grid {
+  gap: 8px;
+  max-height: 268px;
+  overflow: auto;
+}
+
+#methods-view .method-card.skill-card {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  min-height: 68px;
+  padding: 10px;
+  border-color: rgba(54, 88, 117, 0.14);
+  border-radius: 7px;
+  background: rgba(255, 253, 246, 0.72);
+  box-shadow: none;
+}
+
+#methods-view .method-card.skill-card:hover,
+#methods-view .method-card.skill-card:focus-within,
+#methods-view .method-card.artifact-card.output-result-card:hover,
+#methods-view .method-card.artifact-card.output-result-card:focus-within {
+  transform: none;
+  border-color: rgba(36, 75, 42, 0.24);
+  background: rgba(255, 253, 246, 0.96);
+  box-shadow: inset 0 0 0 1px rgba(36, 75, 42, 0.08);
+}
+
+#methods-view .skill-card-icon {
+  color: #365875;
+  background: rgba(198, 216, 229, 0.58);
+}
+
+#methods-view .skill-card-body {
+  min-width: 0;
+}
+
+#methods-view .method-card.skill-card h3 {
+  margin: 0;
+  color: #1d2319;
+  font-size: 13px;
+  font-weight: 780;
+}
+
+#methods-view .method-card.skill-card p {
+  margin: 4px 0 0;
+  color: rgba(29, 35, 25, 0.52);
+  font-size: 11px;
+  line-height: 1.38;
+}
+
+#methods-view .reusable-knowledge-section {
+  background:
+    linear-gradient(180deg, rgba(255, 252, 242, 0.96), rgba(249, 244, 231, 0.91)),
+    rgba(255, 249, 236, 0.92);
+}
+
+#methods-view .reusable-knowledge-section .knowledge-grid {
+  grid-template-columns: minmax(440px, 0.42fr) minmax(620px, 0.58fr);
+  gap: 20px;
+}
+
+#methods-view .knowledge-lane {
+  border: 1px solid rgba(36, 75, 42, 0.12);
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+#methods-view .knowledge-lane::before {
+  content: none;
+}
+
+#methods-view .knowledge-lane.is-insight {
+  grid-column: 1;
+  min-height: 0;
+  padding: 14px;
+  border-color: rgba(54, 88, 117, 0.16);
+  background:
+    linear-gradient(180deg, rgba(235, 244, 244, 0.94), rgba(223, 237, 238, 0.8)),
+    rgba(198, 216, 229, 0.22);
+}
+
+#methods-view .knowledge-lane.is-practice,
+#methods-view .knowledge-lane.is-general {
+  grid-column: 2;
+  padding: 14px 14px 14px 18px;
+  background: rgba(255, 253, 246, 0.78);
+}
+
+#methods-view .knowledge-lane.is-practice .knowledge-entry-list,
+#methods-view .knowledge-lane.is-general .knowledge-entry-list {
+  gap: 0;
+  border: 1px solid rgba(36, 75, 42, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+#methods-view .knowledge-cluster-header {
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 8px 10px;
+  cursor: pointer;
+}
+
+#methods-view .knowledge-lane-icon {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 24px;
+  border: 1px solid rgba(29, 108, 128, 0.2);
+  border-radius: 6px;
+  color: #1d6c80;
+  background: rgba(218, 241, 244, 0.7);
+  font-size: 10px;
+  font-weight: 820;
+  letter-spacing: 0.02em;
+}
+
+#methods-view .knowledge-lane.is-practice .knowledge-lane-icon,
+#methods-view .knowledge-lane.is-general .knowledge-lane-icon {
+  border-color: rgba(180, 107, 8, 0.2);
+  color: #b46b08;
+  background: rgba(255, 238, 199, 0.76);
+}
+
+#methods-view .knowledge-cluster-heading {
+  grid-column: 2;
+  display: grid;
+  gap: 5px;
+}
+
+#methods-view .knowledge-cluster-label {
+  min-width: 0;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 6px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+#methods-view .knowledge-cluster-heading h3 {
+  margin: 0;
+  font-size: 17px;
+}
+
+#methods-view .knowledge-lane.is-practice .knowledge-cluster-heading h3,
+#methods-view .knowledge-lane.is-general .knowledge-cluster-heading h3 {
+  font-size: 18px;
+}
+
+#methods-view .knowledge-cluster-summary {
+  grid-column: 2;
+  font-size: 11px;
+}
+
+#methods-view .knowledge-cluster-meta {
+  grid-column: 3;
+  grid-row: 1;
+  align-self: start;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+#methods-view .knowledge-entry-list {
+  position: relative;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+#methods-view .knowledge-lane.is-practice .knowledge-entry-list::before,
+#methods-view .knowledge-lane.is-general .knowledge-entry-list::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 30px;
+  width: 1px;
+  background: rgba(36, 75, 42, 0.16);
+  content: "";
+}
+
+#methods-view .knowledge-row.method-card {
+  border-radius: 7px;
+  box-shadow: none;
+}
+
+#methods-view .knowledge-lane.is-insight .knowledge-row.method-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 14px;
+  min-height: 74px;
+  padding: 14px 14px 13px 18px;
+  border-color: rgba(54, 88, 117, 0.14);
+  background: rgba(255, 253, 246, 0.72);
+}
+
+#methods-view .knowledge-lane.is-insight .knowledge-row.method-card::before {
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 8px;
+  width: 3px;
+  border-radius: 999px;
+  background: rgba(29, 108, 128, 0.26);
+  content: "";
+}
+
+#methods-view .knowledge-lane.is-insight .knowledge-row-body h3 {
+  font-size: 15px;
+  line-height: 1.38;
+}
+
+#methods-view .knowledge-lane.is-insight .knowledge-row-meta {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  justify-content: flex-start;
+}
+
+#methods-view .knowledge-lane.is-practice .knowledge-row.method-card,
+#methods-view .knowledge-lane.is-general .knowledge-row.method-card {
+  position: relative;
+  grid-template-columns: 34px minmax(260px, 1fr) 104px;
+  align-items: center;
+  min-height: 50px;
+  padding: 8px 10px;
+  border-width: 0 0 1px;
+  border-color: rgba(36, 75, 42, 0.08);
+  border-radius: 0;
+  background: rgba(255, 253, 246, 0.8);
+}
+
+#methods-view .knowledge-lane.is-practice .knowledge-row.method-card:last-child,
+#methods-view .knowledge-lane.is-general .knowledge-row.method-card:last-child {
+  border-bottom-width: 0;
+}
+
+#methods-view .knowledge-row-index {
+  position: relative;
+  z-index: 1;
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 50%;
+  color: #fffaf0;
+  background: #d88713;
+  font-size: 10px;
+  font-weight: 820;
+}
+
+#methods-view .knowledge-lane.is-practice .knowledge-row-meta,
+#methods-view .knowledge-lane.is-general .knowledge-row-meta {
+  grid-column: 3;
+  justify-content: flex-end;
+}
+
+#methods-view .knowledge-lane.is-practice .knowledge-row-body,
+#methods-view .knowledge-lane.is-general .knowledge-row-body {
+  grid-column: 2;
+}
+
+#methods-view .knowledge-lane.is-practice .knowledge-row-body h3,
+#methods-view .knowledge-lane.is-general .knowledge-row-body h3 {
+  -webkit-line-clamp: 1;
+  font-size: 13px;
+  line-height: 1.32;
+}
+
+#methods-view .knowledge-lane.is-practice .knowledge-row-date,
+#methods-view .knowledge-lane.is-general .knowledge-row-date {
+  display: none;
+}
+
+#methods-view .knowledge-lane.is-practice .knowledge-row-tag,
+#methods-view .knowledge-lane.is-general .knowledge-row-tag {
+  max-width: 92px;
+}
+
+@media (max-width: 1180px) {
+  #methods-view .knowledge-layout {
+    grid-template-columns: 1fr;
+  }
+
+  #methods-view .current-result-section,
+  #methods-view .skill-section,
+  #methods-view .reusable-knowledge-section {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  #methods-view .reusable-knowledge-section .knowledge-grid {
+    grid-template-columns: 1fr;
+  }
+
+  #methods-view .knowledge-lane.is-insight,
+  #methods-view .knowledge-lane.is-practice,
+  #methods-view .knowledge-lane.is-general {
+    grid-column: 1;
+  }
+}
+
+@media (max-width: 720px) {
+  #methods-view .current-result-section .knowledge-grid {
+    grid-template-columns: 1fr;
+  }
+
+  #methods-view .method-card.artifact-card.output-result-card {
+    grid-template-columns: 32px minmax(0, 1fr) auto;
+  }
+
+  #methods-view .output-result-card .output-doc-link {
+    grid-column: 2 / -1;
+    justify-self: start;
+  }
+
+  #methods-view .knowledge-lane.is-practice .knowledge-row.method-card,
+  #methods-view .knowledge-lane.is-general .knowledge-row.method-card {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  #methods-view .knowledge-lane.is-practice .knowledge-row-meta,
+  #methods-view .knowledge-lane.is-general .knowledge-row-meta {
+    grid-column: 2;
+    justify-content: flex-start;
   }
 }
 
